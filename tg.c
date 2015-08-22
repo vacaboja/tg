@@ -47,10 +47,10 @@ error:
 	return NULL;
 }
 
-int get_period(double *data, int size, double sample_rate, double *period, double *sigma)
+int get_period(float *data, int size, double sample_rate, double *period, double *sigma)
 {
 	double estimate = 0;
-	double largest_peak = 0;
+	float largest_peak = 0;
 	int i;
 	for(i = sample_rate / 6; i < sample_rate / 2; i++) {
 		if(i > size) break;
@@ -71,7 +71,7 @@ int get_period(double *data, int size, double sample_rate, double *period, doubl
 		int sup = ceil(new_estimate * cycle + delta);
 		if(sup > size * 2 / 3)
 			break;
-		double max = 0;
+		float max = 0;
 		for(i = inf; i <= sup; i++)
 			if(data[i] > max) {
 				max = data[i];
@@ -121,14 +121,14 @@ int main(int argc, char **argv)
 
 	int sample_rate = sfinfo.samplerate;
 	int sample_count = sfinfo.frames;
-	double *samples;
+	float *samples;
 
-	samples = malloc(2 * sample_count * sizeof(double));
-	memset(samples,0,2 * sample_count * sizeof(double));
+	samples = malloc(2 * sample_count * sizeof(float));
+	memset(samples,0,2 * sample_count * sizeof(float));
 
 	fprintf(stderr,"sample_rate = %d\n",sample_rate);
 
-	if(sfinfo.frames != sf_read_double(sfile,samples,sfinfo.frames)) {
+	if(sfinfo.frames != sf_read_float(sfile,samples,sfinfo.frames)) {
 		fprintf(stderr,"Error in sf_read_double()\n");
 		return 1;
 	}
@@ -137,27 +137,27 @@ int main(int argc, char **argv)
 
 	int i;
 /**/
-	fftw_plan plan_a,plan_b;
+	fftwf_plan plan_a,plan_b;
 	int first_fft_size = sample_count/2 + 1;
-	fftw_complex *first_fft = malloc(first_fft_size * sizeof(fftw_complex));
+	fftwf_complex *first_fft = malloc(first_fft_size * sizeof(fftwf_complex));
 
-	plan_a = fftw_plan_dft_r2c_1d(sample_count,samples,first_fft,FFTW_ESTIMATE);
-	plan_b = fftw_plan_dft_c2r_1d(sample_count,first_fft,samples,FFTW_ESTIMATE);
+	plan_a = fftwf_plan_dft_r2c_1d(sample_count,samples,first_fft,FFTW_ESTIMATE);
+	plan_b = fftwf_plan_dft_c2r_1d(sample_count,first_fft,samples,FFTW_ESTIMATE);
 
-	fftw_execute(plan_a);
+	fftwf_execute(plan_a);
 	for(i=0;i<first_fft_size;i++) {
 		if((uint64_t)sample_rate * i < (uint64_t)3000 * sample_count)
 			first_fft[i] = 0;
 	}
-	fftw_execute(plan_b);
+	fftwf_execute(plan_b);
 /**/
 	for(i=0;i<sample_count;i++)
 		samples[i] = samples[i] * samples[i];
 
-	double min = 1e20;
+	float min = 1e20;
 	for(i=0; i+sample_rate <= sample_count; i+=sample_rate) {
 		int j;
-		double max = 0;
+		float max = 0;
 		for(j=0; j<sample_rate; j++)
 			if(samples[i+j] > max) max = samples[i+j];
 		if(max < min) min = max;
@@ -189,36 +189,28 @@ int main(int argc, char **argv)
 	for(i=0;i<sample_count;i++)
 		samples[i] -= average;
 
+/*
 	double *filtered_samples = malloc(sample_count * sizeof(double));
 	for(i=0;i<sample_count;i++)
 		filtered_samples[i] = samples[i];
+*/
 
-	fftw_plan plan_c,plan_d;
+	fftwf_plan plan_c,plan_d;
 	int second_fft_size = sample_count + 1;
-	fftw_complex *second_fft = malloc(second_fft_size * sizeof(fftw_complex));
+	fftwf_complex *second_fft = malloc(second_fft_size * sizeof(fftwf_complex));
 
-	plan_c = fftw_plan_dft_r2c_1d(2*sample_count,samples,second_fft,FFTW_ESTIMATE);
-	plan_d = fftw_plan_dft_c2r_1d(2*sample_count,second_fft,samples,FFTW_ESTIMATE);
+	plan_c = fftwf_plan_dft_r2c_1d(2*sample_count,samples,second_fft,FFTW_ESTIMATE);
+	plan_d = fftwf_plan_dft_c2r_1d(2*sample_count,second_fft,samples,FFTW_ESTIMATE);
 
-	fftw_execute(plan_c);
+	fftwf_execute(plan_c);
 	for(i=0;i<second_fft_size;i++) {
-		if((uint64_t)sample_rate * i < (uint64_t)3000 * sample_count) {
-//			fft[i] = log(creal(fft[i] * conj(fft[i])));
+		if((uint64_t)sample_rate * i < (uint64_t)3000 * sample_count)
 			second_fft[i] = second_fft[i] * conj(second_fft[i]);
-		} else
+		else
 			second_fft[i] = 0;
 	}
-	fftw_execute(plan_d);
+	fftwf_execute(plan_d);
 	
-//	for(i=0;i<sample_count;i++)
-//		samples[i] = fabs(samples[i]);
-//	fftw_execute(plan_a);
-//	for(i=0;i<fft_size;i++) {
-//		if((uint64_t)sample_rate * i > (uint64_t)3000 * sample_count)
-//			fft[i] = 0;
-//	}
-//	fftw_execute(plan_b);
-
 	double period = 0;
 	double sigma = 0;
 	int err = get_period(samples,sample_count,sample_rate,&period,&sigma);
@@ -247,15 +239,15 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	double max_sample = 0;
+	float max_sample = 0;
 	for(i = 100; i < sample_count; i++) {
-		double x = samples[i] >= 0 ? samples[i] : -samples[i];
+		float x = samples[i] >= 0 ? samples[i] : -samples[i];
 		max_sample = max_sample > x ? max_sample : x;
 	}
 	for(i = 0; i < sample_count; i++)
 		samples[i] /= max_sample;
 
-	fprintf(stderr,"Written %d samples to out.wav\n",sf_write_double(out_sfile, samples, sample_count));
+	fprintf(stderr,"Written %d samples to out.wav\n",sf_write_float(out_sfile, samples, sample_count));
 
 	sf_close(out_sfile);
 
