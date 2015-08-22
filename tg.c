@@ -6,6 +6,46 @@
 #include <complex.h>
 #include <fftw3.h>
 #include <stdint.h>
+#include <portaudio.h>
+
+#define PA_SAMPLE_RATE 44100
+
+int paudio_callback(const void *input_buffer,
+			void *UNUSED(output_buffer),
+			unsigned long frame_count,
+			const PaStreamCallbackTimeInfo* UNUSED(time_info),
+			PaStreamCallbackFlags UNUSED(status_flags),
+			void *UNUSED(data))
+{
+	unsigned long i;
+	for(i=0; i < frame_count; i++) {
+		pa_buffers[0][write_pointer] = ((float *)input_buffer)[2*i];
+		pa_buffers[1][write_pointer] = ((float *)input_buffer)[2*i + 1];
+		if(++write_pointer == PA_BUFF_SIZE) write_pointer = 0;
+	}
+    
+        return 0;
+}
+
+PaStream *create_portaudio_stream()
+{
+	PaStream *stream;
+
+	PaError err = Pa_Initialize();
+	if(err!=paNoError)
+        	goto error;
+
+	err = Pa_OpenDefaultStream(&stream,2,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,NULL);
+	if(err!=paNoError)
+		goto error;
+
+	return stream;
+
+error:
+	fprintf(stderr,"Error opening audio input: %s\n", Pa_GetErrorText(err));
+	pa_exit(err);
+	return NULL;
+}
 
 int get_period(double *data, int size, double sample_rate, double *period, double *sigma)
 {
