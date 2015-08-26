@@ -8,14 +8,23 @@
 #include <stdint.h>
 #include <portaudio.h>
 
+#define FILTER_CUTOFF 3000
+
+#define NSTEPS 5
 #define PA_SAMPLE_RATE 44100
+#define PA_BUFF_SIZE (PA_SAMPLE_RATE << NSTEPS)
+
+#define PA_SENTINEL 37
+
+volatile float pa_buffers[2][PA_BUFF_SIZE];
+volatile int write_pointer = 0;
 
 int paudio_callback(const void *input_buffer,
-			void *UNUSED(output_buffer),
+			void *output_buffer,
 			unsigned long frame_count,
-			const PaStreamCallbackTimeInfo* UNUSED(time_info),
-			PaStreamCallbackFlags UNUSED(status_flags),
-			void *UNUSED(data))
+			const PaStreamCallbackTimeInfo *time_info,
+			PaStreamCallbackFlags status_flags,
+			void *data)
 {
 	unsigned long i;
 	for(i=0; i < frame_count; i++) {
@@ -27,7 +36,7 @@ int paudio_callback(const void *input_buffer,
         return 0;
 }
 
-PaStream *create_portaudio_stream()
+int start_portaudio()
 {
 	PaStream *stream;
 
@@ -39,28 +48,109 @@ PaStream *create_portaudio_stream()
 	if(err!=paNoError)
 		goto error;
 
-	return stream;
+	err = Pa_StartStream(stream);
+	if(err!=paNoError)
+		goto error;
+
+	return 0;
 
 error:
 	fprintf(stderr,"Error opening audio input: %s\n", Pa_GetErrorText(err));
-	pa_exit(err);
-	return NULL;
+	return 1;
 }
 
-int get_period(float *data, int size, double sample_rate, double *period, double *sigma)
+struct processing_buffers {
+	int sample_rate;
+	int sample_count;
+	float *samples;
+	fftwf_complex *fft;
+	fftwf_plan plan_a, plan_b, plan_c, plan_d;
+};
+
+void setup_buffers(struct processing_buffers *b)
+{
+	b->samples = fftwf_malloc(2 * b->sample_count * sizeof(float));
+	b->fft = malloc((b->sample_count + 1) * sizeof(fftwf_complex));
+	b->plan_a = fftwf_plan_dft_r2c_1d(b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
+	b->plan_b = fftwf_plan_dft_c2r_1d(b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
+	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
+	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
+}
+
+void compute_self_correlation(struct processing_buffers *b)
+{
+	int i;
+	int first_fft_size = b->sample_count/2 + 1;
+
+	fftwf_execute(b->plan_a);
+	for(i=0; i < b->sample_count/2 + 1; i++) {
+		if((uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count)
+			b->fft[i] = 0;
+	}
+	fftwf_execute(b->plan_b);
+
+	for(i=0; i < b->sample_count; i++)
+		b->samples[i] = b->samples[i] * b->samples[i];
+
+	float min = 1e20;
+	for(i=0; i + b->sample_rate <= b->sample_count; i += b->sample_rate) {
+		int j;
+		float max = 0;
+		for(j=0; j < b->sample_rate; j++)
+			if(b->samples[i+j] > max) max = b->samples[i+j];
+		if(max < min) min = max;
+	}
+
+	int max_count = 0;
+	int ms = b->sample_rate/1000;
+	for(i=0; i<10*ms; i++) {
+		if(b->samples[i] >= min) {
+			if(max_count < 110*ms)
+				max_count += 100;
+		} else if(max_count > 0)
+			max_count--;
+	}
+	for(i=0; i < b->sample_count; i++) {
+		if(b->samples[i] > min) b->samples[i] = min;
+		if(max_count >= 100*ms) b->samples[i] = 0;
+		if(b->samples[i+10*ms] >= min) {
+			if(max_count < 110*ms)
+				max_count += 100;
+		} else if(max_count > 0)
+			max_count--;
+	}
+
+	double average = 0;
+	for(i=0; i < b->sample_count; i++)
+		average += b->samples[i];
+	average /= b->sample_count;
+	for(i=0; i < b->sample_count; i++)
+		b->samples[i] -= average;
+
+	fftwf_execute(b->plan_c);
+	for(i=0; i < b->sample_count+1; i++) {
+		if((uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count)
+			b->fft[i] = b->fft[i] * conj(b->fft[i]);
+		else
+			b->fft[i] = 0;
+	}
+	fftwf_execute(b->plan_d);
+}
+
+int get_period(struct processing_buffers *b, double *period, double *sigma)
 {
 	double estimate = 0;
 	float largest_peak = 0;
 	int i;
-	for(i = sample_rate / 6; i < sample_rate / 2; i++) {
-		if(i > size) break;
-		if(data[i] > largest_peak) {
-			largest_peak = data[i];
+	for(i = b->sample_rate / 6; i < b->sample_rate / 2; i++) {
+		if(i > b->sample_count) break;
+		if(b->samples[i] > largest_peak) {
+			largest_peak = b->samples[i];
 			estimate = i;
 		}
 	}
 	if(estimate == 0) return -1;
-	double delta = sample_rate * 0.005;
+	double delta = b->sample_rate * 0.005;
 	double new_estimate = estimate;
 	double sum = 0;
 	double sq_sum = 0;
@@ -69,19 +159,19 @@ int get_period(float *data, int size, double sample_rate, double *period, double
 	for(;;) {
 		int inf = floor(new_estimate * cycle - delta);
 		int sup = ceil(new_estimate * cycle + delta);
-		if(sup > size * 2 / 3)
+		if(sup > b->sample_count * 2 / 3)
 			break;
 		float max = 0;
 		for(i = inf; i <= sup; i++)
-			if(data[i] > max) {
-				max = data[i];
+			if(b->samples[i] > max) {
+				max = b->samples[i];
 				new_estimate = i;
 			}
 		if(max == 0) return -1;
 		new_estimate /= cycle;
 		fprintf(stderr,"cycle = %d new_estimate = %f\n",cycle,new_estimate/44100);
 		if(new_estimate < estimate - delta || new_estimate > estimate + delta) return -1;
-		if(inf > size / 3) {
+		if(inf > b->sample_count / 3) {
 			sum += new_estimate;
 			sq_sum += new_estimate * new_estimate;
 			count++;
@@ -89,26 +179,21 @@ int get_period(float *data, int size, double sample_rate, double *period, double
 		cycle++;
 	}
 	estimate = sum / count;
-	*period = estimate / sample_rate;
-	*sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1)) / sample_rate;
+	*period = estimate / b->sample_rate;
+	*sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1)) / b->sample_rate;
 	return 0;
 }
 
-int main(int argc, char **argv)
+int process_file(char *filename)
 {
-	if(argc != 2) {
-		fprintf(stderr,"USAGE: %s filename\n",argv[0]);
-		return 1;
-	}
-
 	SF_INFO sfinfo;
 	SNDFILE *sfile;
 
 	sfinfo.format = 0;
 
-	sfile = sf_open(argv[1],SFM_READ,&sfinfo);
+	sfile = sf_open(filename,SFM_READ,&sfinfo);
 	if(!sfile) {
-		fprintf(stderr,"Error in sf_open(): %s\n",sf_strerror(NULL));
+		fprintf(stderr,"Error opening file %s : %s\n",filename,sf_strerror(NULL));
 		return 1;
 	}
 
@@ -117,115 +202,31 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-//	sfinfo.frames = 20 * sfinfo.samplerate;
+	struct processing_buffers b;
+	
+	b.sample_rate = sfinfo.samplerate;
+	b.sample_count = sfinfo.frames;
 
-	int sample_rate = sfinfo.samplerate;
-	int sample_count = sfinfo.frames;
-	float *samples;
+	setup_buffers(&b);
 
-	samples = malloc(2 * sample_count * sizeof(float));
-	memset(samples,0,2 * sample_count * sizeof(float));
+	memset(b.samples,0,2 * b.sample_count * sizeof(float));
 
-	fprintf(stderr,"sample_rate = %d\n",sample_rate);
-
-	if(sfinfo.frames != sf_read_float(sfile,samples,sfinfo.frames)) {
-		fprintf(stderr,"Error in sf_read_double()\n");
+	if(sfinfo.frames != sf_read_float(sfile,b.samples,b.sample_count)) {
+		fprintf(stderr,"Error in reading file %s\n",filename);
 		return 1;
 	}
 
 	sf_close(sfile);
 
-	int i;
-/**/
-	fftwf_plan plan_a,plan_b;
-	int first_fft_size = sample_count/2 + 1;
-	fftwf_complex *first_fft = malloc(first_fft_size * sizeof(fftwf_complex));
+	compute_self_correlation(&b);
 
-	plan_a = fftwf_plan_dft_r2c_1d(sample_count,samples,first_fft,FFTW_ESTIMATE);
-	plan_b = fftwf_plan_dft_c2r_1d(sample_count,first_fft,samples,FFTW_ESTIMATE);
-
-	fftwf_execute(plan_a);
-	for(i=0;i<first_fft_size;i++) {
-		if((uint64_t)sample_rate * i < (uint64_t)3000 * sample_count)
-			first_fft[i] = 0;
-	}
-	fftwf_execute(plan_b);
-/**/
-	for(i=0;i<sample_count;i++)
-		samples[i] = samples[i] * samples[i];
-
-	float min = 1e20;
-	for(i=0; i+sample_rate <= sample_count; i+=sample_rate) {
-		int j;
-		float max = 0;
-		for(j=0; j<sample_rate; j++)
-			if(samples[i+j] > max) max = samples[i+j];
-		if(max < min) min = max;
-	}
-
-	int max_count = 0;
-	int ms = sample_rate/1000;
-	for(i=0;i<10*ms;i++) {
-		if(samples[i] >= min) {
-			if(max_count < 110*ms)
-				max_count += 100;
-		} else if(max_count > 0)
-			max_count--;
-	}
-	for(i=0;i<sample_count;i++) {
-		if(samples[i] > min) samples[i] = min;
-		if(max_count >= 100*ms) samples[i] = 0;
-		if(samples[i+10*ms] >= min) {
-			if(max_count < 110*ms)
-				max_count += 100;
-		} else if(max_count > 0)
-			max_count--;
-	}
-
-	double average = 0;
-	for(i=0;i<sample_count;i++)
-		average += samples[i];
-	average /= sample_count;
-	for(i=0;i<sample_count;i++)
-		samples[i] -= average;
-
-/*
-	double *filtered_samples = malloc(sample_count * sizeof(double));
-	for(i=0;i<sample_count;i++)
-		filtered_samples[i] = samples[i];
-*/
-
-	fftwf_plan plan_c,plan_d;
-	int second_fft_size = sample_count + 1;
-	fftwf_complex *second_fft = malloc(second_fft_size * sizeof(fftwf_complex));
-
-	plan_c = fftwf_plan_dft_r2c_1d(2*sample_count,samples,second_fft,FFTW_ESTIMATE);
-	plan_d = fftwf_plan_dft_c2r_1d(2*sample_count,second_fft,samples,FFTW_ESTIMATE);
-
-	fftwf_execute(plan_c);
-	for(i=0;i<second_fft_size;i++) {
-		if((uint64_t)sample_rate * i < (uint64_t)3000 * sample_count)
-			second_fft[i] = second_fft[i] * conj(second_fft[i]);
-		else
-			second_fft[i] = 0;
-	}
-	fftwf_execute(plan_d);
-	
 	double period = 0;
 	double sigma = 0;
-	int err = get_period(samples,sample_count,sample_rate,&period,&sigma);
+	int err = get_period(&b,&period,&sigma);
 	if(err) printf("---\n");
 	else printf("%f +- %f\n",period,sigma);
 
-//	FILE *test = fopen("test","w");
-//
-//	for(i = 0; i < sample_count; i++) {
-//		double t = (double) i / sample_rate;
-//		fprintf(test,"%f %.12f\n",1000*t,samples[i]);
-//	}
-//
-//	fclose(test);
-
+/*
 	SF_INFO out_info;
 	SNDFILE *out_sfile;
 
@@ -250,6 +251,73 @@ int main(int argc, char **argv)
 	fprintf(stderr,"Written %d samples to out.wav\n",sf_write_float(out_sfile, samples, sample_count));
 
 	sf_close(out_sfile);
-
+*/
 	return 0;
+}
+
+void analyze_pa_data(struct processing_buffers *p)
+{
+	int wp = write_pointer;
+	int i;
+	for(i=0; i<NSTEPS; i++) {
+		int j,k;
+		memset(p[i].samples,0,2 * p[i].sample_count * sizeof(float));
+		k = wp;
+		for(j=0; j < PA_SAMPLE_RATE * (1<<i); j++) {
+			if(--k < 0) k = PA_BUFF_SIZE-1;
+			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
+		}
+	}
+	double period, sigma;
+	for(i=0; i<NSTEPS; i++) {
+		compute_self_correlation(&p[i]);
+
+		double pr = 0;
+		double sg = 0;
+		int err = get_period(&p[i],&pr,&sg);
+
+		if(err) break;
+		else {
+			fprintf(stderr,"step %d : %f +- %f\n",i,pr,sg);
+			if(i && fabs(period - pr) > 3 * (sigma + sg)) {
+				i = 0;
+				break;
+			}
+			period = pr;
+			sigma = sg;
+		}
+	}
+	if(i)
+		printf("%f +- %f\n",period,sigma);
+	else
+		printf("---\n");
+}
+
+int run_interactively()
+{
+	struct processing_buffers p[NSTEPS];
+	int i;
+	for(i=0; i<NSTEPS; i++) {
+		p[i].sample_rate = PA_SAMPLE_RATE;
+		p[i].sample_count = PA_SAMPLE_RATE * (1<<i);
+		setup_buffers(&p[i]);
+	}
+	if(start_portaudio()) return 1;
+	for(;;) {
+		sleep(1);
+		analyze_pa_data(p);
+	}
+	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	if(argc == 1)
+		return run_interactively();
+	else if(argc == 2 && argv[1][0] != '-')
+		return process_file(argv[1]);
+	else {
+		fprintf(stderr,"USAGE: %s [filename]\n",argv[0]);
+		return 1;
+	}
 }
