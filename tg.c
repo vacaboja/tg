@@ -9,10 +9,12 @@
 #include <portaudio.h>
 
 #define FILTER_CUTOFF 3000
+#define HIGHPASS 10
 
-#define NSTEPS 5
+#define NSTEPS 3
+#define FIRST_STEP 2
 #define PA_SAMPLE_RATE 44100
-#define PA_BUFF_SIZE (PA_SAMPLE_RATE << NSTEPS)
+#define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
 #define PA_SENTINEL 37
 
@@ -129,7 +131,9 @@ void compute_self_correlation(struct processing_buffers *b)
 
 	fftwf_execute(b->plan_c);
 	for(i=0; i < b->sample_count+1; i++) {
-		if((uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count)
+		if(  (uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count
+				&&
+		     (uint64_t)b->sample_rate * i > (uint64_t)HIGHPASS * b->sample_count  )
 			b->fft[i] = b->fft[i] * conj(b->fft[i]);
 		else
 			b->fft[i] = 0;
@@ -137,20 +141,30 @@ void compute_self_correlation(struct processing_buffers *b)
 	fftwf_execute(b->plan_d);
 }
 
-int get_period(struct processing_buffers *b, double *period, double *sigma)
+int peak_detector(struct processing_buffers *p, int a, int b)
 {
-	double estimate = 0;
-	float largest_peak = 0;
 	int i;
-	for(i = b->sample_rate / 6; i < b->sample_rate / 2; i++) {
-		if(i > b->sample_count) break;
-		if(b->samples[i] > largest_peak) {
-			largest_peak = b->samples[i];
-			estimate = i;
+	double max = p->samples[a];
+	int i_max = a;
+	for(i=a+1; i<=b; i++) {
+		if(p->samples[i] > max) {
+			max = p->samples[i];
+			i_max = i;
 		}
 	}
-	if(estimate == 0) return -1;
-	double delta = b->sample_rate * 0.005;
+	if(max <= 0) return -1;
+	int x,y;
+	for(x = i_max; x >= a && p->samples[x] > 0.7*max; x--);
+	for(y = i_max; y <= b && p->samples[y] > 0.7*max; y++);
+	if( x < a || y > b || y-x < p->sample_rate / FILTER_CUTOFF) return -1;
+	return i_max;
+}
+
+int get_period(struct processing_buffers *b, double *period, double *sigma)
+{
+	double estimate = peak_detector(b, b->sample_rate / 6, b->sample_rate / 2);
+	if(estimate == -1) return -1;
+	double delta = b->sample_rate * 0.01;
 	double new_estimate = estimate;
 	double sum = 0;
 	double sq_sum = 0;
@@ -161,13 +175,8 @@ int get_period(struct processing_buffers *b, double *period, double *sigma)
 		int sup = ceil(new_estimate * cycle + delta);
 		if(sup > b->sample_count * 2 / 3)
 			break;
-		float max = 0;
-		for(i = inf; i <= sup; i++)
-			if(b->samples[i] > max) {
-				max = b->samples[i];
-				new_estimate = i;
-			}
-		if(max == 0) return -1;
+		new_estimate = peak_detector(b,inf,sup);
+		if(new_estimate == -1) return -1;
 		new_estimate /= cycle;
 		fprintf(stderr,"cycle = %d new_estimate = %f\n",cycle,new_estimate/44100);
 		if(new_estimate < estimate - delta || new_estimate > estimate + delta) return -1;
@@ -178,10 +187,40 @@ int get_period(struct processing_buffers *b, double *period, double *sigma)
 		}
 		cycle++;
 	}
+	if(count < 2) return -1;
 	estimate = sum / count;
 	*period = estimate / b->sample_rate;
 	*sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1)) / b->sample_rate;
 	return 0;
+}
+
+void save_debug(struct processing_buffers *p)
+{
+	SF_INFO out_info;
+	SNDFILE *out_sfile;
+
+	out_info.samplerate = p->sample_rate;
+	out_info.channels = 1;
+	out_info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+
+	out_sfile = sf_open("out.wav",SFM_WRITE,&out_info);
+	if(!out_sfile) {
+		fprintf(stderr,"Can not open out.wav\n");
+		return;
+	}
+
+	float max_sample = 0;
+	int i;
+	for(i = 100; i < p->sample_count; i++) {
+		float x = p->samples[i] >= 0 ? p->samples[i] : - p->samples[i];
+		max_sample = max_sample > x ? max_sample : x;
+	}
+	for(i = 0; i < p->sample_count; i++)
+		p->samples[i] /= max_sample;
+
+	fprintf(stderr,"Written %d samples to out.wav\n",sf_write_float(out_sfile, p->samples, p->sample_count));
+
+	sf_close(out_sfile);
 }
 
 int process_file(char *filename)
@@ -226,32 +265,8 @@ int process_file(char *filename)
 	if(err) printf("---\n");
 	else printf("%f +- %f\n",period,sigma);
 
-/*
-	SF_INFO out_info;
-	SNDFILE *out_sfile;
+//	save_debug(&b);
 
-	out_info.samplerate = sample_rate;
-	out_info.channels = 1;
-	out_info.format = SF_FORMAT_WAV | SF_FORMAT_DOUBLE;
-
-	out_sfile = sf_open("out.wav",SFM_WRITE,&out_info);
-	if(!out_sfile) {
-		fprintf(stderr,"Can not open out.wav\n");
-		return 1;
-	}
-
-	float max_sample = 0;
-	for(i = 100; i < sample_count; i++) {
-		float x = samples[i] >= 0 ? samples[i] : -samples[i];
-		max_sample = max_sample > x ? max_sample : x;
-	}
-	for(i = 0; i < sample_count; i++)
-		samples[i] /= max_sample;
-
-	fprintf(stderr,"Written %d samples to out.wav\n",sf_write_float(out_sfile, samples, sample_count));
-
-	sf_close(out_sfile);
-*/
 	return 0;
 }
 
@@ -263,7 +278,7 @@ void analyze_pa_data(struct processing_buffers *p)
 		int j,k;
 		memset(p[i].samples,0,2 * p[i].sample_count * sizeof(float));
 		k = wp;
-		for(j=0; j < PA_SAMPLE_RATE * (1<<i); j++) {
+		for(j=0; j < p[i].sample_count; j++) {
 			if(--k < 0) k = PA_BUFF_SIZE-1;
 			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
 		}
@@ -272,22 +287,12 @@ void analyze_pa_data(struct processing_buffers *p)
 	for(i=0; i<NSTEPS; i++) {
 		compute_self_correlation(&p[i]);
 
-		double pr = 0;
-		double sg = 0;
-		int err = get_period(&p[i],&pr,&sg);
-
-		if(err) break;
-		else {
-			fprintf(stderr,"step %d : %f +- %f\n",i,pr,sg);
-			if(i && fabs(period - pr) > 3 * (sigma + sg)) {
-				i = 0;
-				break;
-			}
-			period = pr;
-			sigma = sg;
-		}
+		if( get_period(&p[i],&period,&sigma) ) break;
+			
+		fprintf(stderr,"step %d : %f +- %f\n",i,period,sigma);
+//		save_debug(&p[i]);
 	}
-	if(i)
+	if(i && sigma < period / 10000)
 		printf("%f +- %f\n",period,sigma);
 	else
 		printf("---\n");
@@ -299,12 +304,12 @@ int run_interactively()
 	int i;
 	for(i=0; i<NSTEPS; i++) {
 		p[i].sample_rate = PA_SAMPLE_RATE;
-		p[i].sample_count = PA_SAMPLE_RATE * (1<<i);
+		p[i].sample_count = PA_SAMPLE_RATE * (1<<(i+FIRST_STEP));
 		setup_buffers(&p[i]);
 	}
 	if(start_portaudio()) return 1;
 	for(;;) {
-		sleep(1);
+		//sleep(1);
 		analyze_pa_data(p);
 	}
 	return 0;
