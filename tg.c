@@ -7,19 +7,47 @@
 #include <fftw3.h>
 #include <stdint.h>
 #include <portaudio.h>
+#include <stdarg.h>
+#include <gtk/gtk.h>
 
 #define FILTER_CUTOFF 3000
 #define HIGHPASS 10
 
-#define NSTEPS 3
-#define FIRST_STEP 2
+#define NSTEPS 5
+#define FIRST_STEP 0
+#define MIN_STEP 2
 #define PA_SAMPLE_RATE 44100
 #define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
-#define PA_SENTINEL 37
+#define FPS 2
+#define AMPLITUDE_WIDTH .07
+
+#define OUTPUT_FONT 50
+#define OUTPUT_WINDOW_HEIGHT 80
+
+#define MIN_BPH 12000
+#define MAX_BPH 36000
+
+int preset_bph[] = { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 0 };
 
 volatile float pa_buffers[2][PA_BUFF_SIZE];
 volatile int write_pointer = 0;
+
+void debug(char *format,...)
+{
+	va_list args;
+	va_start(args,format);
+	vfprintf(stderr,format,args);
+	va_end(args);
+}
+
+void error(char *format,...)
+{
+	va_list args;
+	va_start(args,format);
+	vfprintf(stderr,format,args);
+	va_end(args);
+}
 
 int paudio_callback(const void *input_buffer,
 			void *output_buffer,
@@ -57,7 +85,7 @@ int start_portaudio()
 	return 0;
 
 error:
-	fprintf(stderr,"Error opening audio input: %s\n", Pa_GetErrorText(err));
+	error("Error opening audio input: %s\n", Pa_GetErrorText(err));
 	return 1;
 }
 
@@ -67,7 +95,31 @@ struct processing_buffers {
 	float *samples;
 	fftwf_complex *fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d;
+	double period,sigma;
+	int accept;
 };
+
+struct processing_buffers *pb_clone(struct processing_buffers *p)
+{
+	struct processing_buffers *new = malloc(sizeof(struct processing_buffers));
+	new->sample_rate = p->sample_rate;
+	new->sample_count = p->sample_count;
+	new->samples = malloc(new->sample_count * sizeof(float));
+	memcpy(new->samples, p->samples, new->sample_count * sizeof(float));
+	new->fft = NULL;
+	new->plan_a = new->plan_b = new->plan_c = new->plan_d = NULL;
+	new->period = p->period;
+	new->sigma = p->sigma;
+	new->accept = p->accept;
+	return new;
+}
+
+void pb_destroy(struct processing_buffers *p)
+{
+	// Future BUG: we free only samples
+	free(p->samples);
+	free(p);
+}
 
 void setup_buffers(struct processing_buffers *b)
 {
@@ -92,7 +144,7 @@ void compute_self_correlation(struct processing_buffers *b)
 	fftwf_execute(b->plan_b);
 
 	for(i=0; i < b->sample_count; i++)
-		b->samples[i] = b->samples[i] * b->samples[i];
+		b->samples[i] = fabs(b->samples[i]);
 
 	float min = 1e20;
 	for(i=0; i + b->sample_rate <= b->sample_count; i += b->sample_rate) {
@@ -160,9 +212,33 @@ int peak_detector(struct processing_buffers *p, int a, int b)
 	return i_max;
 }
 
-int get_period(struct processing_buffers *b, double *period, double *sigma)
+double estimate_period(struct processing_buffers *p)
 {
-	double estimate = peak_detector(b, b->sample_rate / 6, b->sample_rate / 2);
+	int estimate = peak_detector(p, p->sample_rate / 12, p->sample_rate / 2);
+	if(estimate == -1) return -1;
+	int a = estimate/2 - p->sample_rate / 100;
+	int b = estimate/2 + p->sample_rate / 100;
+	double max = p->samples[a];
+	int i;
+	for(i=a+1; i<=b; i++)
+		if(p->samples[i] > max)
+			max = p->samples[i];
+	if(max < 0.2 * p->samples[estimate]) {
+		if(estimate * 2 < p->sample_rate / 2) {
+			debug("double triggered\n");
+			return peak_detector(p, estimate*2 - p->sample_rate / 100, estimate*2 + p->sample_rate / 100);
+		} else
+			return -1;
+	} else return estimate;
+}
+
+int compute_period(struct processing_buffers *b, int bph)
+{
+	double estimate;
+	if(bph)
+		estimate = peak_detector(b, 7200 * b->sample_rate / bph - b->sample_rate / 100, 7200 * b->sample_rate / bph + b->sample_rate / 100);
+	else
+		estimate = estimate_period(b);
 	if(estimate == -1) return -1;
 	double delta = b->sample_rate * 0.01;
 	double new_estimate = estimate;
@@ -176,10 +252,16 @@ int get_period(struct processing_buffers *b, double *period, double *sigma)
 		if(sup > b->sample_count * 2 / 3)
 			break;
 		new_estimate = peak_detector(b,inf,sup);
-		if(new_estimate == -1) return -1;
+		if(new_estimate == -1) {
+			debug("cycle = %d peak not found\n",cycle);
+			return -1;
+		}
 		new_estimate /= cycle;
-		fprintf(stderr,"cycle = %d new_estimate = %f\n",cycle,new_estimate/44100);
-		if(new_estimate < estimate - delta || new_estimate > estimate + delta) return -1;
+		if(new_estimate < estimate - delta || new_estimate > estimate + delta) {
+			debug("cycle = %d new_estimate = %f invalid peak\n",cycle,new_estimate/b->sample_rate);
+			return -1;
+		} else
+			debug("cycle = %d new_estimate = %f\n",cycle,new_estimate/b->sample_rate);
 		if(inf > b->sample_count / 3) {
 			sum += new_estimate;
 			sq_sum += new_estimate * new_estimate;
@@ -187,10 +269,12 @@ int get_period(struct processing_buffers *b, double *period, double *sigma)
 		}
 		cycle++;
 	}
-	if(count < 2) return -1;
-	estimate = sum / count;
-	*period = estimate / b->sample_rate;
-	*sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1)) / b->sample_rate;
+	if(count > 0) estimate = sum / count;
+	b->period = estimate / b->sample_rate;
+	if(count > 1)
+		b->sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1)) / b->sample_rate;
+	else
+		b->sigma = b->period;
 	return 0;
 }
 
@@ -205,7 +289,7 @@ void save_debug(struct processing_buffers *p)
 
 	out_sfile = sf_open("out.wav",SFM_WRITE,&out_info);
 	if(!out_sfile) {
-		fprintf(stderr,"Can not open out.wav\n");
+		error("Can not open out.wav\n");
 		return;
 	}
 
@@ -218,12 +302,12 @@ void save_debug(struct processing_buffers *p)
 	for(i = 0; i < p->sample_count; i++)
 		p->samples[i] /= max_sample;
 
-	fprintf(stderr,"Written %d samples to out.wav\n",sf_write_float(out_sfile, p->samples, p->sample_count));
+	debug("Written %d samples to out.wav\n",sf_write_float(out_sfile, p->samples, p->sample_count));
 
 	sf_close(out_sfile);
 }
 
-int process_file(char *filename)
+int process_file(char *filename, struct processing_buffers *p)
 {
 	SF_INFO sfinfo;
 	SNDFILE *sfile;
@@ -232,45 +316,37 @@ int process_file(char *filename)
 
 	sfile = sf_open(filename,SFM_READ,&sfinfo);
 	if(!sfile) {
-		fprintf(stderr,"Error opening file %s : %s\n",filename,sf_strerror(NULL));
+		error("Error opening file %s : %s\n",filename,sf_strerror(NULL));
 		return 1;
 	}
 
 	if(sfinfo.channels != 1) {
-		fprintf(stderr,"Channel count = %d != 1\n",sfinfo.channels);
+		error("Channel count = %d != 1\n",sfinfo.channels);
 		return 1;
 	}
 
-	struct processing_buffers b;
-	
-	b.sample_rate = sfinfo.samplerate;
-	b.sample_count = sfinfo.frames;
+	p->sample_rate = sfinfo.samplerate;
+	p->sample_count = sfinfo.frames;
 
-	setup_buffers(&b);
+	setup_buffers(p);
 
-	memset(b.samples,0,2 * b.sample_count * sizeof(float));
+	memset(p->samples,0,2 * p->sample_count * sizeof(float));
 
-	if(sfinfo.frames != sf_read_float(sfile,b.samples,b.sample_count)) {
-		fprintf(stderr,"Error in reading file %s\n",filename);
+	if(sfinfo.frames != sf_read_float(sfile,p->samples,p->sample_count)) {
+		error("Error reading file %s\n",filename);
 		return 1;
 	}
 
 	sf_close(sfile);
 
-	compute_self_correlation(&b);
-
-	double period = 0;
-	double sigma = 0;
-	int err = get_period(&b,&period,&sigma);
-	if(err) printf("---\n");
-	else printf("%f +- %f\n",period,sigma);
+	compute_self_correlation(p);
 
 //	save_debug(&b);
 
 	return 0;
 }
 
-void analyze_pa_data(struct processing_buffers *p)
+void analyze_pa_data(struct processing_buffers *p, int bph)
 {
 	int wp = write_pointer;
 	int i;
@@ -283,19 +359,446 @@ void analyze_pa_data(struct processing_buffers *p)
 			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
 		}
 	}
-	double period, sigma;
 	for(i=0; i<NSTEPS; i++) {
 		compute_self_correlation(&p[i]);
 
-		if( get_period(&p[i],&period,&sigma) ) break;
+		p[i].period = -1;
+		if( compute_period(&p[i],bph) ) break;
 			
-		fprintf(stderr,"step %d : %f +- %f\n",i,period,sigma);
+		debug("step %d : %f +- %f\n",i,p[i].period,p[i].sigma);
 //		save_debug(&p[i]);
 	}
-	if(i && sigma < period / 10000)
-		printf("%f +- %f\n",period,sigma);
+	if(i) {
+		double q;
+		if(i > MIN_STEP) q = 2 * MIN_STEP;
+		else q = 2 * i;
+		q += p[i-1].sigma < p[i-1].period / 10000;
+		p[i-1].accept = i > MIN_STEP && p[i-1].sigma < p[i-1].period / 10000;
+		if(p[i-1].accept)
+			debug("%f +- %f\n",p[i-1].period,p[i-1].sigma);
+		else
+			debug("---\n");
+	} else
+		debug("---\n");
+}
+
+struct main_window {
+	GtkWidget *window;
+	GtkWidget *bph_combo_box;
+	GtkWidget *output_drawing_area;
+	GtkWidget *amp_drawing_area;
+	GtkWidget *be_drawing_area;
+
+	void (*destroy)(GtkWidget *widget, gpointer data);
+	struct processing_buffers *(*get_data)(struct main_window *w, int *old);
+	void (*recompute)(struct main_window *w);
+
+	int bph;
+
+	void *data;
+};
+
+cairo_pattern_t *black,*white,*red,*green,*gray,*blue,*yellow,*magenta;
+
+void define_color(cairo_pattern_t **gc,double r,double g,double b)
+{
+	*gc = cairo_pattern_create_rgb(r,g,b);
+}
+
+void initialize_palette()
+{
+	define_color(&black,0,0,0);
+	define_color(&white,1,1,1);
+	define_color(&red,1,0,0);
+	define_color(&green,0,0.8,0);
+	define_color(&gray,0.3,0.3,0.3);
+	define_color(&blue,0,0,1);
+	define_color(&yellow,1,1,0);
+	define_color(&magenta,1,0,1);
+}
+
+gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
+{
+	return FALSE;
+}
+
+void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
+{
+	int width = da->allocation.width;
+	int height = da->allocation.height;
+
+	int i;
+	float max = 0;
+
+	int ai = round(a);
+	int bi = 1+round(b);
+	if(ai < 0) ai = 0;
+	if(bi > p->sample_count) bi = p->sample_count;
+	for(i=ai; i<bi; i++)
+		if(p->samples[i] > max) max = p->samples[i];
+
+	int first = 1;
+	for(i=0; i<width; i++) {
+		if( round(a + i*(b-a)/width) != round(a + (i+1)*(b-a)/width) ) {
+			int j = round(a + i*(b-a)/width);
+			if(j < 0) j = 0;
+			if(j >= p->sample_count) j = p->sample_count-1;
+
+			int k = round((p->samples[j]+max/10)*(height-1)/(max*1.1));
+			if(k < 0) k = 0;
+			if(k >= height) k = height-1;
+
+			if(first) {
+				cairo_move_to(c,i+.5,height-k-.5);
+				first = 0;
+			} else
+				cairo_line_to(c,i+.5,height-k-.5);
+		}
+	}
+}
+
+double amplitude_to_time(double lift_angle, double amp)
+{
+	return asin(lift_angle / (2 * amp)) / M_PI;
+}
+
+int guess_bph(double period)
+{
+	double bph = 7200 / period;
+	double min = bph;
+	int i,ret;
+
+	ret = 0;
+	for(i=0; preset_bph[i]; i++) {
+		double diff = fabs(bph - preset_bph[i]);
+		if(diff < min) {
+			min = diff;
+			ret = i;
+		}
+	}
+
+	return preset_bph[ret];
+}
+
+gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	cairo_t *c;
+
+	c = gdk_cairo_create(widget->window);
+	cairo_set_font_size(c,OUTPUT_FONT);
+
+	cairo_set_source(c,black);
+	cairo_paint(c);
+
+	int old;
+	struct processing_buffers *p = w->get_data(w,&old);
+
+	char rates[100];
+	char bphs[100];
+
+	if(p) {
+		int bph = w->bph ? w->bph : guess_bph(p->period);
+		double rate = (7200/(bph*p->period) - 1)*24*3600;
+		rate = round(rate);
+		if(rate == 0) rate = 0;
+		sprintf(rates,"%s%.0f s/d   ",rate > 0 ? "+" : "",rate);
+		sprintf(bphs,"bph = %d",bph);
+	} else {
+		strcpy(rates,"---   ");
+		if(w->bph)
+			sprintf(bphs,"bph = %d",w->bph);
+		else
+			strcpy(bphs,"bph = ---");
+	}
+
+	if(p && old)
+		cairo_set_source(c,yellow);
 	else
-		printf("---\n");
+		cairo_set_source(c,white);
+
+	cairo_text_extents_t extents;
+
+	cairo_text_extents(c,"0",&extents);
+	double x = (double)OUTPUT_FONT/2;
+	double y = (double)OUTPUT_WINDOW_HEIGHT/2 - extents.y_bearing - extents.height/2;
+
+	cairo_move_to(c,x,y);
+	cairo_show_text(c,rates);
+	cairo_text_extents(c,rates,&extents);
+	x += extents.x_advance;
+
+	cairo_set_source(c,white);
+	cairo_move_to(c,x,y);
+	cairo_show_text(c,bphs);
+	cairo_text_extents(c,bphs,&extents);
+	x += extents.x_advance;
+
+	cairo_destroy(c);
+
+	return FALSE;
+}
+
+gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	cairo_t *c;
+
+	int width = w->amp_drawing_area->allocation.width;
+	int height = w->amp_drawing_area->allocation.height;
+	int font = width / 90;
+	if(font < 12)
+		font = 12;
+	int i;
+
+	c = gdk_cairo_create(widget->window);
+	cairo_set_line_width(c,1);
+	cairo_set_font_size(c,font);
+
+	cairo_set_source(c,black);
+	cairo_paint(c);
+
+	for(i = 40; i < 360; i+=10) {
+		double t = amplitude_to_time(52,i);
+		if(t > AMPLITUDE_WIDTH) continue;
+		int x1 = round(width * (.5-.5*t/AMPLITUDE_WIDTH));
+		int x2 = round(width * (.5+.5*t/AMPLITUDE_WIDTH));
+		cairo_move_to(c, x1+.5, .5);
+		cairo_line_to(c, x1+.5, height-.5);
+		cairo_move_to(c, x2+.5, .5);
+		cairo_line_to(c, x2+.5, height-.5);
+		if(i % 50)
+			cairo_set_source(c,green);
+		else
+			cairo_set_source(c,red);
+		cairo_stroke(c);
+	}
+	cairo_set_source(c,white);
+	for(i = 40; i < 360; i+=10) {
+		double t = amplitude_to_time(52,i);
+		if(t > AMPLITUDE_WIDTH) continue;
+		int x1 = round(width * (.5-.5*t/AMPLITUDE_WIDTH));
+		int x2 = round(width * (.5+.5*t/AMPLITUDE_WIDTH));
+		if(!(i % 50)) {
+			char s[10];
+			sprintf(s,"%d",abs(i));
+			cairo_move_to(c,x1+font/4,height-font/2);
+			cairo_show_text(c,s);
+			cairo_move_to(c,x2+font/4,height-font/2);
+			cairo_show_text(c,s);
+		}
+	}
+
+	int old;
+	struct processing_buffers *p = w->get_data(w,&old);
+
+	if(p) {
+		double span = p->period * AMPLITUDE_WIDTH;
+
+		double a = (p->period - span) * p->sample_rate;
+		double b = (p->period + span) * p->sample_rate;
+
+		draw_graph(a,b,c,p,w->amp_drawing_area);
+
+		cairo_set_source(c,old?yellow:white);
+		cairo_stroke(c);
+	}
+
+	cairo_set_source(c,white);
+	cairo_move_to(c,font/2,3*font/2);
+	cairo_show_text(c,"Amplitude (deg)");
+
+	cairo_destroy(c);
+
+	return FALSE;
+}
+
+gboolean be_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	cairo_t *c;
+
+	int width = w->be_drawing_area->allocation.width;
+	int height = w->be_drawing_area->allocation.height;
+	int font = width / 90;
+	if(font < 12)
+		font = 12;
+	int i;
+
+	c = gdk_cairo_create(widget->window);
+	cairo_set_line_width(c,1);
+	cairo_set_font_size(c,font);
+
+	cairo_set_source(c,black);
+	cairo_paint(c);
+
+	for(i = -19; i < 20; i++) {
+		int x = (20 + i) * width / 40;
+		cairo_move_to(c, x+.5, .5);
+		cairo_line_to(c, x+.5, height-.5);
+		if(i%5)
+			cairo_set_source(c,green);
+		else
+			cairo_set_source(c,red);
+		cairo_stroke(c);
+	}
+	cairo_set_source(c,white);
+	for(i = -19; i < 20; i++) {
+		int x = (20 + i) * width / 40;
+		if(!(i%5)) {
+			char s[10];
+			sprintf(s,"%d",abs(i));
+			cairo_move_to(c,x+font/4,height-font/2);
+			cairo_show_text(c,s);
+		}
+	}
+
+	int old;
+	struct processing_buffers *p = w->get_data(w,&old);
+
+	if(p) {
+		double span = 0.01;
+
+		double a = (p->period - span) * p->sample_rate;
+		double b = (p->period + span) * p->sample_rate;
+
+		draw_graph(a,b,c,p,w->be_drawing_area);
+
+		cairo_set_source(c,blue);
+		cairo_stroke(c);
+
+		a = (p->period/2 - span) * p->sample_rate;
+		b = (p->period/2 + span) * p->sample_rate;
+
+		draw_graph(a,b,c,p,w->be_drawing_area);
+
+		cairo_set_source(c,old?yellow:white);
+		cairo_stroke(c);
+	}
+
+	cairo_set_source(c,white);
+	cairo_move_to(c,font/2,3*font/2);
+	cairo_show_text(c,"Beat error (ms)");
+
+	cairo_destroy(c);
+
+	return FALSE;
+}
+
+void redraw(struct main_window *w)
+{
+	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,w->output_drawing_area->allocation.width,w->output_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->amp_drawing_area,0,0,w->amp_drawing_area->allocation.width,w->amp_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->be_drawing_area,0,0,w->be_drawing_area->allocation.width,w->be_drawing_area->allocation.height);
+}
+
+void handle_bph_change(GtkComboBox *b, struct main_window *w)
+{
+	char *s = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(b));
+	if(s) {
+		int n;
+		char *t;
+		n = strtol(s,&t,10);
+		if(*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
+		else w->bph = n;
+		g_free(s);
+		w->recompute(w);
+		redraw(w);
+	}
+}
+
+void init_main_window(struct main_window *w)
+{
+	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	gtk_container_set_border_width(GTK_CONTAINER(w->window),10);
+	g_signal_connect(G_OBJECT(w->window),"delete_event",G_CALLBACK(delete_event),NULL);
+	g_signal_connect(G_OBJECT(w->window),"destroy",G_CALLBACK(w->destroy),w);
+
+	GtkWidget *vbox = gtk_vbox_new(FALSE,10);
+	gtk_container_add(GTK_CONTAINER(w->window),vbox);
+	gtk_widget_show(vbox);
+
+	GtkWidget *hbox = gtk_hbox_new(FALSE,10);
+	gtk_box_pack_start(GTK_BOX(vbox),hbox,FALSE,TRUE,0);
+	gtk_widget_show(hbox);
+
+	w->bph_combo_box = gtk_combo_box_text_new_with_entry();
+	gtk_box_pack_start(GTK_BOX(hbox),w->bph_combo_box,FALSE,TRUE,0);
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box),"guess");
+	int *bph;
+	for(bph = preset_bph; *bph; bph++) {
+		char s[100];
+		sprintf(s,"%d",*bph);
+		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box),s);
+	}
+	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box),0);
+	gtk_signal_connect(GTK_OBJECT(w->bph_combo_box),"changed",(GtkSignalFunc)handle_bph_change,w);
+	gtk_widget_show(w->bph_combo_box);
+
+	w->output_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->output_drawing_area),500,OUTPUT_WINDOW_HEIGHT);
+	gtk_box_pack_start(GTK_BOX(vbox),w->output_drawing_area,FALSE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->output_drawing_area),"expose_event",
+			(GtkSignalFunc)output_expose_event, w);
+	gtk_widget_set_events(w->output_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->output_drawing_area);
+
+	w->amp_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->amp_drawing_area),500,200);
+	gtk_box_pack_start(GTK_BOX(vbox),w->amp_drawing_area,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->amp_drawing_area),"expose_event",
+			(GtkSignalFunc)amp_expose_event, w);
+	gtk_widget_set_events(w->amp_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->amp_drawing_area);
+
+	w->be_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->be_drawing_area),500,200);
+	gtk_box_pack_start(GTK_BOX(vbox),w->be_drawing_area,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->be_drawing_area),"expose_event",
+			(GtkSignalFunc)be_expose_event, w);
+	gtk_widget_set_events(w->be_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->be_drawing_area);
+
+	gtk_window_maximize(GTK_WINDOW(w->window));
+	gtk_widget_show(w->window);
+}
+
+void quit()
+{
+	gtk_main_quit();
+}
+
+struct interactive_w_data {
+	struct processing_buffers *bfs;
+	struct processing_buffers *old;
+};
+
+struct processing_buffers *int_get_data(struct main_window *w, int *old)
+{
+	struct interactive_w_data *d = w->data;
+	struct processing_buffers *p = d->bfs;
+	int i;
+	for(i=0; i<NSTEPS; i++)
+		if(p[i].period < 0) break;
+	if(i && p[i-1].accept) {
+		if(d->old) pb_destroy(d->old);
+		d->old = pb_clone(&p[i-1]);
+		*old = 0;
+		return &p[i-1];
+	} else {
+		*old = 1;
+		return d->old;
+	}
+}
+
+void int_recompute(struct main_window *w)
+{
+	struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
+	analyze_pa_data(p, w->bph);
+}
+
+guint refresh(struct main_window *w)
+{
+	w->recompute(w);
+	redraw(w);
+	return TRUE;
 }
 
 int run_interactively()
@@ -308,19 +811,74 @@ int run_interactively()
 		setup_buffers(&p[i]);
 	}
 	if(start_portaudio()) return 1;
-	for(;;) {
-		//sleep(1);
-		analyze_pa_data(p);
-	}
+
+	struct main_window w;
+	struct interactive_w_data d;
+	d.bfs = p;
+	d.old = NULL;
+	w.destroy = quit;
+	w.data = &d;
+	w.get_data = int_get_data;
+	w.recompute = int_recompute;
+	w.bph = 0;
+	init_main_window(&w);
+
+	g_timeout_add(1000/FPS,(GSourceFunc)refresh,&w);
+
+	gtk_main();
+
+	return 0;
+}
+
+struct processing_buffers *file_get_data(struct main_window *w, int *old)
+{
+	struct processing_buffers *p = w->data;
+
+	*old = 0;
+	return p->period ? p : NULL;
+}
+
+void file_recompute(struct main_window *w)
+{
+	struct processing_buffers *p = w->data;
+
+	int err = compute_period(p,w->bph);
+	if(err) {
+		debug("---\n");
+		p->period = 0;
+	} else debug("%f +- %f\n",p->period,p->sigma);
+}
+
+int run_on_file(char *filename)
+{
+	struct processing_buffers p;
+	if(process_file(filename,&p)) return 1;
+
+	struct main_window w;
+	w.destroy = quit;
+	w.data = &p;
+	w.get_data = file_get_data;
+	w.recompute = file_recompute;
+	w.bph = 0;
+
+	file_recompute(&w);
+
+	init_main_window(&w);
+
+	gtk_main();
+
 	return 0;
 }
 
 int main(int argc, char **argv)
 {
+	gtk_init(&argc, &argv);
+	initialize_palette();
+
 	if(argc == 1)
 		return run_interactively();
 	else if(argc == 2 && argv[1][0] != '-')
-		return process_file(argv[1]);
+		return run_on_file(argv[1]);
 	else {
 		fprintf(stderr,"USAGE: %s [filename]\n",argv[0]);
 		return 1;
