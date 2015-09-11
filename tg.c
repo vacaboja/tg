@@ -93,6 +93,8 @@ struct processing_buffers {
 	int sample_rate;
 	int sample_count;
 	float *samples;
+	float *filtered_samples;
+	float *waveform;
 	fftwf_complex *fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d;
 	double period,sigma;
@@ -106,6 +108,10 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->sample_count = p->sample_count;
 	new->samples = malloc(new->sample_count * sizeof(float));
 	memcpy(new->samples, p->samples, new->sample_count * sizeof(float));
+	new->filtered_samples = malloc(new->sample_count * sizeof(float));
+	memcpy(new->filtered_samples, p->filtered_samples, new->sample_count * sizeof(float));
+	new->waveform = malloc(new->sample_count * sizeof(float));
+	memcpy(new->waveform, p->waveform, new->sample_count * sizeof(float));
 	new->fft = NULL;
 	new->plan_a = new->plan_b = new->plan_c = new->plan_d = NULL;
 	new->period = p->period;
@@ -116,14 +122,18 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 
 void pb_destroy(struct processing_buffers *p)
 {
-	// Future BUG: we free only samples
+	// Future BUG: we free only samples, f_samp, and waveform
 	free(p->samples);
+	free(p->filtered_samples);
+	free(p->waveform);
 	free(p);
 }
 
 void setup_buffers(struct processing_buffers *b)
 {
 	b->samples = fftwf_malloc(2 * b->sample_count * sizeof(float));
+	b->filtered_samples = malloc(b->sample_count * sizeof(float));
+	b->waveform = malloc(b->sample_count * sizeof(float));
 	b->fft = malloc((b->sample_count + 1) * sizeof(fftwf_complex));
 	b->plan_a = fftwf_plan_dft_r2c_1d(b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
 	b->plan_b = fftwf_plan_dft_c2r_1d(b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
@@ -173,6 +183,9 @@ void compute_self_correlation(struct processing_buffers *b)
 		} else if(max_count > 0)
 			max_count--;
 	}
+
+	for(i=0; i < b->sample_count; i++)
+		b->filtered_samples[i] = b->samples[i];
 
 	double average = 0;
 	for(i=0; i < b->sample_count; i++)
@@ -275,6 +288,13 @@ int compute_period(struct processing_buffers *b, int bph)
 		b->sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1)) / b->sample_rate;
 	else
 		b->sigma = b->period;
+	int i;
+	for(i=0; i<b->sample_count; i++)
+		b->waveform[i] = 0;
+	for(i=0; i<b->sample_count; i++) {
+		int j = floor(fmod(i,estimate));
+		b->waveform[i] += b->filtered_samples[j];
+	}
 	return 0;
 }
 
@@ -388,6 +408,7 @@ struct main_window {
 	GtkWidget *output_drawing_area;
 	GtkWidget *amp_drawing_area;
 	GtkWidget *be_drawing_area;
+	GtkWidget *waveform_drawing_area;
 
 	void (*destroy)(GtkWidget *widget, gpointer data);
 	struct processing_buffers *(*get_data)(struct main_window *w, int *old);
@@ -682,11 +703,76 @@ gboolean be_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window 
 	return FALSE;
 }
 
+gboolean waveform_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	cairo_t *c;
+
+	int width = w->be_drawing_area->allocation.width;
+	int height = w->be_drawing_area->allocation.height;
+	int font = width / 90;
+	if(font < 12)
+		font = 12;
+
+	c = gdk_cairo_create(widget->window);
+	cairo_set_line_width(c,1);
+	cairo_set_font_size(c,font);
+
+	cairo_set_source(c,black);
+	cairo_paint(c);
+
+	int old;
+	struct processing_buffers *p = w->get_data(w,&old);
+
+	if(p) {
+		int i;
+		float max = 0;
+		int max_i = 0;
+	
+		for(i=0; i<p->period*p->sample_rate; i++)
+			if(p->waveform[i] > max) {
+				max = p->waveform[i];
+				max_i = i;
+			}
+
+		int first = 1;
+		for(i=0; i<width; i++) {
+			if( round(i*p->period*p->sample_rate/width) != round((i+1)*p->period*p->sample_rate/width) ) {
+				int j = round(i*p->period*p->sample_rate/width);
+				j = fmod(j + max_i, p->period*p->sample_rate);
+				if(j < 0) j = 0;
+				if(j >= p->sample_count) j = p->sample_count-1;
+	
+				int k = round((p->waveform[j]+max/10)*(height-1)/(max*1.1));
+				if(k < 0) k = 0;
+				if(k >= height) k = height-1;
+	
+				if(first) {
+					cairo_move_to(c,i+.5,height-k-.5);
+					first = 0;
+				} else
+					cairo_line_to(c,i+.5,height-k-.5);
+			}
+		}
+		cairo_set_source(c,old?yellow:white);
+		cairo_stroke(c);
+	}
+
+
+	cairo_set_source(c,white);
+	cairo_move_to(c,font/2,3*font/2);
+	cairo_show_text(c,"Waveform");
+
+	cairo_destroy(c);
+
+	return FALSE;
+}
+
 void redraw(struct main_window *w)
 {
 	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,w->output_drawing_area->allocation.width,w->output_drawing_area->allocation.height);
 	gtk_widget_queue_draw_area(w->amp_drawing_area,0,0,w->amp_drawing_area->allocation.width,w->amp_drawing_area->allocation.height);
 	gtk_widget_queue_draw_area(w->be_drawing_area,0,0,w->be_drawing_area->allocation.width,w->be_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->waveform_drawing_area,0,0,w->waveform_drawing_area->allocation.width,w->waveform_drawing_area->allocation.height);
 }
 
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
@@ -755,6 +841,14 @@ void init_main_window(struct main_window *w)
 			(GtkSignalFunc)be_expose_event, w);
 	gtk_widget_set_events(w->be_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->be_drawing_area);
+
+	w->waveform_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->waveform_drawing_area),500,200);
+	gtk_box_pack_start(GTK_BOX(vbox),w->waveform_drawing_area,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->waveform_drawing_area),"expose_event",
+			(GtkSignalFunc)waveform_expose_event, w);
+	gtk_widget_set_events(w->waveform_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->waveform_drawing_area);
 
 	gtk_window_maximize(GTK_WINDOW(w->window));
 	gtk_widget_show(w->window);
