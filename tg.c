@@ -15,7 +15,7 @@
 
 #define NSTEPS 5
 #define FIRST_STEP 0
-#define MIN_STEP 2
+#define MIN_STEP 1
 #define PA_SAMPLE_RATE 44100
 #define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
@@ -27,6 +27,9 @@
 
 #define MIN_BPH 12000
 #define MAX_BPH 36000
+#define MIN_LA 20
+#define MAX_LA 90
+#define DEFAULT_LA 52
 
 int preset_bph[] = { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 0 };
 
@@ -346,6 +349,11 @@ int process_file(char *filename, struct processing_buffers *p)
 	return 0;
 }
 
+int acceptable(struct processing_buffers *p)
+{
+	return p->sigma < p->period / 10000;
+}
+
 void analyze_pa_data(struct processing_buffers *p, int bph)
 {
 	int wp = write_pointer;
@@ -369,11 +377,7 @@ void analyze_pa_data(struct processing_buffers *p, int bph)
 //		save_debug(&p[i]);
 	}
 	if(i) {
-		double q;
-		if(i > MIN_STEP) q = 2 * MIN_STEP;
-		else q = 2 * i;
-		q += p[i-1].sigma < p[i-1].period / 10000;
-		p[i-1].accept = i > MIN_STEP && p[i-1].sigma < p[i-1].period / 10000;
+		p[i-1].accept = i > MIN_STEP && acceptable(&p[i-1]);
 		if(p[i-1].accept)
 			debug("%f +- %f\n",p[i-1].period,p[i-1].sigma);
 		else
@@ -385,6 +389,7 @@ void analyze_pa_data(struct processing_buffers *p, int bph)
 struct main_window {
 	GtkWidget *window;
 	GtkWidget *bph_combo_box;
+	GtkWidget *la_spin_button;
 	GtkWidget *output_drawing_area;
 	GtkWidget *amp_drawing_area;
 	GtkWidget *be_drawing_area;
@@ -394,6 +399,7 @@ struct main_window {
 	void (*recompute)(struct main_window *w);
 
 	int bph;
+	double la;
 
 	void *data;
 };
@@ -548,6 +554,7 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 	if(font < 12)
 		font = 12;
 	int i;
+	double span = amplitude_to_time(w->la,120);
 
 	c = gdk_cairo_create(widget->window);
 	cairo_set_line_width(c,1);
@@ -557,10 +564,10 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 	cairo_paint(c);
 
 	for(i = 40; i < 360; i+=10) {
-		double t = amplitude_to_time(52,i);
-		if(t > AMPLITUDE_WIDTH) continue;
-		int x1 = round(width * (.5-.5*t/AMPLITUDE_WIDTH));
-		int x2 = round(width * (.5+.5*t/AMPLITUDE_WIDTH));
+		double t = amplitude_to_time(w->la,i);
+		if(t > span) continue;
+		int x1 = round(width * (.5-.5*t/span));
+		int x2 = round(width * (.5+.5*t/span));
 		cairo_move_to(c, x1+.5, .5);
 		cairo_line_to(c, x1+.5, height-.5);
 		cairo_move_to(c, x2+.5, .5);
@@ -573,10 +580,10 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 	}
 	cairo_set_source(c,white);
 	for(i = 40; i < 360; i+=10) {
-		double t = amplitude_to_time(52,i);
-		if(t > AMPLITUDE_WIDTH) continue;
-		int x1 = round(width * (.5-.5*t/AMPLITUDE_WIDTH));
-		int x2 = round(width * (.5+.5*t/AMPLITUDE_WIDTH));
+		double t = amplitude_to_time(w->la,i);
+		if(t > span) continue;
+		int x1 = round(width * (.5-.5*t/span));
+		int x2 = round(width * (.5+.5*t/span));
 		if(!(i % 50)) {
 			char s[10];
 			sprintf(s,"%d",abs(i));
@@ -591,10 +598,10 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 	struct processing_buffers *p = w->get_data(w,&old);
 
 	if(p) {
-		double span = p->period * AMPLITUDE_WIDTH;
+		double span_time = p->period * span;
 
-		double a = (p->period - span) * p->sample_rate;
-		double b = (p->period + span) * p->sample_rate;
+		double a = (p->period - span_time) * p->sample_rate;
+		double b = (p->period + span_time) * p->sample_rate;
 
 		draw_graph(a,b,c,p,w->amp_drawing_area);
 
@@ -704,6 +711,14 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 	}
 }
 
+void handle_la_change(GtkSpinButton *b, struct main_window *w)
+{
+	double la = gtk_spin_button_get_value(b);
+	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
+	w->la = la;
+	redraw(w);
+}
+
 void init_main_window(struct main_window *w)
 {
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -719,6 +734,11 @@ void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(vbox),hbox,FALSE,TRUE,0);
 	gtk_widget_show(hbox);
 
+	GtkWidget *label = gtk_label_new("bph");
+	GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	gtk_widget_show(label);
+
 	w->bph_combo_box = gtk_combo_box_text_new_with_entry();
 	gtk_box_pack_start(GTK_BOX(hbox),w->bph_combo_box,FALSE,TRUE,0);
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box),"guess");
@@ -731,6 +751,17 @@ void init_main_window(struct main_window *w)
 	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box),0);
 	gtk_signal_connect(GTK_OBJECT(w->bph_combo_box),"changed",(GtkSignalFunc)handle_bph_change,w);
 	gtk_widget_show(w->bph_combo_box);
+
+	label = gtk_label_new("lift angle");
+	GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
+	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	gtk_widget_show(label);
+
+	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA,MAX_LA,1);
+	gtk_box_pack_start(GTK_BOX(hbox),w->la_spin_button,FALSE,TRUE,0);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button),DEFAULT_LA);
+	gtk_signal_connect(GTK_OBJECT(w->la_spin_button),"value_changed",(GtkSignalFunc)handle_la_change,w);
+	gtk_widget_show(w->la_spin_button);
 
 	w->output_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->output_drawing_area),500,OUTPUT_WINDOW_HEIGHT);
@@ -821,9 +852,11 @@ int run_interactively()
 	w.get_data = int_get_data;
 	w.recompute = int_recompute;
 	w.bph = 0;
+	w.la = DEFAULT_LA;
+
 	init_main_window(&w);
 
-	g_timeout_add(1000/FPS,(GSourceFunc)refresh,&w);
+	g_timeout_add(round(1000*(sqrt(5)-1)/2),(GSourceFunc)refresh,&w);
 
 	gtk_main();
 
@@ -835,7 +868,7 @@ struct processing_buffers *file_get_data(struct main_window *w, int *old)
 	struct processing_buffers *p = w->data;
 
 	*old = 0;
-	return p->period ? p : NULL;
+	return p->accept ? p : NULL;
 }
 
 void file_recompute(struct main_window *w)
@@ -845,8 +878,11 @@ void file_recompute(struct main_window *w)
 	int err = compute_period(p,w->bph);
 	if(err) {
 		debug("---\n");
-		p->period = 0;
-	} else debug("%f +- %f\n",p->period,p->sigma);
+		p->accept = 0;
+	} else {
+		debug("%f +- %f\n",p->period,p->sigma);
+		p->accept = acceptable(p);
+	}
 }
 
 int run_on_file(char *filename)
@@ -860,6 +896,7 @@ int run_on_file(char *filename)
 	w.get_data = file_get_data;
 	w.recompute = file_recompute;
 	w.bph = 0;
+	w.la = DEFAULT_LA;
 
 	file_recompute(&w);
 
