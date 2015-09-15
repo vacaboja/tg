@@ -155,7 +155,7 @@ void compute_self_correlation(struct processing_buffers *b)
 
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);
-
+/*
 	float min = 1e20;
 	for(i=0; i + b->sample_rate <= b->sample_count; i += b->sample_rate) {
 		int j;
@@ -183,9 +183,13 @@ void compute_self_correlation(struct processing_buffers *b)
 		} else if(max_count > 0)
 			max_count--;
 	}
-
-	for(i=0; i < b->sample_count; i++)
-		b->filtered_samples[i] = b->samples[i];
+*/
+	for(i=0; i < b->sample_count; i++) {
+		int j;
+		b->filtered_samples[i] = 0;
+		for(j=0; j<40; j++)
+			b->filtered_samples[i] += b->samples[i+j];
+	}
 
 	double average = 0;
 	for(i=0; i < b->sample_count; i++)
@@ -293,7 +297,7 @@ int compute_period(struct processing_buffers *b, int bph)
 		b->waveform[i] = 0;
 	for(i=0; i<b->sample_count; i++) {
 		int j = floor(fmod(i,estimate));
-		b->waveform[i] += b->filtered_samples[j];
+		b->waveform[j] += b->filtered_samples[i];
 	}
 	return 0;
 }
