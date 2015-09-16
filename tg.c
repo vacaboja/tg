@@ -11,7 +11,7 @@
 #include <gtk/gtk.h>
 
 #define FILTER_CUTOFF 3000
-#define HIGHPASS 10
+//#define HIGHPASS 10
 
 #define NSTEPS 5
 #define FIRST_STEP 0
@@ -200,9 +200,9 @@ void compute_self_correlation(struct processing_buffers *b)
 
 	fftwf_execute(b->plan_c);
 	for(i=0; i < b->sample_count+1; i++) {
-		if(  (uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count
-				&&
-		     (uint64_t)b->sample_rate * i > (uint64_t)HIGHPASS * b->sample_count  )
+		if(  (uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count )
+//				&&
+//		     (uint64_t)b->sample_rate * i > (uint64_t)HIGHPASS * b->sample_count  )
 			b->fft[i] = b->fft[i] * conj(b->fft[i]);
 		else
 			b->fft[i] = 0;
