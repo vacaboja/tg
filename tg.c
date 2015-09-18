@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <sndfile.h>
 #include <math.h>
 #include <complex.h>
 #include <fftw3.h>
@@ -11,7 +10,6 @@
 #include <gtk/gtk.h>
 
 #define FILTER_CUTOFF 3000
-//#define HIGHPASS 10
 
 #define NSTEPS 5
 #define FIRST_STEP 0
@@ -137,128 +135,64 @@ void run_filter(struct filter *f, float *buff, int size)
 struct processing_buffers {
 	int sample_rate;
 	int sample_count;
-	float *samples;
-	float *filtered_samples;
-	float *waveform;
+	float *samples, *samples_sc, *waveform, *waveform_sc;
 	fftwf_complex *fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d;
 	struct filter *hpf, *lpf;
 	double period,sigma,be;
 	int tic,toc;
-	int accept;
+	int ready;
 };
 
 void setup_buffers(struct processing_buffers *b)
 {
 	b->samples = fftwf_malloc(2 * b->sample_count * sizeof(float));
-	b->filtered_samples = malloc(b->sample_count * sizeof(float));
-	b->waveform = malloc(b->sample_count * sizeof(float));
+	b->samples_sc = malloc(2 * b->sample_count * sizeof(float));
+	b->waveform = malloc(2 * b->sample_rate * sizeof(float));
+	b->waveform_sc = malloc(2 * b->sample_rate * sizeof(float));
 	b->fft = malloc((b->sample_count + 1) * sizeof(fftwf_complex));
-	b->plan_a = fftwf_plan_dft_r2c_1d(b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
-	b->plan_b = fftwf_plan_dft_c2r_1d(b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
-	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
-	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
+	b->plan_a = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
+	b->plan_b = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->fft, b->samples_sc, FFTW_ESTIMATE);
+	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_rate, b->waveform, b->fft, FFTW_ESTIMATE);
+	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_rate, b->fft, b->waveform_sc, FFTW_ESTIMATE);
 	b->hpf = malloc(sizeof(struct filter));
 	make_hp(b->hpf,(double)FILTER_CUTOFF/b->sample_rate);
 	b->lpf = malloc(sizeof(struct filter));
 	make_lp(b->lpf,(double)FILTER_CUTOFF/b->sample_rate);
+	b->ready = 0;
 }
 
 struct processing_buffers *pb_clone(struct processing_buffers *p)
 {
 	struct processing_buffers *new = malloc(sizeof(struct processing_buffers));
 	new->sample_rate = p->sample_rate;
-	new->sample_count = p->sample_count;
-	new->samples = malloc(new->sample_count * sizeof(float));
-	memcpy(new->samples, p->samples, new->sample_count * sizeof(float));
-	new->filtered_samples = malloc(new->sample_count * sizeof(float));
-	memcpy(new->filtered_samples, p->filtered_samples, new->sample_count * sizeof(float));
-	new->waveform = malloc(new->sample_count * sizeof(float));
-	memcpy(new->waveform, p->waveform, new->sample_count * sizeof(float));
-	new->fft = NULL;
-	new->plan_a = new->plan_b = new->plan_c = new->plan_d = NULL;
+	new->waveform = malloc(new->sample_rate * sizeof(float));
+	memcpy(new->waveform, p->waveform, new->sample_rate * sizeof(float));
 	new->period = p->period;
 	new->sigma = p->sigma;
 	new->be = p->be;
 	new->tic = p->tic;
 	new->toc = p->toc;
-	new->accept = p->accept;
+	new->ready = p->ready;
 	return new;
 }
 
 void pb_destroy(struct processing_buffers *p)
 {
-	// Future BUG: we free only samples, f_samp, and waveform
-	free(p->samples);
-	free(p->filtered_samples);
+	// Future BUG: we free only waveform
 	free(p->waveform);
 	free(p);
 }
 
-/*
-int float_cmp(const void *a, const void *b)
-{
-	float x = *(float*)a;
-	float y = *(float*)b;
-	if(x < y) return -1;
-	if(x > y) return 1;
-	return 0;
-}
-*/
-
-void compute_self_correlation(struct processing_buffers *b)
+void prepare_data(struct processing_buffers *b)
 {
 	int i;
 	int first_fft_size = b->sample_count/2 + 1;
-/*	
-	fftwf_execute(b->plan_a);
-	for(i=0; i < b->sample_count/2 + 1; i++) {
-		if((uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count)
-			b->fft[i] = 0;
-	}
-	fftwf_execute(b->plan_b);
-*/	
+	
 	run_filter(b->hpf, b->samples, b->sample_count);
 
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);
-/*
-	float min = 1e20;
-	for(i=0; i + b->sample_rate <= b->sample_count; i += b->sample_rate) {
-		int j;
-		float max = 0;
-		for(j=0; j < b->sample_rate; j++)
-			if(b->samples[i+j] > max) max = b->samples[i+j];
-		if(max < min) min = max;
-	}
-
-	int max_count = 0;
-	int ms = b->sample_rate/1000;
-	for(i=0; i<10*ms; i++) {
-		if(b->samples[i] >= min) {
-			if(max_count < 110*ms)
-				max_count += 100;
-		} else if(max_count > 0)
-			max_count--;
-	}
-	for(i=0; i < b->sample_count; i++) {
-		if(b->samples[i] > min) b->samples[i] = min;
-		if(max_count >= 100*ms) b->samples[i] = 0;
-		if(b->samples[i+10*ms] >= min) {
-			if(max_count < 110*ms)
-				max_count += 100;
-		} else if(max_count > 0)
-			max_count--;
-	}
-*/
-/*
-	for(i=0; i < b->sample_count; i++)
-		b->filtered_samples[i] = b->samples[i];
-	qsort(b->filtered_samples,b->sample_count,sizeof(float),float_cmp);
-	float median = b->filtered_samples[b->sample_count / 2];
-	for(i=0; i < b->sample_count; i++)
-		b->samples[i] -= median;
-*/
 
 	run_filter(b->lpf, b->samples, b->sample_count);
 
@@ -269,55 +203,47 @@ void compute_self_correlation(struct processing_buffers *b)
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] -= average;
 
-	for(i=0; i < b->sample_count; i++)
-		b->filtered_samples[i] = b->samples[i];
-
-	fftwf_execute(b->plan_c);
-	for(i=0; i < b->sample_count+1; i++) {
-//		if(  (uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count )
-//				&&
-//		     (uint64_t)b->sample_rate * i > (uint64_t)HIGHPASS * b->sample_count  )
+	fftwf_execute(b->plan_a);
+	for(i=0; i < b->sample_count+1; i++)
 			b->fft[i] = b->fft[i] * conj(b->fft[i]);
-//		else
-//			b->fft[i] = 0;
-	}
-	fftwf_execute(b->plan_d);
+	fftwf_execute(b->plan_b);
 }
 
-int peak_detector(struct processing_buffers *p, int a, int b)
+int peak_detector(float *buff, int a, int b)
 {
 	int i;
-	double max = p->samples[a];
+	double max = buff[a];
 	int i_max = a;
 	for(i=a+1; i<=b; i++) {
-		if(p->samples[i] > max) {
-			max = p->samples[i];
+		if(buff[i] > max) {
+			max = buff[i];
 			i_max = i;
 		}
 	}
 	if(max <= 0) return -1;
 	int x,y;
-	for(x = i_max; x >= a && p->samples[x] > 0.7*max; x--);
-	for(y = i_max; y <= b && p->samples[y] > 0.7*max; y++);
-	if( x < a || y > b || y-x < p->sample_rate / FILTER_CUTOFF) return -1;
+	for(x = i_max; x >= a && buff[x] > 0.7*max; x--);
+	for(y = i_max; y <= b && buff[y] > 0.7*max; y++);
+	//if( x < a || y > b || y-x < p->sample_rate / FILTER_CUTOFF) return -1;
+	if( x < a || y > b ) return -1;
 	return i_max;
 }
 
 double estimate_period(struct processing_buffers *p)
 {
-	int estimate = peak_detector(p, p->sample_rate / 12, p->sample_rate / 2);
+	int estimate = peak_detector(p->samples_sc, p->sample_rate / 12, p->sample_rate / 2);
 	if(estimate == -1) return -1;
 	int a = estimate*3/2 - p->sample_rate / 100;
 	int b = estimate*3/2 + p->sample_rate / 100;
-	double max = p->samples[a];
+	double max = p->samples_sc[a];
 	int i;
 	for(i=a+1; i<=b; i++)
-		if(p->samples[i] > max)
-			max = p->samples[i];
-	if(max < 0.4 * p->samples[estimate]) {
+		if(p->samples_sc[i] > max)
+			max = p->samples_sc[i];
+	if(max < 0.4 * p->samples_sc[estimate]) {
 		if(estimate * 2 < p->sample_rate / 2) {
 			debug("double triggered\n");
-			return peak_detector(p, estimate*2 - p->sample_rate / 100, estimate*2 + p->sample_rate / 100);
+			return peak_detector(p->samples_sc, estimate*2 - p->sample_rate / 100, estimate*2 + p->sample_rate / 100);
 		} else
 			return -1;
 	} else return estimate;
@@ -327,10 +253,10 @@ int compute_period(struct processing_buffers *b, int bph)
 {
 	double estimate;
 	if(bph)
-		estimate = peak_detector(b, 7200 * b->sample_rate / bph - b->sample_rate / 100, 7200 * b->sample_rate / bph + b->sample_rate / 100);
+		estimate = peak_detector(b->samples_sc, 7200 * b->sample_rate / bph - b->sample_rate / 100, 7200 * b->sample_rate / bph + b->sample_rate / 100);
 	else
 		estimate = estimate_period(b);
-	if(estimate == -1) return -1;
+	if(estimate == -1) return 1;
 	double delta = b->sample_rate * 0.01;
 	double new_estimate = estimate;
 	double sum = 0;
@@ -342,15 +268,15 @@ int compute_period(struct processing_buffers *b, int bph)
 		int sup = ceil(new_estimate * cycle + delta);
 		if(sup > b->sample_count * 2 / 3)
 			break;
-		new_estimate = peak_detector(b,inf,sup);
+		new_estimate = peak_detector(b->samples_sc,inf,sup);
 		if(new_estimate == -1) {
 			debug("cycle = %d peak not found\n",cycle);
-			return -1;
+			return 1;
 		}
 		new_estimate /= cycle;
 		if(new_estimate < estimate - delta || new_estimate > estimate + delta) {
 			debug("cycle = %d new_estimate = %f invalid peak\n",cycle,new_estimate/b->sample_rate);
-			return -1;
+			return 1;
 		} else
 			debug("cycle = %d new_estimate = %f\n",cycle,new_estimate/b->sample_rate);
 		if(inf > b->sample_count / 3) {
@@ -361,6 +287,7 @@ int compute_period(struct processing_buffers *b, int bph)
 		cycle++;
 	}
 	if(count > 0) estimate = sum / count;
+	if(estimate >= b->sample_rate / 2) return 1;
 	b->period = estimate;
 	if(count > 1)
 		b->sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1));
@@ -369,65 +296,45 @@ int compute_period(struct processing_buffers *b, int bph)
 	return 0;
 }
 
-void compute_parameters(struct processing_buffers *p)
+int compute_parameters(struct processing_buffers *p)
 {
 	int i;
 	double x = 0, y = 0;
 	for(i=0; i<p->sample_count; i++) {
 		double a = i * 4 * M_PI / p->period;
-		x += p->filtered_samples[i] * cos(a);
-		y += p->filtered_samples[i] * sin(a);
+		x += p->samples[i] * cos(a);
+		y += p->samples[i] * sin(a);
 	}
 	double s = p->period * (M_PI + atan2(y,x)) / (4 * M_PI);
 
-	for(i=0; i<2*p->sample_count; i++)
-		p->samples[i] = 0;
+	for(i=0; i<2*p->sample_rate; i++)
+		p->waveform[i] = 0;
 	for(i=0; i < p->sample_count; i++) {
 		int j = floor(fmod(i+p->period-s,p->period));
-		p->samples[j] += p->filtered_samples[i];
+		p->waveform[j] += p->samples[i];
 	}
 
 	fftwf_execute(p->plan_c);
-	for(i=0; i < p->sample_count+1; i++) {
-//		if(  (uint64_t)p->sample_rate * i < (uint64_t)FILTER_CUTOFF * p->sample_count )
-//				&&
-//		     (uint64_t)p->sample_rate * i > (uint64_t)HIGHPASS * p->sample_count  )
+	for(i=0; i < p->sample_rate+1; i++)
 			p->fft[i] = p->fft[i] * conj(p->fft[i]);
-//		else
-//			p->fft[i] = 0;
-	}
 	fftwf_execute(p->plan_d);
 
-	int tic_to_toc = peak_detector(p,floor(p->period/2)-p->sample_rate/100,floor(p->period/2)+p->sample_rate/100);
+	int tic_to_toc = peak_detector(p->waveform_sc,floor(p->period/2)-p->sample_rate/100,floor(p->period/2)+p->sample_rate/100);
 	if(tic_to_toc < 0) {
 		p->tic = p->toc = -1;
 		p->be = -1;
 		debug("beat error = ---\n");
-		return;
+		return 1;
 	} else {
 		p->be = p->period/2 - tic_to_toc;
 		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
-	for(i=0; i<2*p->sample_count; i++)
-		p->samples[i] = 0;
-	for(i=0; i < p->sample_count; i++) {
-		int j = floor(fmod(i+p->period-s,p->period));
-		p->samples[j] += p->filtered_samples[i];
-	}
-/*
-	fftwf_execute(p->plan_c);
-	for(i=0; i < p->sample_count+1; i++) {
-		if(  (uint64_t)p->sample_rate * i > (uint64_t)FILTER_CUTOFF * p->sample_count ) 
-			p->fft[i] = 0;
-	}
-	fftwf_execute(p->plan_d);
-*/
 	double max = 0;
 	int max_i = -1;
 	for(i=0;i<p->period;i++)
-		if(p->samples[i] > max) {
-			max = p->samples[i];
+		if(p->waveform[i] > max) {
+			max = p->waveform[i];
 			max_i = i;
 		}
 
@@ -442,80 +349,13 @@ void compute_parameters(struct processing_buffers *p)
 		if(p->tic < 0)
 			p->tic = 0;
 	}
-}
-
-/*
-void save_debug(struct processing_buffers *p)
-{
-	SF_INFO out_info;
-	SNDFILE *out_sfile;
-
-	out_info.samplerate = p->sample_rate;
-	out_info.channels = 1;
-	out_info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
-
-	out_sfile = sf_open("out.wav",SFM_WRITE,&out_info);
-	if(!out_sfile) {
-		error("Can not open out.wav\n");
-		return;
-	}
-
-	float max_sample = 0;
-	int i;
-	for(i = 100; i < p->sample_count; i++) {
-		float x = p->samples[i] >= 0 ? p->samples[i] : - p->samples[i];
-		max_sample = max_sample > x ? max_sample : x;
-	}
-	for(i = 0; i < p->sample_count; i++)
-		p->samples[i] /= max_sample;
-
-	debug("Written %d samples to out.wav\n",sf_write_float(out_sfile, p->samples, p->sample_count));
-
-	sf_close(out_sfile);
-}
-
-int process_file(char *filename, struct processing_buffers *p)
-{
-	SF_INFO sfinfo;
-	SNDFILE *sfile;
-
-	sfinfo.format = 0;
-
-	sfile = sf_open(filename,SFM_READ,&sfinfo);
-	if(!sfile) {
-		error("Error opening file %s : %s\n",filename,sf_strerror(NULL));
-		return 1;
-	}
-
-	if(sfinfo.channels != 1) {
-		error("Channel count = %d != 1\n",sfinfo.channels);
-		return 1;
-	}
-
-	p->sample_rate = sfinfo.samplerate;
-	p->sample_count = sfinfo.frames;
-
-	setup_buffers(p);
-
-	memset(p->samples,0,2 * p->sample_count * sizeof(float));
-
-	if(sfinfo.frames != sf_read_float(sfile,p->samples,p->sample_count)) {
-		error("Error reading file %s\n",filename);
-		return 1;
-	}
-
-	sf_close(sfile);
-
-	compute_self_correlation(p);
-
-//	save_debug(&b);
-
 	return 0;
 }
-*/
-int acceptable(struct processing_buffers *p)
+
+void process(struct processing_buffers *p, int bph)
 {
-	return p->sigma < p->period / 10000;
+		prepare_data(p);
+		p->ready = ! ( compute_period(p,bph) || compute_parameters(p) );
 }
 
 void analyze_pa_data(struct processing_buffers *p, int bph)
@@ -534,23 +374,13 @@ void analyze_pa_data(struct processing_buffers *p, int bph)
 		}
 	}
 	for(i=0; i<NSTEPS; i++) {
-		compute_self_correlation(&p[i]);
-
-		p[i].period = -1;
-		if( compute_period(&p[i],bph) ) break;
-
-		compute_parameters(&p[i]);
-			
+		process(&p[i],bph);
+		if( !p[i].ready ) break;
 		debug("step %d : %f +- %f\n",i,p[i].period/p[i].sample_rate,p[i].sigma/p[i].sample_rate);
-//		save_debug(&p[i]);
 	}
-	if(i) {
-		p[i-1].accept = i > MIN_STEP && acceptable(&p[i-1]);
-		if(p[i-1].accept)
-			debug("%f +- %f\n",p[i-1].period/p[i-1].sample_rate,p[i-1].sigma/p[i-1].sample_rate);
-		else
-			debug("---\n");
-	} else
+	if(i)
+		debug("%f +- %f\n",p[i-1].period/p[i-1].sample_rate,p[i-1].sigma/p[i-1].sample_rate);
+	else
 		debug("---\n");
 }
 
@@ -611,7 +441,7 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 	if(ai < 0) ai = 0;
 	if(bi > p->sample_count) bi = p->sample_count;
 	for(i=ai; i<bi; i++)
-		if(p->samples[i] > max) max = p->samples[i];
+		if(p->waveform[i] > max) max = p->waveform[i];
 
 	int first = 1;
 	for(i=0; i<width; i++) {
@@ -620,7 +450,7 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 			if(j < 0) j = 0;
 			if(j >= p->sample_count) j = p->sample_count-1;
 
-			int k = round(fabs(p->samples[j])*0.45*height/max);
+			int k = round(fabs(p->waveform[j])*0.45*height/max);
 
 			if(first) {
 				cairo_move_to(c,i+.5,height/2-k-.5);
@@ -636,7 +466,7 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 			if(j < 0) j = 0;
 			if(j >= p->sample_count) j = p->sample_count-1;
 
-			int k = round(fabs(p->samples[j])*0.45*height/max);
+			int k = round(fabs(p->waveform[j])*0.45*height/max);
 
 			if(first) {
 				cairo_move_to(c,i+.5,height/2+k-.5);
@@ -1061,14 +891,19 @@ struct interactive_w_data {
 	struct processing_buffers *old;
 };
 
+int acceptable(struct processing_buffers *p)
+{
+	return p->sigma < p->period / 10000;
+}
+
 struct processing_buffers *int_get_data(struct main_window *w, int *old)
 {
 	struct interactive_w_data *d = w->data;
 	struct processing_buffers *p = d->bfs;
 	int i;
 	for(i=0; i<NSTEPS; i++)
-		if(p[i].period < 0) break;
-	if(i && p[i-1].accept) {
+		if(!p[i].ready) break;
+	if(i && acceptable(&p[i])) {
 		if(d->old) pb_destroy(d->old);
 		d->old = pb_clone(&p[i-1]);
 		*old = 0;
@@ -1123,62 +958,11 @@ int run_interactively()
 
 	return 0;
 }
-/*
-struct processing_buffers *file_get_data(struct main_window *w, int *old)
-{
-	struct processing_buffers *p = w->data;
 
-	*old = 0;
-	return p->accept ? p : NULL;
-}
-
-void file_recompute(struct main_window *w)
-{
-	struct processing_buffers *p = w->data;
-
-	int err = compute_period(p,w->bph);
-	if(err) {
-		debug("---\n");
-		p->accept = 0;
-	} else {
-		debug("%f +- %f\n",p->period,p->sigma);
-		p->accept = acceptable(p);
-	}
-}
-
-int run_on_file(char *filename)
-{
-	struct processing_buffers p;
-	if(process_file(filename,&p)) return 1;
-
-	struct main_window w;
-	w.destroy = quit;
-	w.data = &p;
-	w.get_data = file_get_data;
-	w.recompute = file_recompute;
-	w.bph = 0;
-	w.la = DEFAULT_LA;
-
-	file_recompute(&w);
-
-	init_main_window(&w);
-
-	gtk_main();
-
-	return 0;
-}
-*/
 int main(int argc, char **argv)
 {
 	gtk_init(&argc, &argv);
 	initialize_palette();
 
-//	if(argc == 1)
-		return run_interactively();
-//	else if(argc == 2 && argv[1][0] != '-')
-//		return run_on_file(argv[1]);
-//	else {
-//		fprintf(stderr,"USAGE: %s [filename]\n",argv[0]);
-//		return 1;
-//	}
+	return run_interactively();
 }
