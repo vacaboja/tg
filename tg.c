@@ -95,6 +95,45 @@ error:
 	return 1;
 }
 
+struct filter {
+	double a0,a1,a2,b1,b2;
+};
+
+void make_hp(struct filter *f, double freq)
+{
+	double K = tan(M_PI * freq);
+	double norm = 1 / (1 + K * sqrt(2) + K * K);
+	f->a0 = 1 * norm;
+	f->a1 = -2 * f->a0;
+	f->a2 = f->a0;
+	f->b1 = 2 * (K * K - 1) * norm;
+	f->b2 = (1 - K * sqrt(2) + K * K) * norm;
+}
+
+void make_lp(struct filter *f, double freq)
+{
+	double K = tan(M_PI * freq);
+	double norm = 1 / (1 + K * sqrt(2) + K * K);
+	f->a0 = K * K * norm;
+	f->a1 = 2 * f->a0;
+	f->a2 = f->a0;
+	f->b1 = 2 * (K * K - 1) * norm;
+	f->b2 = (1 - K * sqrt(2) + K * K) * norm;
+}
+
+void run_filter(struct filter *f, float *buff, int size)
+{
+	int i;
+	double z1 = 0, z2 = 0;
+	for(i=0; i<size; i++) {
+		double in = buff[i];
+		double out = in * f->a0 + z1;
+		z1 = in * f->a1 + z2 - f->b1 * out;
+		z2 = in * f->a2 - f->b2 * out;
+		buff[i] = out;
+	}
+}
+
 struct processing_buffers {
 	int sample_rate;
 	int sample_count;
@@ -103,10 +142,27 @@ struct processing_buffers {
 	float *waveform;
 	fftwf_complex *fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d;
+	struct filter *hpf, *lpf;
 	double period,sigma,be;
 	int tic,toc;
 	int accept;
 };
+
+void setup_buffers(struct processing_buffers *b)
+{
+	b->samples = fftwf_malloc(2 * b->sample_count * sizeof(float));
+	b->filtered_samples = malloc(b->sample_count * sizeof(float));
+	b->waveform = malloc(b->sample_count * sizeof(float));
+	b->fft = malloc((b->sample_count + 1) * sizeof(fftwf_complex));
+	b->plan_a = fftwf_plan_dft_r2c_1d(b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
+	b->plan_b = fftwf_plan_dft_c2r_1d(b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
+	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
+	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
+	b->hpf = malloc(sizeof(struct filter));
+	make_hp(b->hpf,(double)FILTER_CUTOFF/b->sample_rate);
+	b->lpf = malloc(sizeof(struct filter));
+	make_lp(b->lpf,(double)FILTER_CUTOFF/b->sample_rate);
+}
 
 struct processing_buffers *pb_clone(struct processing_buffers *p)
 {
@@ -139,18 +195,7 @@ void pb_destroy(struct processing_buffers *p)
 	free(p);
 }
 
-void setup_buffers(struct processing_buffers *b)
-{
-	b->samples = fftwf_malloc(2 * b->sample_count * sizeof(float));
-	b->filtered_samples = malloc(b->sample_count * sizeof(float));
-	b->waveform = malloc(b->sample_count * sizeof(float));
-	b->fft = malloc((b->sample_count + 1) * sizeof(fftwf_complex));
-	b->plan_a = fftwf_plan_dft_r2c_1d(b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
-	b->plan_b = fftwf_plan_dft_c2r_1d(b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
-	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
-	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->fft, b->samples, FFTW_ESTIMATE);
-}
-
+/*
 int float_cmp(const void *a, const void *b)
 {
 	float x = *(float*)a;
@@ -159,18 +204,21 @@ int float_cmp(const void *a, const void *b)
 	if(x > y) return 1;
 	return 0;
 }
+*/
 
 void compute_self_correlation(struct processing_buffers *b)
 {
 	int i;
 	int first_fft_size = b->sample_count/2 + 1;
-
+/*	
 	fftwf_execute(b->plan_a);
 	for(i=0; i < b->sample_count/2 + 1; i++) {
 		if((uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count)
 			b->fft[i] = 0;
 	}
 	fftwf_execute(b->plan_b);
+*/	
+	run_filter(b->hpf, b->samples, b->sample_count);
 
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);
@@ -212,6 +260,8 @@ void compute_self_correlation(struct processing_buffers *b)
 		b->samples[i] -= median;
 */
 
+	run_filter(b->lpf, b->samples, b->sample_count);
+
 	double average = 0;
 	for(i=0; i < b->sample_count; i++)
 		average += b->samples[i];
@@ -224,12 +274,12 @@ void compute_self_correlation(struct processing_buffers *b)
 
 	fftwf_execute(b->plan_c);
 	for(i=0; i < b->sample_count+1; i++) {
-		if(  (uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count )
+//		if(  (uint64_t)b->sample_rate * i < (uint64_t)FILTER_CUTOFF * b->sample_count )
 //				&&
 //		     (uint64_t)b->sample_rate * i > (uint64_t)HIGHPASS * b->sample_count  )
 			b->fft[i] = b->fft[i] * conj(b->fft[i]);
-		else
-			b->fft[i] = 0;
+//		else
+//			b->fft[i] = 0;
 	}
 	fftwf_execute(b->plan_d);
 }
@@ -339,12 +389,12 @@ void compute_parameters(struct processing_buffers *p)
 
 	fftwf_execute(p->plan_c);
 	for(i=0; i < p->sample_count+1; i++) {
-		if(  (uint64_t)p->sample_rate * i < (uint64_t)FILTER_CUTOFF * p->sample_count )
+//		if(  (uint64_t)p->sample_rate * i < (uint64_t)FILTER_CUTOFF * p->sample_count )
 //				&&
 //		     (uint64_t)p->sample_rate * i > (uint64_t)HIGHPASS * p->sample_count  )
 			p->fft[i] = p->fft[i] * conj(p->fft[i]);
-		else
-			p->fft[i] = 0;
+//		else
+//			p->fft[i] = 0;
 	}
 	fftwf_execute(p->plan_d);
 
@@ -355,7 +405,7 @@ void compute_parameters(struct processing_buffers *p)
 		debug("beat error = ---\n");
 		return;
 	} else {
-		p->be = p->period - 2*tic_to_toc;
+		p->be = p->period/2 - tic_to_toc;
 		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
@@ -365,14 +415,14 @@ void compute_parameters(struct processing_buffers *p)
 		int j = floor(fmod(i+p->period-s,p->period));
 		p->samples[j] += p->filtered_samples[i];
 	}
-
+/*
 	fftwf_execute(p->plan_c);
 	for(i=0; i < p->sample_count+1; i++) {
 		if(  (uint64_t)p->sample_rate * i > (uint64_t)FILTER_CUTOFF * p->sample_count ) 
 			p->fft[i] = 0;
 	}
 	fftwf_execute(p->plan_d);
-
+*/
 	double max = 0;
 	int max_i = -1;
 	for(i=0;i<p->period;i++)
@@ -1050,6 +1100,7 @@ int run_interactively()
 		p[i].sample_rate = PA_SAMPLE_RATE;
 		p[i].sample_count = PA_SAMPLE_RATE * (1<<(i+FIRST_STEP));
 		setup_buffers(&p[i]);
+		p[i].period = -1;
 	}
 	if(start_portaudio()) return 1;
 
