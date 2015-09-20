@@ -11,9 +11,8 @@
 
 #define FILTER_CUTOFF 3000
 
-#define NSTEPS 5
-#define FIRST_STEP 0
-#define MIN_STEP 1
+#define NSTEPS 4
+#define FIRST_STEP 1
 #define PA_SAMPLE_RATE 44100
 #define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
@@ -22,6 +21,9 @@
 
 #define OUTPUT_FONT 50
 #define OUTPUT_WINDOW_HEIGHT 80
+
+#define POSITIVE_SPAN 10
+#define NEGATIVE_SPAN 25
 
 #define MIN_BPH 12000
 #define MAX_BPH 36000
@@ -33,6 +35,7 @@ int preset_bph[] = { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 0 }
 
 volatile float pa_buffers[2][PA_BUFF_SIZE];
 volatile int write_pointer = 0;
+volatile uint64_t timestamp = 0;
 
 void debug(char *format,...)
 {
@@ -63,6 +66,7 @@ int paudio_callback(const void *input_buffer,
 		pa_buffers[1][write_pointer] = ((float *)input_buffer)[2*i + 1];
 		if(write_pointer < PA_BUFF_SIZE - 1) write_pointer++;
 		else write_pointer = 0;
+		timestamp++;
 	}
         return 0;
 }
@@ -139,9 +143,10 @@ struct processing_buffers {
 	fftwf_complex *fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d;
 	struct filter *hpf, *lpf;
-	double period,sigma,be;
+	double period,sigma,be,waveform_max;
 	int tic,toc;
 	int ready;
+	uint64_t timestamp, last_tic;
 };
 
 void setup_buffers(struct processing_buffers *b)
@@ -168,9 +173,15 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->sample_rate = p->sample_rate;
 	new->waveform = malloc(new->sample_rate * sizeof(float));
 	memcpy(new->waveform, p->waveform, new->sample_rate * sizeof(float));
+
+	new->sample_count = p->sample_count;
+	new->samples_sc = malloc(new->sample_count * sizeof(float));
+	memcpy(new->samples_sc, p->samples_sc, new->sample_rate * sizeof(float));
+
 	new->period = p->period;
 	new->sigma = p->sigma;
 	new->be = p->be;
+	new->waveform_max = p->waveform_max;
 	new->tic = p->tic;
 	new->toc = p->toc;
 	new->ready = p->ready;
@@ -181,6 +192,7 @@ void pb_destroy(struct processing_buffers *p)
 {
 	// Future BUG: we free only waveform
 	free(p->waveform);
+	free(p->samples_sc);
 	free(p);
 }
 
@@ -203,13 +215,19 @@ void prepare_data(struct processing_buffers *b)
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] -= average;
 
+	for(i=0; i < b->sample_rate/10; i++) {
+		double k = ( 1 - cos(i*M_PI/(b->sample_rate/10)) ) / 2;
+		b->samples[i] *= k;
+		b->samples[b->sample_count - i - 1] *= k;
+	}
+
 	fftwf_execute(b->plan_a);
 	for(i=0; i < b->sample_count+1; i++)
 			b->fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
 }
 
-int peak_detector(float *buff, int a, int b)
+int peak_detector(float *buff, struct processing_buffers *p, int a, int b)
 {
 	int i;
 	double max = buff[a];
@@ -224,14 +242,13 @@ int peak_detector(float *buff, int a, int b)
 	int x,y;
 	for(x = i_max; x >= a && buff[x] > 0.7*max; x--);
 	for(y = i_max; y <= b && buff[y] > 0.7*max; y++);
-	//if( x < a || y > b || y-x < p->sample_rate / FILTER_CUTOFF) return -1;
-	if( x < a || y > b ) return -1;
+	if( x < a || y > b || y-x < p->sample_rate / FILTER_CUTOFF) return -1;
 	return i_max;
 }
 
 double estimate_period(struct processing_buffers *p)
 {
-	int estimate = peak_detector(p->samples_sc, p->sample_rate / 12, p->sample_rate / 2);
+	int estimate = peak_detector(p->samples_sc, p, p->sample_rate / 12, p->sample_rate / 2);
 	if(estimate == -1) return -1;
 	int a = estimate*3/2 - p->sample_rate / 100;
 	int b = estimate*3/2 + p->sample_rate / 100;
@@ -243,7 +260,9 @@ double estimate_period(struct processing_buffers *p)
 	if(max < 0.4 * p->samples_sc[estimate]) {
 		if(estimate * 2 < p->sample_rate / 2) {
 			debug("double triggered\n");
-			return peak_detector(p->samples_sc, estimate*2 - p->sample_rate / 100, estimate*2 + p->sample_rate / 100);
+			return peak_detector(p->samples_sc, p,
+					estimate*2 - p->sample_rate / 100,
+					estimate*2 + p->sample_rate / 100);
 		} else
 			return -1;
 	} else return estimate;
@@ -253,7 +272,9 @@ int compute_period(struct processing_buffers *b, int bph)
 {
 	double estimate;
 	if(bph)
-		estimate = peak_detector(b->samples_sc, 7200 * b->sample_rate / bph - b->sample_rate / 100, 7200 * b->sample_rate / bph + b->sample_rate / 100);
+		estimate = peak_detector(b->samples_sc, b,
+				7200 * b->sample_rate / bph - b->sample_rate / 100,
+				7200 * b->sample_rate / bph + b->sample_rate / 100);
 	else
 		estimate = estimate_period(b);
 	if(estimate == -1) return 1;
@@ -268,7 +289,7 @@ int compute_period(struct processing_buffers *b, int bph)
 		int sup = ceil(new_estimate * cycle + delta);
 		if(sup > b->sample_count * 2 / 3)
 			break;
-		new_estimate = peak_detector(b->samples_sc,inf,sup);
+		new_estimate = peak_detector(b->samples_sc,b,inf,sup);
 		if(new_estimate == -1) {
 			debug("cycle = %d peak not found\n",cycle);
 			return 1;
@@ -319,7 +340,9 @@ int compute_parameters(struct processing_buffers *p)
 			p->fft[i] = p->fft[i] * conj(p->fft[i]);
 	fftwf_execute(p->plan_d);
 
-	int tic_to_toc = peak_detector(p->waveform_sc,floor(p->period/2)-p->sample_rate/100,floor(p->period/2)+p->sample_rate/100);
+	int tic_to_toc = peak_detector(p->waveform_sc,p,
+			floor(p->period/2)-p->sample_rate/100,
+			floor(p->period/2)+p->sample_rate/100);
 	if(tic_to_toc < 0) {
 		p->tic = p->toc = -1;
 		p->be = -1;
@@ -332,11 +355,13 @@ int compute_parameters(struct processing_buffers *p)
 
 	double max = 0;
 	int max_i = -1;
-	for(i=0;i<p->period;i++)
+	for(i=0;i<p->period;i++) {
 		if(p->waveform[i] > max) {
 			max = p->waveform[i];
 			max_i = i;
 		}
+	}
+	p->waveform_max = max;
 
 	if(max_i < p->period/2) {
 		p->tic = max_i;
@@ -349,6 +374,22 @@ int compute_parameters(struct processing_buffers *p)
 		if(p->tic < 0)
 			p->tic = 0;
 	}
+
+	double phase = p->timestamp - p->last_tic;
+	double apparent_phase = p->sample_count - (s + p->tic);
+	double shift = fmod(apparent_phase - phase, p->period);
+	if(shift < 0) shift += p->period;
+	debug("shift = %.3f\n",shift / p->period);
+
+	if(fabs(shift - p->period/2) < p->period/4) {
+		int t = p->tic;
+		p->tic = p->toc;
+		p->toc = t;
+		apparent_phase = p->sample_count - (s + p->tic);
+	}
+	
+	p->last_tic = p->timestamp - (uint64_t)round(fmod(apparent_phase, p->period));
+
 	return 0;
 }
 
@@ -360,7 +401,9 @@ void process(struct processing_buffers *p, int bph)
 
 void analyze_pa_data(struct processing_buffers *p, int bph)
 {
+	static uint64_t last_tic = 0;
 	int wp = write_pointer;
+	uint64_t ts = timestamp;
 	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
 	int i;
 	for(i=0; i<NSTEPS; i++) {
@@ -374,13 +417,16 @@ void analyze_pa_data(struct processing_buffers *p, int bph)
 		}
 	}
 	for(i=0; i<NSTEPS; i++) {
+		p[i].timestamp = ts;
+		p[i].last_tic = last_tic;
 		process(&p[i],bph);
 		if( !p[i].ready ) break;
 		debug("step %d : %f +- %f\n",i,p[i].period/p[i].sample_rate,p[i].sigma/p[i].sample_rate);
 	}
-	if(i)
+	if(i) {
+		last_tic = p[i-1].last_tic;
 		debug("%f +- %f\n",p[i-1].period/p[i-1].sample_rate,p[i-1].sigma/p[i-1].sample_rate);
-	else
+	} else
 		debug("---\n");
 }
 
@@ -390,7 +436,8 @@ struct main_window {
 	GtkWidget *la_spin_button;
 	GtkWidget *output_drawing_area;
 	GtkWidget *amp_drawing_area;
-	GtkWidget *be_drawing_area;
+	GtkWidget *tic_drawing_area;
+	GtkWidget *toc_drawing_area;
 	GtkWidget *waveform_drawing_area;
 
 	void (*destroy)(GtkWidget *widget, gpointer data);
@@ -433,6 +480,33 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 	int width = da->allocation.width;
 	int height = da->allocation.height;
 
+	int n;
+
+	int first = 1;
+	for(n=0; n<2*width; n++) {
+		int i = n < width ? n : 2*width - 1 - n;
+		int j = round(a + i * (b-a) / width);
+		double y;
+
+		if(j < 0 || j >= p->period || p->waveform[j] <= 0) y = 0;
+		else y = p->waveform[j] * 0.4 / p->waveform_max;
+
+		int k = round(y*height);
+		if(n < width) k = -k;
+
+		if(first) {
+			cairo_move_to(c,i+.5,height/2+k+.5);
+			first = 0;
+		} else
+			cairo_line_to(c,i+.5,height/2+k+.5);
+	}
+}
+
+void draw_amp_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
+{
+	int width = da->allocation.width;
+	int height = da->allocation.height;
+
 	int i;
 	float max = 0;
 
@@ -441,7 +515,7 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 	if(ai < 0) ai = 0;
 	if(bi > p->sample_count) bi = p->sample_count;
 	for(i=ai; i<bi; i++)
-		if(p->waveform[i] > max) max = p->waveform[i];
+		if(p->samples_sc[i] > max) max = p->samples_sc[i];
 
 	int first = 1;
 	for(i=0; i<width; i++) {
@@ -450,29 +524,13 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 			if(j < 0) j = 0;
 			if(j >= p->sample_count) j = p->sample_count-1;
 
-			int k = round(fabs(p->waveform[j])*0.45*height/max);
+			int k = round((0.1+p->samples_sc[j]/max)*0.8*height);
 
 			if(first) {
-				cairo_move_to(c,i+.5,height/2-k-.5);
+				cairo_move_to(c,i+.5,height-k-.5);
 				first = 0;
 			} else
-				cairo_line_to(c,i+.5,height/2-k-.5);
-		}
-	}
-	first = 1;
-	for(i=0; i<width; i++) {
-		if( round(a + i*(b-a)/width) != round(a + (i+1)*(b-a)/width) ) {
-			int j = round(a + i*(b-a)/width);
-			if(j < 0) j = 0;
-			if(j >= p->sample_count) j = p->sample_count-1;
-
-			int k = round(fabs(p->waveform[j])*0.45*height/max);
-
-			if(first) {
-				cairo_move_to(c,i+.5,height/2+k-.5);
-				first = 0;
-			} else
-				cairo_line_to(c,i+.5,height/2+k-.5);
+				cairo_line_to(c,i+.5,height-k-.5);
 		}
 	}
 }
@@ -578,37 +636,6 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 	cairo_set_source(c,black);
 	cairo_paint(c);
 
-	for(i = 40; i < 360; i+=10) {
-		double t = amplitude_to_time(w->la,i);
-		if(t > span) continue;
-		int x1 = round(width * (.5-.5*t/span));
-		int x2 = round(width * (.5+.5*t/span));
-		cairo_move_to(c, x1+.5, .5);
-		cairo_line_to(c, x1+.5, height-.5);
-		cairo_move_to(c, x2+.5, .5);
-		cairo_line_to(c, x2+.5, height-.5);
-		if(i % 50)
-			cairo_set_source(c,green);
-		else
-			cairo_set_source(c,red);
-		cairo_stroke(c);
-	}
-	cairo_set_source(c,white);
-	for(i = 40; i < 360; i+=10) {
-		double t = amplitude_to_time(w->la,i);
-		if(t > span) continue;
-		int x1 = round(width * (.5-.5*t/span));
-		int x2 = round(width * (.5+.5*t/span));
-		if(!(i % 50)) {
-			char s[10];
-			sprintf(s,"%d",abs(i));
-			cairo_move_to(c,x1+font/4,height-font/2);
-			cairo_show_text(c,s);
-			cairo_move_to(c,x2+font/4,height-font/2);
-			cairo_show_text(c,s);
-		}
-	}
-
 	int old;
 	struct processing_buffers *p = w->get_data(w,&old);
 
@@ -618,7 +645,7 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 		double a = p->period - span_time;
 		double b = p->period + span_time;
 
-		draw_graph(a,b,c,p,w->amp_drawing_area);
+		draw_amp_graph(a,b,c,p,w->amp_drawing_area);
 
 		cairo_set_source(c,old?yellow:white);
 		cairo_stroke(c);
@@ -633,28 +660,25 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 	return FALSE;
 }
 
-gboolean be_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get_offset)(struct processing_buffers*))
 {
-	cairo_t *c;
-
-	int width = w->be_drawing_area->allocation.width;
-	int height = w->be_drawing_area->allocation.height;
+	int width = da->allocation.width;
+	int height = da->allocation.height;
 	int font = width / 90;
 	if(font < 12)
 		font = 12;
 	int i;
 
-	c = gdk_cairo_create(widget->window);
 	cairo_set_line_width(c,1);
 	cairo_set_font_size(c,font);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
 
-	for(i = -19; i < 20; i++) {
-		int x = (20 + i) * width / 40;
-		cairo_move_to(c, x+.5, .5);
-		cairo_line_to(c, x+.5, height-.5);
+	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
+		int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
+		cairo_move_to(c, x + .5, height / 2 + .5);
+		cairo_line_to(c, x + .5, height - .5);
 		if(i%5)
 			cairo_set_source(c,green);
 		else
@@ -662,11 +686,11 @@ gboolean be_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window 
 		cairo_stroke(c);
 	}
 	cairo_set_source(c,white);
-	for(i = -19; i < 20; i++) {
-		int x = (20 + i) * width / 40;
+	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
+		int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 		if(!(i%5)) {
 			char s[10];
-			sprintf(s,"%d",abs(i));
+			sprintf(s,"%d",i);
 			cairo_move_to(c,x+font/4,height-font/2);
 			cairo_show_text(c,s);
 		}
@@ -674,35 +698,76 @@ gboolean be_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window 
 
 	int old;
 	struct processing_buffers *p = w->get_data(w,&old);
+	double period = p ? p->period / p->sample_rate : 1./3;
 
-	if(p && p->tic > 0) {
-		double span = 0.02 * p->sample_rate;
-
-		double a = p->tic - span;
-		double b = p->tic + span;
-
-		draw_graph(a,b,c,p,w->be_drawing_area);
-
-		cairo_set_source(c,old?yellowish:gray);
-		cairo_set_line_width(c,3);
+	for(i = 40; i < 360; i+=10) {
+		double t = period*amplitude_to_time(w->la,i);
+		if(t > .001 * NEGATIVE_SPAN) continue;
+		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
+		cairo_move_to(c, x+.5, .5);
+		cairo_line_to(c, x+.5, height / 2 + .5);
+		if(i % 50)
+			cairo_set_source(c,green);
+		else
+			cairo_set_source(c,red);
 		cairo_stroke(c);
+	}
+	cairo_set_source(c,white);
+	for(i = 50; i < 360; i+=50) {
+		double t = period*amplitude_to_time(w->la,i);
+		if(t > .001 * NEGATIVE_SPAN) continue;
+		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
+		char s[10];
+		sprintf(s,"%d",abs(i));
+		cairo_move_to(c,x+font/4,font * 3 / 2);
+		cairo_show_text(c,s);
+	}
 
-		a = p->tic + p->period/2 - span;
-		b = p->tic + p->period/2 + span;
+	if(p) {
+		double span = 0.001 * p->sample_rate;
+		int offset = get_offset(p);
 
-		draw_graph(a,b,c,p,w->be_drawing_area);
+		double a = offset - span * NEGATIVE_SPAN;
+		double b = offset + span * POSITIVE_SPAN;
+
+		draw_graph(a,b,c,p,da);
 
 		cairo_set_source(c,old?yellow:white);
-		cairo_set_line_width(c,1);
+		cairo_stroke_preserve(c);
+		cairo_fill(c);
+	} else {
+		cairo_move_to(c, .5, height / 2 + .5);
+		cairo_line_to(c, width - .5, height / 2 + .5);
+		cairo_set_source(c,yellow);
 		cairo_stroke(c);
 	}
 
-	cairo_set_source(c,white);
-	cairo_move_to(c,font/2,3*font/2);
-	cairo_show_text(c,"Beat error (ms)");
+//	cairo_set_source(c,white);
+//	cairo_move_to(c,font/2,3*font/2);
+//	cairo_show_text(c,"Beat error (ms)");
 
 	cairo_destroy(c);
+}
 
+int get_tic(struct processing_buffers *p)
+{
+	return p->tic;
+}
+
+int get_toc(struct processing_buffers *p)
+{
+	return p->toc;
+}
+
+gboolean tic_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	expose_waveform(gdk_cairo_create(widget->window), w, w->tic_drawing_area, get_tic);
+	return FALSE;
+}
+
+gboolean toc_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	expose_waveform(gdk_cairo_create(widget->window), w, w->toc_drawing_area, get_toc);
 	return FALSE;
 }
 
@@ -710,8 +775,8 @@ gboolean waveform_expose_event(GtkWidget *widget, GdkEvent *event, struct main_w
 {
 	cairo_t *c;
 
-	int width = w->be_drawing_area->allocation.width;
-	int height = w->be_drawing_area->allocation.height;
+	int width = w->waveform_drawing_area->allocation.width;
+	int height = w->waveform_drawing_area->allocation.height;
 	int font = width / 90;
 	if(font < 12)
 		font = 12;
@@ -774,7 +839,8 @@ void redraw(struct main_window *w)
 {
 	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,w->output_drawing_area->allocation.width,w->output_drawing_area->allocation.height);
 	gtk_widget_queue_draw_area(w->amp_drawing_area,0,0,w->amp_drawing_area->allocation.width,w->amp_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->be_drawing_area,0,0,w->be_drawing_area->allocation.width,w->be_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->tic_drawing_area,0,0,w->tic_drawing_area->allocation.width,w->tic_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->toc_drawing_area,0,0,w->toc_drawing_area->allocation.width,w->toc_drawing_area->allocation.height);
 	gtk_widget_queue_draw_area(w->waveform_drawing_area,0,0,w->waveform_drawing_area->allocation.width,w->waveform_drawing_area->allocation.height);
 }
 
@@ -852,6 +918,26 @@ void init_main_window(struct main_window *w)
 			(GtkSignalFunc)output_expose_event, w);
 	gtk_widget_set_events(w->output_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->output_drawing_area);
+/*
+	GtkWidget *hbox2 = gtk_hbox_new(FALSE,10);
+	gtk_box_pack_start(GTK_BOX(vbox),hbox2,TRUE,TRUE,0);
+	gtk_widget_show(hbox2);
+*/
+	w->tic_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->tic_drawing_area),500,200);
+	gtk_box_pack_start(GTK_BOX(vbox),w->tic_drawing_area,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->tic_drawing_area),"expose_event",
+			(GtkSignalFunc)tic_expose_event, w);
+	gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->tic_drawing_area);
+
+	w->toc_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->toc_drawing_area),500,200);
+	gtk_box_pack_start(GTK_BOX(vbox),w->toc_drawing_area,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->toc_drawing_area),"expose_event",
+			(GtkSignalFunc)toc_expose_event, w);
+	gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->toc_drawing_area);
 
 	w->amp_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->amp_drawing_area),500,200);
@@ -860,14 +946,6 @@ void init_main_window(struct main_window *w)
 			(GtkSignalFunc)amp_expose_event, w);
 	gtk_widget_set_events(w->amp_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->amp_drawing_area);
-
-	w->be_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->be_drawing_area),500,200);
-	gtk_box_pack_start(GTK_BOX(vbox),w->be_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->be_drawing_area),"expose_event",
-			(GtkSignalFunc)be_expose_event, w);
-	gtk_widget_set_events(w->be_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(w->be_drawing_area);
 
 	w->waveform_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->waveform_drawing_area),500,200);
@@ -903,7 +981,7 @@ struct processing_buffers *int_get_data(struct main_window *w, int *old)
 	int i;
 	for(i=0; i<NSTEPS; i++)
 		if(!p[i].ready) break;
-	if(i && acceptable(&p[i])) {
+	if(i && acceptable(&p[i-1])) {
 		if(d->old) pb_destroy(d->old);
 		d->old = pb_clone(&p[i-1]);
 		*old = 0;
