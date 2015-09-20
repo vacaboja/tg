@@ -27,7 +27,7 @@
 
 #define MIN_BPH 12000
 #define MAX_BPH 36000
-#define MIN_LA 20
+#define MIN_LA 10
 #define MAX_LA 90
 #define DEFAULT_LA 52
 
@@ -700,7 +700,8 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 	struct processing_buffers *p = w->get_data(w,&old);
 	double period = p ? p->period / p->sample_rate : 1./3;
 
-	for(i = 40; i < 360; i+=10) {
+	for(i = 10; i < 360; i+=10) {
+		if(2*i < w->la) continue;
 		double t = period*amplitude_to_time(w->la,i);
 		if(t > .001 * NEGATIVE_SPAN) continue;
 		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
