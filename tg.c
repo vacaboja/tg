@@ -8,7 +8,6 @@
 #include <portaudio.h>
 #include <stdarg.h>
 #include <gtk/gtk.h>
-#include <assert.h>
 
 #define FILTER_CUTOFF 3000
 
@@ -329,6 +328,23 @@ int compute_period(struct processing_buffers *b, int bph)
 	return 0;
 }
 
+int fl_cmp(const void *a, const void *b)
+{
+	float x = *(float*)a;
+	float y = *(float*)b;
+	return x<y ? -1 : x>y ? 1 : 0;
+}
+
+float tmean(float *x, int n)
+{
+	qsort(x,n,sizeof(float),fl_cmp);
+	int i;
+	double sum = 0;
+	for(i=0; i < n*4/5; i++)
+		sum += x[i];
+	return sum/(n*4/5);
+}
+
 int compute_parameters(struct processing_buffers *p)
 {
 	int i;
@@ -342,9 +358,22 @@ int compute_parameters(struct processing_buffers *p)
 
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
+	/*
 	for(i=0; i < p->sample_count; i++) {
 		int j = floor(fmod(i+p->period-s,p->period));
 		p->waveform[j] += p->samples[i];
+	}
+	*/
+	float bin[(int)ceil(1 + p->sample_count / p->period)];
+	for(i=0; i < p->period; i++) {
+		int j;
+		double k = fmod(i+s,p->period);
+		for(j=0;;j++) {
+			int n = round(k+j*p->period);
+			if(n >= p->sample_count) break;
+			bin[j] = p->samples[n];
+		}
+		p->waveform[i] = tmean(bin,j);
 	}
 
 	fftwf_execute(p->plan_c);
@@ -404,9 +433,6 @@ int compute_parameters(struct processing_buffers *p)
 	
 	p->last_tic = p->timestamp - (uint64_t)round(fmod(apparent_phase, p->period));
 
-	assert(p->last_tic < timestamp);
-	assert(p->last_toc < timestamp);
-
 	return 0;
 }
 
@@ -416,7 +442,7 @@ void process(struct processing_buffers *p, int bph)
 		p->ready = ! ( compute_period(p,bph) || compute_parameters(p) );
 }
 
-void analyze_pa_data(struct processing_buffers *p, int bph)
+int analyze_pa_data(struct processing_buffers *p, int bph)
 {
 	static uint64_t last_tic = 0;
 	int wp = write_pointer;
@@ -445,6 +471,7 @@ void analyze_pa_data(struct processing_buffers *p, int bph)
 		debug("%f +- %f\n",p[i-1].period/p[i-1].sample_rate,p[i-1].sigma/p[i-1].sample_rate);
 	} else
 		debug("---\n");
+	return i;
 }
 
 struct main_window {
@@ -469,6 +496,8 @@ struct main_window {
 
 	uint64_t *events;
 	int events_wp;
+
+	int signal;
 
 	void *data;
 };
@@ -581,6 +610,20 @@ int guess_bph(double period)
 	return preset_bph[ret];
 }
 
+void draw_watch_icon(cairo_t *c, int happy)
+{
+	happy = !!happy;
+	cairo_set_line_width(c,3);
+	cairo_set_source(c,happy?green:red);
+	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
+	cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
+	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
+	cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.35, OUTPUT_WINDOW_HEIGHT * (0.65 - 0.3*happy));
+	cairo_stroke(c);
+	cairo_arc(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
+	cairo_stroke(c);
+}
+
 gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
 	cairo_t *c;
@@ -590,6 +633,8 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
+
+	draw_watch_icon(c,w->signal);
 
 	int old;
 	struct processing_buffers *p = w->get_data(w,&old);
@@ -607,10 +652,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		sprintf(bphs,"%d bph",bph);
 	} else {
 		strcpy(rates,"---   ");
-		if(w->bph)
-			sprintf(bphs,"bph = %d",w->bph);
-		else
-			strcpy(bphs,"bph = ---");
+		sprintf(bphs,"%d bph",w->guessed_bph);
 	}
 
 	if(p && old)
@@ -621,7 +663,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	cairo_text_extents_t extents;
 
 	cairo_text_extents(c,"0",&extents);
-	double x = (double)OUTPUT_FONT/2;
+	double x = OUTPUT_WINDOW_HEIGHT + (double)OUTPUT_FONT/2;
 	double y = (double)OUTPUT_WINDOW_HEIGHT/2 - extents.y_bearing - extents.height/2;
 
 	cairo_move_to(c,x,y);
@@ -723,7 +765,7 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 
 	int old;
 	struct processing_buffers *p = w->get_data(w,&old);
-	double period = p ? p->period / p->sample_rate : 1./3;
+	double period = p ? p->period / p->sample_rate : 7200. / w->guessed_bph;
 
 	for(i = 10; i < 360; i+=10) {
 		if(2*i < w->la) continue;
@@ -949,7 +991,7 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 		char *t;
 		n = strtol(s,&t,10);
 		if(*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
-		else w->bph = n;
+		else w->bph = w->guessed_bph = n;
 		g_free(s);
 		w->recompute(w);
 		redraw(w);
@@ -966,6 +1008,8 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 
 void init_main_window(struct main_window *w)
 {
+	w->signal = 0;
+
 	w->events = malloc(EVENTS_COUNT * sizeof(uint64_t));
 	memset(w->events,0,EVENTS_COUNT * sizeof(uint64_t));
 	w->events_wp = 0;
@@ -1107,7 +1151,7 @@ struct processing_buffers *int_get_data(struct main_window *w, int *old)
 void int_recompute(struct main_window *w)
 {
 	struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
-	analyze_pa_data(p, w->bph);
+	w->signal = analyze_pa_data(p, w->bph);
 	int old;
 	p = int_get_data(w,&old);
 	if(p)
