@@ -9,6 +9,8 @@
 #include <stdarg.h>
 #include <gtk/gtk.h>
 
+#include <assert.h>
+
 #define FILTER_CUTOFF 3000
 
 #define NSTEPS 4
@@ -71,7 +73,7 @@ int paudio_callback(const void *input_buffer,
 		else write_pointer = 0;
 		timestamp++;
 	}
-        return 0;
+	return 0;
 }
 
 int start_portaudio()
@@ -98,6 +100,13 @@ int start_portaudio()
 error:
 	error("Error opening audio input: %s\n", Pa_GetErrorText(err));
 	return 1;
+}
+
+int fl_cmp(const void *a, const void *b)
+{
+	float x = *(float*)a;
+	float y = *(float*)b;
+	return x<y ? -1 : x>y ? 1 : 0;
 }
 
 struct filter {
@@ -199,12 +208,53 @@ void pb_destroy(struct processing_buffers *p)
 	free(p);
 }
 
+void noise_suppressor(struct processing_buffers *p)
+{
+	float *a = p->samples_sc;
+	float *b = p->samples_sc + p->sample_count;
+	int window = p->sample_rate / 50;
+	int i;
+
+	for(i = 0; i < p->sample_count; i++)
+		a[i] = p->samples[i] * p->samples[i];
+
+	double r_av = 0;
+	for(i = 0; i < window; i++)
+		r_av += a[i];
+	for(i = 0;; i++) {
+		b[i] = r_av;
+		if(i + window == p->sample_count) break;
+		r_av += a[i + window] - a[i];
+	}
+
+	int m = p->sample_count - window + 1;
+	float max = 0;
+	int j = 0;
+	for(i = 0; i < m; i++) {
+		if(b[i] > max) max = b[i];
+		if((i+1) % (p->sample_rate/2) == 0) {
+			a[j++] = max;
+			max = 0;
+		}
+	}
+	qsort(a, j, sizeof(float), fl_cmp);
+	float k = a[j/2];
+
+	for(i = 0; i < p->sample_count; i++) {
+		int j = i - window / 2;
+		j = j < 0 ? 0 : j > p->sample_count - window ? p->sample_count - window : j;
+		if(b[j] > 2*k) p->samples[i] = 0;
+	}
+}
+
 void prepare_data(struct processing_buffers *b)
 {
 	int i;
 	int first_fft_size = b->sample_count/2 + 1;
 	
 	run_filter(b->hpf, b->samples, b->sample_count);
+
+	noise_suppressor(b);
 
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);
@@ -267,8 +317,8 @@ double estimate_period(struct processing_buffers *p)
 		if(estimate * 2 < p->sample_rate / 2) {
 			debug("double triggered\n");
 			return peak_detector(p->samples_sc, p,
-					estimate*2 - p->sample_rate / 100,
-					estimate*2 + p->sample_rate / 100);
+					estimate*2 - p->sample_rate / 50,
+					estimate*2 + p->sample_rate / 50);
 		} else {
 			debug("period rejected (immense beat error?)");
 			return -1;
@@ -328,13 +378,6 @@ int compute_period(struct processing_buffers *b, int bph)
 	return 0;
 }
 
-int fl_cmp(const void *a, const void *b)
-{
-	float x = *(float*)a;
-	float y = *(float*)b;
-	return x<y ? -1 : x>y ? 1 : 0;
-}
-
 float tmean(float *x, int n)
 {
 	qsort(x,n,sizeof(float),fl_cmp);
@@ -358,12 +401,7 @@ int compute_parameters(struct processing_buffers *p)
 
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
-	/*
-	for(i=0; i < p->sample_count; i++) {
-		int j = floor(fmod(i+p->period-s,p->period));
-		p->waveform[j] += p->samples[i];
-	}
-	*/
+
 	float bin[(int)ceil(1 + p->sample_count / p->period)];
 	for(i=0; i < p->period; i++) {
 		int j;
@@ -438,8 +476,9 @@ int compute_parameters(struct processing_buffers *p)
 
 void process(struct processing_buffers *p, int bph)
 {
-		prepare_data(p);
-		p->ready = ! ( compute_period(p,bph) || compute_parameters(p) );
+	int i;
+	prepare_data(p);
+	p->ready = ! ( compute_period(p,bph) || compute_parameters(p) );
 }
 
 int analyze_pa_data(struct processing_buffers *p, int bph)
@@ -455,7 +494,8 @@ int analyze_pa_data(struct processing_buffers *p, int bph)
 		k = wp - p[i].sample_count;
 		if(k < 0) k += PA_BUFF_SIZE;
 		for(j=0; j < p[i].sample_count; j++) {
-			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
+			// p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
+			p[i].samples[j] = pa_buffers[1][k];
 			if(++k == PA_BUFF_SIZE) k = 0;
 		}
 	}
@@ -1125,19 +1165,13 @@ void quit()
 	gtk_main_quit();
 }
 
-int acceptable(struct processing_buffers *p)
-{
-	return p->sigma < p->period / 10000;
-}
-
 struct processing_buffers *int_get_data(struct main_window *w, int *old)
 {
 	struct interactive_w_data *d = w->data;
 	struct processing_buffers *p = d->bfs;
 	int i;
-	for(i=0; i<NSTEPS; i++)
-		if(!p[i].ready) break;
-	if(i && acceptable(&p[i-1])) {
+	for(i=0; i<NSTEPS && p[i].ready; i++);
+	if(i && p[i-1].sigma < p[i-1].period / 10000) {
 		if(d->old) pb_destroy(d->old);
 		d->old = pb_clone(&p[i-1]);
 		*old = 0;
