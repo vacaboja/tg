@@ -69,6 +69,15 @@ int paudio_callback(const void *input_buffer,
 	for(i=0; i < frame_count; i++) {
 		pa_buffers[0][write_pointer] = ((float *)input_buffer)[2*i];
 		pa_buffers[1][write_pointer] = ((float *)input_buffer)[2*i + 1];
+		/*
+		if(timestamp % 4410 > 4000) {
+			pa_buffers[0][write_pointer] = 1; //timestamp % 2;
+			pa_buffers[1][write_pointer] = 1; //timestamp % 2;
+		} else {
+			pa_buffers[0][write_pointer] = 0;
+			pa_buffers[1][write_pointer] = 0;
+		}
+		*/
 		if(write_pointer < PA_BUFF_SIZE - 1) write_pointer++;
 		else write_pointer = 0;
 		timestamp++;
@@ -84,7 +93,7 @@ int start_portaudio()
 
 	PaError err = Pa_Initialize();
 	if(err!=paNoError)
-        	goto error;
+		goto error;
 
 	err = Pa_OpenDefaultStream(&stream,2,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,x);
 	*x = stream;
@@ -251,7 +260,7 @@ void prepare_data(struct processing_buffers *b)
 {
 	int i;
 	int first_fft_size = b->sample_count/2 + 1;
-	
+
 	run_filter(b->hpf, b->samples, b->sample_count);
 
 	noise_suppressor(b);
@@ -468,7 +477,7 @@ int compute_parameters(struct processing_buffers *p)
 		apparent_phase = p->sample_count - (s + p->tic);
 	} else
 		p->last_toc = p->timestamp - (uint64_t)round(fmod(p->sample_count - (s + p->toc), p->period));
-	
+
 	p->last_tic = p->timestamp - (uint64_t)round(fmod(apparent_phase, p->period));
 
 	return 0;
@@ -691,7 +700,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		sprintf(rates,"%s%.0f s/d   %.1f ms   ",rate > 0 ? "+" : "",rate,be);
 		sprintf(bphs,"%d bph",bph);
 	} else {
-		strcpy(rates,"---   ");
+		strcpy(rates,"--- s/d   --- ms    ");
 		sprintf(bphs,"%d bph",w->guessed_bph);
 	}
 
@@ -903,7 +912,7 @@ gboolean waveform_expose_event(GtkWidget *widget, GdkEvent *event, struct main_w
 		int i;
 		float max = 0;
 		int max_i = 0;
-	
+
 		for(i=0; i<p->period; i++)
 			if(p->waveform[i] > max) {
 				max = p->waveform[i];
@@ -917,11 +926,11 @@ gboolean waveform_expose_event(GtkWidget *widget, GdkEvent *event, struct main_w
 				//j = fmod(j + max_i, p->period);
 				if(j < 0) j = 0;
 				if(j >= p->sample_count) j = p->sample_count-1;
-	
+
 				int k = round((p->waveform[j]+max/10)*(height-1)/(max*1.1));
 				if(k < 0) k = 0;
 				if(k >= height) k = height-1;
-	
+
 				if(first) {
 					cairo_move_to(c,i+.5,height-k-.5);
 					first = 0;
