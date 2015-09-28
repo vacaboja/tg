@@ -441,6 +441,13 @@ int compute_parameters(struct processing_buffers *p)
 		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
+	for(i=0; i<p->period; i++)
+		p->waveform_sc[i] = p->waveform[i];
+	qsort(p->waveform_sc,floor(p->period),sizeof(float),fl_cmp);
+	double nl = p->waveform_sc[(int)floor(p->period/2)];
+	for(i=0; i<p->period; i++)
+		p->waveform[i] -= nl;
+
 	double max = 0;
 	int max_i = -1;
 	for(i=0;i<p->period;i++) {
