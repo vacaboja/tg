@@ -179,14 +179,15 @@ int peak_detector(float *buff, struct processing_buffers *p, int a, int b)
 	qsort(v, b-a+1, sizeof(float), fl_cmp);
 	float x = v[(b-a+1)/10];
 	float y = v[(b-a+1)/2];
-	if(max < 5*y - 4*x)
+	debug("max = %f  x = %f  y = %f\n",max,x,y);
+	if(max < 4*y - 3*x)
 		return -1;
 	return i_max;
 }
 
 double estimate_period(struct processing_buffers *p)
 {
-	int estimate = peak_detector(p->samples_sc, p, p->sample_rate / 12, p->sample_rate / 2);
+	int estimate = peak_detector(p->samples_sc, p, p->sample_rate / 12, p->sample_rate );
 	if(estimate == -1) {
 		debug("no candidate period\n");
 		return -1;
@@ -199,7 +200,7 @@ double estimate_period(struct processing_buffers *p)
 		if(p->samples_sc[i] > max)
 			max = p->samples_sc[i];
 	if(max < 0.2 * p->samples_sc[estimate]) {
-		if(estimate * 2 < p->sample_rate / 2) {
+		if(estimate * 2 < p->sample_rate ) {
 			debug("double triggered\n");
 			return peak_detector(p->samples_sc, p,
 					estimate*2 - p->sample_rate / 50,
@@ -216,15 +217,15 @@ int compute_period(struct processing_buffers *b, int bph)
 	double estimate;
 	if(bph)
 		estimate = peak_detector(b->samples_sc, b,
-				7200 * b->sample_rate / bph - b->sample_rate / 100,
-				7200 * b->sample_rate / bph + b->sample_rate / 100);
+				7200 * b->sample_rate / bph - b->sample_rate / 50,
+				7200 * b->sample_rate / bph + b->sample_rate / 50);
 	else
 		estimate = estimate_period(b);
 	if(estimate == -1) {
 		debug("failed to estimate period\n");
 		return 1;
 	}
-	double delta = b->sample_rate * 0.01;
+	double delta = b->sample_rate * 0.02;
 	double new_estimate = estimate;
 	double sum = 0;
 	double sq_sum = 0;

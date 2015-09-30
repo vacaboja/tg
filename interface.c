@@ -748,7 +748,7 @@ int run_interactively()
 
 	init_main_window(&w);
 
-	g_timeout_add(round(1000*(sqrt(5)-1)/2),(GSourceFunc)refresh,&w);
+	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)refresh,&w,NULL);
 
 	gtk_main();
 
