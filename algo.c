@@ -7,6 +7,13 @@ int fl_cmp(const void *a, const void *b)
 	return x<y ? -1 : x>y ? 1 : 0;
 }
 
+int int_cmp(const void *a, const void *b)
+{
+	int x = *(int*)a;
+	int y = *(int*)b;
+	return x<y ? -1 : x>y ? 1 : 0;
+}
+
 void make_hp(struct filter *f, double freq)
 {
 	double K = tan(M_PI * freq);
@@ -48,15 +55,22 @@ void setup_buffers(struct processing_buffers *b)
 	b->samples_sc = malloc(2 * b->sample_count * sizeof(float));
 	b->waveform = malloc(2 * b->sample_rate * sizeof(float));
 	b->waveform_sc = malloc(2 * b->sample_rate * sizeof(float));
-	b->fft = malloc((b->sample_count + 1) * sizeof(fftwf_complex));
+	b->fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
+	b->sc_fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
+	b->tic_wf = fftwf_malloc(2 * b->sample_count * sizeof(float));
+	b->tic_c = fftwf_malloc(2 * b->sample_count * sizeof(float));
+	b->tic_fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
 	b->plan_a = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
-	b->plan_b = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->fft, b->samples_sc, FFTW_ESTIMATE);
-	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_rate, b->waveform, b->fft, FFTW_ESTIMATE);
-	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_rate, b->fft, b->waveform_sc, FFTW_ESTIMATE);
+	b->plan_b = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->sc_fft, b->samples_sc, FFTW_ESTIMATE);
+	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_rate, b->waveform, b->sc_fft, FFTW_ESTIMATE);
+	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_rate, b->sc_fft, b->waveform_sc, FFTW_ESTIMATE);
+	b->plan_e = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->tic_wf, b->tic_fft, FFTW_ESTIMATE);
+	b->plan_f = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->sc_fft, b->tic_c, FFTW_ESTIMATE);
 	b->hpf = malloc(sizeof(struct filter));
 	make_hp(b->hpf,(double)FILTER_CUTOFF/b->sample_rate);
 	b->lpf = malloc(sizeof(struct filter));
 	make_lp(b->lpf,(double)FILTER_CUTOFF/b->sample_rate);
+	b->events = malloc(EVENTS_MAX * sizeof(uint64_t));
 	b->ready = 0;
 }
 
@@ -133,8 +147,8 @@ void prepare_data(struct processing_buffers *b)
 	int i;
 	int first_fft_size = b->sample_count/2 + 1;
 
+	memset(b->samples + b->sample_count, 0, b->sample_count * sizeof(float));
 	run_filter(b->hpf, b->samples, b->sample_count);
-
 	noise_suppressor(b);
 
 	for(i=0; i < b->sample_count; i++)
@@ -157,11 +171,11 @@ void prepare_data(struct processing_buffers *b)
 
 	fftwf_execute(b->plan_a);
 	for(i=0; i < b->sample_count+1; i++)
-			b->fft[i] = b->fft[i] * conj(b->fft[i]);
+			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
 }
 
-int peak_detector(float *buff, struct processing_buffers *p, int a, int b)
+int peak_detector(float *buff, int a, int b)
 {
 	int i;
 	double max = buff[a];
@@ -173,6 +187,7 @@ int peak_detector(float *buff, struct processing_buffers *p, int a, int b)
 		}
 	}
 	if(max <= 0) return -1;
+	//return i_max;
 	float v[b-a+1];
 	for(i=a; i<=b; i++)
 		v[i-a] = buff[i];
@@ -187,7 +202,7 @@ int peak_detector(float *buff, struct processing_buffers *p, int a, int b)
 
 double estimate_period(struct processing_buffers *p)
 {
-	int estimate = peak_detector(p->samples_sc, p, p->sample_rate / 12, p->sample_rate );
+	int estimate = peak_detector(p->samples_sc, p->sample_rate / 12, p->sample_rate );
 	if(estimate == -1) {
 		debug("no candidate period\n");
 		return -1;
@@ -202,7 +217,7 @@ double estimate_period(struct processing_buffers *p)
 	if(max < 0.2 * p->samples_sc[estimate]) {
 		if(estimate * 2 < p->sample_rate ) {
 			debug("double triggered\n");
-			return peak_detector(p->samples_sc, p,
+			return peak_detector(p->samples_sc,
 					estimate*2 - p->sample_rate / 50,
 					estimate*2 + p->sample_rate / 50);
 		} else {
@@ -216,7 +231,7 @@ int compute_period(struct processing_buffers *b, int bph)
 {
 	double estimate;
 	if(bph)
-		estimate = peak_detector(b->samples_sc, b,
+		estimate = peak_detector(b->samples_sc,
 				7200 * b->sample_rate / bph - b->sample_rate / 50,
 				7200 * b->sample_rate / bph + b->sample_rate / 50);
 	else
@@ -236,7 +251,7 @@ int compute_period(struct processing_buffers *b, int bph)
 		int sup = ceil(new_estimate * cycle + delta);
 		if(sup > b->sample_count * 2 / 3)
 			break;
-		new_estimate = peak_detector(b->samples_sc,b,inf,sup);
+		new_estimate = peak_detector(b->samples_sc,inf,sup);
 		if(new_estimate == -1) {
 			debug("cycle = %d peak not found\n",cycle);
 			return 1;
@@ -312,13 +327,13 @@ int compute_parameters(struct processing_buffers *p)
 
 	fftwf_execute(p->plan_c);
 	for(i=0; i < p->sample_rate+1; i++)
-			p->fft[i] = p->fft[i] * conj(p->fft[i]);
+			p->sc_fft[i] = p->sc_fft[i] * conj(p->sc_fft[i]);
 	fftwf_execute(p->plan_d);
 
-	for(i=0;i<p->period;i++)
-		p->samples_sc[i] = p->waveform_sc[i];
+//	for(i=0;i<p->period;i++)
+//		p->samples_sc[i] = p->waveform_sc[i];
 
-	int tic_to_toc = peak_detector(p->waveform_sc,p,
+	int tic_to_toc = peak_detector(p->waveform_sc,
 			floor(p->period/2)-p->sample_rate/50,
 			floor(p->period/2)+p->sample_rate/50);
 	if(tic_to_toc < 0) {
@@ -373,9 +388,67 @@ int compute_parameters(struct processing_buffers *p)
 	return 0;
 }
 
+void do_locate_events(int *events, struct processing_buffers *p, float *waveform, int last, int offset, int count)
+{
+	int i;
+	memset(p->tic_wf, 0, 2 * p->sample_count * sizeof(float));
+	for(i=0; i<floor(p->period)/2; i++)
+		p->tic_wf[i] = waveform[i];
+
+	fftwf_execute(p->plan_e);
+	for(i=0; i < p->sample_count+1; i++)
+			p->sc_fft[i] = p->fft[i] * conj(p->tic_fft[i]);
+	fftwf_execute(p->plan_f);
+
+	for(i=0; i<count; i++) {
+		int a = round(last - offset - i*p->period - 0.02*p->sample_rate);
+		int b = round(last - offset - i*p->period + 0.02*p->sample_rate);
+		if(a < 0 || b >= p->sample_count)
+			events[i] = -1;
+		else
+			events[i] = offset + peak_detector(p->tic_c,a,b);
+	}
+}
+
+void locate_events(struct processing_buffers *p)
+{
+	int count = 1 + ceil((p->timestamp - p->events_from) / p->period);
+	if(count <= 0 || 2*count > EVENTS_MAX) {
+		p->events[0] = 0;
+		return;
+	}
+
+	int events[2*count];
+	int half = p->tic < p->period/2 ? 0 : round(p->period / 2);
+	int offset = p->tic - half;
+	do_locate_events(events, p, p->waveform + half, p->last_tic + p->sample_count - p->timestamp, offset, count);
+	half = p->toc < p->period/2 ? 0 : round(p->period / 2);
+	offset = p->toc - half;
+	do_locate_events(events+count, p, p->waveform + half, p->last_toc + p->sample_count - p->timestamp, offset, count);
+	qsort(events, 2*count, sizeof(int), int_cmp);
+
+	int i,j;
+	for(i=0, j=0; i < 2*count; i++) {
+		if(events[i] < 0 || events[i] + p->timestamp - p->sample_count < p->events_from)
+			continue;
+		p->events[j++] = events[i] + p->timestamp - p->sample_count;
+	}
+	p->events[j] = 0;
+/*
+	int i;
+	debug("events = ");
+	for(i=0; i<2*count; i++)
+		debug("%d ", events[i]);
+	debug("\n");
+*/
+	for(i=0;i<p->sample_count;i++)
+		p->samples_sc[i] = p->tic_c[i];
+}
+
 void process(struct processing_buffers *p, int bph)
 {
 	int i;
 	prepare_data(p);
 	p->ready = ! ( compute_period(p,bph) || compute_parameters(p) );
+	if(p->ready) locate_events(p);
 }

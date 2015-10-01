@@ -23,6 +23,8 @@
 #define NEGATIVE_SPAN 25
 
 #define EVENTS_COUNT 10000
+#define EVENTS_MAX 100
+#define PAPERSTRIP_ZOOM 10
 
 #define MIN_BPH 12000
 #define MAX_BPH 36000
@@ -41,14 +43,15 @@ struct filter {
 struct processing_buffers {
 	int sample_rate;
 	int sample_count;
-	float *samples, *samples_sc, *waveform, *waveform_sc;
-	fftwf_complex *fft;
-	fftwf_plan plan_a, plan_b, plan_c, plan_d;
+	float *samples, *samples_sc, *waveform, *waveform_sc, *tic_wf, *tic_c;
+	fftwf_complex *fft, *sc_fft, *tic_fft;
+	fftwf_plan plan_a, plan_b, plan_c, plan_d, plan_e, plan_f;
 	struct filter *hpf, *lpf;
 	double period,sigma,be,waveform_max;
 	int tic,toc;
 	int ready;
-	uint64_t timestamp, last_tic, last_toc;
+	uint64_t timestamp, last_tic, last_toc, events_from;
+	uint64_t *events;
 };
 
 void setup_buffers(struct processing_buffers *b);
@@ -57,7 +60,7 @@ void process(struct processing_buffers *p, int bph);
 
 /* audio.c */
 int start_portaudio();
-int analyze_pa_data(struct processing_buffers *p, int bph);
+int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
 
 /* interface.c */
 void debug(char *format,...);

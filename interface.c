@@ -40,6 +40,7 @@ struct main_window {
 
 	uint64_t *events;
 	int events_wp;
+	uint64_t events_from;
 
 	int signal;
 
@@ -277,7 +278,7 @@ gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 		double span_time = p->period * span;
 
 		double a = p->period / 10; /// 2 - span_time;
-		double b = p->period - 1; // / 2 + span_time;
+		double b = p->period * 2; // / 2 + span_time;
 
 		draw_amp_graph(a,b,c,p,w->amp_drawing_area);
 
@@ -469,28 +470,16 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	struct processing_buffers *p = w->get_data(w,&old);
 
 	if(p && !old) {
-		uint64_t first, second;
-		if(p->last_tic < p->last_toc) {
-			first = p->last_tic;
-			second = p->last_toc;
-		} else {
-			first = p->last_toc;
-			second = p->last_tic;
-		}
-		uint64_t threshold = w->events[w->events_wp] + (int)round(p->period / 4);
-		for(i=5; i>=0; i--) {
-			uint64_t delta = round(p->period * i);
-			if(first - delta > threshold) {
+		uint64_t last = w->events[w->events_wp];
+		for(i=0; i<EVENTS_MAX && p->events[i]; i++)
+			if(p->events[i] > last + floor(p->period / 4)) {
 				if(++w->events_wp == EVENTS_COUNT) w->events_wp = 0;
-				w->events[w->events_wp] = first - delta;
+				w->events[w->events_wp] = p->events[i];
 				debug("event at %llu\n",w->events[w->events_wp]);
 			}
-			if(second - delta > threshold) {
-				if(++w->events_wp == EVENTS_COUNT) w->events_wp = 0;
-				w->events[w->events_wp] = second - delta;
-				debug("event at %llu\n",w->events[w->events_wp]);
-			}
-		}
+		w->events_from = p->timestamp - ceil(p->period);
+	} else {
+		w->events_from = timestamp;
 	}
 
 	cairo_t *c;
@@ -510,7 +499,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	double now = sweep*ceil(timestamp/sweep);
 	for(i = w->events_wp;;) {
 		if(!w->events[i]) break;
-		int column = floor(fmod(now - w->events[i], sweep) * strip_width / sweep);
+		int column = floor(fmod(now - w->events[i], (sweep / PAPERSTRIP_ZOOM)) * strip_width / (sweep / PAPERSTRIP_ZOOM));
 		int row = floor((now - w->events[i]) / sweep);
 		if(row >= height) break;
 		cairo_move_to(c,column,row);
@@ -578,6 +567,7 @@ void init_main_window(struct main_window *w)
 	w->events = malloc(EVENTS_COUNT * sizeof(uint64_t));
 	memset(w->events,0,EVENTS_COUNT * sizeof(uint64_t));
 	w->events_wp = 0;
+	w->events_from = 0;
 
 	w->guessed_bph = w->last_bph = DEFAULT_BPH;
 	w->bph = 0;
@@ -710,7 +700,7 @@ struct processing_buffers *int_get_data(struct main_window *w, int *old)
 void int_recompute(struct main_window *w)
 {
 	struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
-	w->signal = analyze_pa_data(p, w->bph);
+	w->signal = analyze_pa_data(p, w->bph, w->events_from);
 	int old;
 	p = int_get_data(w,&old);
 	if(old) w->signal = -w->signal;

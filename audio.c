@@ -48,7 +48,7 @@ error:
 	return 1;
 }
 
-int analyze_pa_data(struct processing_buffers *p, int bph)
+int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 {
 	static uint64_t last_tic = 0;
 	int wp = write_pointer;
@@ -57,18 +57,18 @@ int analyze_pa_data(struct processing_buffers *p, int bph)
 	int i;
 	for(i=0; i<NSTEPS; i++) {
 		int j,k;
-		memset(p[i].samples,0,2 * p[i].sample_count * sizeof(float));
 		k = wp - p[i].sample_count;
 		if(k < 0) k += PA_BUFF_SIZE;
 		for(j=0; j < p[i].sample_count; j++) {
-			// p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
-			p[i].samples[j] = pa_buffers[1][k];
+			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
+			//p[i].samples[j] = pa_buffers[1][k];
 			if(++k == PA_BUFF_SIZE) k = 0;
 		}
 	}
 	for(i=0; i<NSTEPS; i++) {
 		p[i].timestamp = ts;
 		p[i].last_tic = last_tic;
+		p[i].events_from = events_from;
 		process(&p[i],bph);
 		if( !p[i].ready ) break;
 		debug("step %d : %f +- %f\n",i,p[i].period/p[i].sample_rate,p[i].sigma/p[i].sample_rate);
