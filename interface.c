@@ -2,7 +2,7 @@
 
 int preset_bph[] = PRESET_BPH;
 
-void debug(char *format,...)
+void print_debug(char *format,...)
 {
 	va_list args;
 	va_start(args,format);
@@ -23,11 +23,13 @@ struct main_window {
 	GtkWidget *bph_combo_box;
 	GtkWidget *la_spin_button;
 	GtkWidget *output_drawing_area;
-	GtkWidget *amp_drawing_area;
 	GtkWidget *tic_drawing_area;
 	GtkWidget *toc_drawing_area;
-	GtkWidget *waveform_drawing_area;
+	GtkWidget *period_drawing_area;
 	GtkWidget *paperstrip_drawing_area;
+#ifdef DEBUG
+	GtkWidget *debug_drawing_area;
+#endif
 
 	void (*destroy)(GtkWidget *widget, gpointer data);
 	struct processing_buffers *(*get_data)(struct main_window *w, int *old);
@@ -82,10 +84,12 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 	int first = 1;
 	for(n=0; n<2*width; n++) {
 		int i = n < width ? n : 2*width - 1 - n;
-		int j = round(a + i * (b-a) / width);
+		double x = fmod(a + i * (b-a) / width, p->period);
+		if(x < 0) x += p->period;
+		int j = floor(x);
 		double y;
 
-		if(j < 0 || j >= p->period || p->waveform[j] <= 0) y = 0;
+		if(p->waveform[j] <= 0) y = 0;
 		else y = p->waveform[j] * 0.4 / p->waveform_max;
 
 		int k = round(y*height);
@@ -99,7 +103,8 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 	}
 }
 
-void draw_amp_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
+#ifdef DEBUG
+void draw_debug_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
 	int width = da->allocation.width;
 	int height = da->allocation.height;
@@ -111,15 +116,9 @@ void draw_amp_graph(double a, double b, cairo_t *c, struct processing_buffers *p
 	int bi = 1+round(b);
 	if(ai < 0) ai = 0;
 	if(bi > p->sample_count) bi = p->sample_count;
-	int qq = 0;
-	for(i=ai; i<bi; i++) {
-		if(p->samples_sc[i] > max) {
-			max = p->samples_sc[i];
-			qq = i;
-		}
-	}
-
-	debug("+++ max = %f (%d %d %d)\n",max,ai,qq,bi);
+	for(i=ai; i<bi; i++)
+		if(p->debug[i] > max)
+			max = p->debug[i];
 
 	int first = 1;
 	for(i=0; i<width; i++) {
@@ -128,7 +127,7 @@ void draw_amp_graph(double a, double b, cairo_t *c, struct processing_buffers *p
 			if(j < 0) j = 0;
 			if(j >= p->sample_count) j = p->sample_count-1;
 
-			int k = round((0.1+p->samples_sc[j]/max)*0.8*height);
+			int k = round((0.1+p->debug[j]/max)*0.8*height);
 
 			if(first) {
 				cairo_move_to(c,i+.5,height-k-.5);
@@ -138,6 +137,7 @@ void draw_amp_graph(double a, double b, cairo_t *c, struct processing_buffers *p
 		}
 	}
 }
+#endif
 
 double amplitude_to_time(double lift_angle, double amp)
 {
@@ -251,46 +251,6 @@ struct interactive_w_data {
 	struct processing_buffers *old;
 };
 
-gboolean amp_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
-{
-	cairo_t *c;
-
-	int width = w->amp_drawing_area->allocation.width;
-	int height = w->amp_drawing_area->allocation.height;
-	int font = width / 90;
-	if(font < 12)
-		font = 12;
-	int i;
-	double span = amplitude_to_time(w->la,120);
-
-	c = gdk_cairo_create(widget->window);
-	cairo_set_line_width(c,1);
-	cairo_set_font_size(c,font);
-
-	cairo_set_source(c,black);
-	cairo_paint(c);
-
-	int old = 0;
-	//struct processing_buffers *p = w->get_data(w,&old);
-	struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
-
-	if(p) {
-		double span_time = p->period * span;
-
-		double a = p->period / 10; /// 2 - span_time;
-		double b = p->period * 2; // / 2 + span_time;
-
-		draw_amp_graph(a,b,c,p,w->amp_drawing_area);
-
-		cairo_set_source(c,old?yellow:white);
-		cairo_stroke(c);
-	}
-
-	cairo_destroy(c);
-
-	return FALSE;
-}
-
 void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get_offset)(struct processing_buffers*))
 {
 	int width = da->allocation.width;
@@ -374,10 +334,6 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 		cairo_stroke(c);
 	}
 
-//	cairo_set_source(c,white);
-//	cairo_move_to(c,font/2,3*font/2);
-//	cairo_show_text(c,"Beat error (ms)");
-
 	cairo_destroy(c);
 }
 
@@ -403,19 +359,10 @@ gboolean toc_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 	return FALSE;
 }
 
-gboolean waveform_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	cairo_t *c;
-
-	int width = w->waveform_drawing_area->allocation.width;
-	int height = w->waveform_drawing_area->allocation.height;
-	int font = width / 90;
-	if(font < 12)
-		font = 12;
-
-	c = gdk_cairo_create(widget->window);
+	cairo_t *c = gdk_cairo_create(widget->window);
 	cairo_set_line_width(c,1);
-	cairo_set_font_size(c,font);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
@@ -424,37 +371,15 @@ gboolean waveform_expose_event(GtkWidget *widget, GdkEvent *event, struct main_w
 	struct processing_buffers *p = w->get_data(w,&old);
 
 	if(p) {
-		int i;
-		float max = 0;
-		int max_i = 0;
+		double toc = p->tic < p->toc ? p->toc : p->toc + p->period;
+		double a = ((double)p->tic + toc)/2 - p->period/2;
+		double b = ((double)p->tic + toc)/2 + p->period/2;
 
-		for(i=0; i<p->period; i++)
-			if(p->waveform[i] > max) {
-				max = p->waveform[i];
-				max_i = i;
-			}
+		draw_graph(a,b,c,p,w->period_drawing_area);
 
-		int first = 1;
-		for(i=0; i<width; i++) {
-			if( round(i*p->period/width) != round((i+1)*p->period/width) ) {
-				int j = round(i*p->period/width);
-				//j = fmod(j + max_i, p->period);
-				if(j < 0) j = 0;
-				if(j >= p->sample_count) j = p->sample_count-1;
-
-				int k = round((p->waveform[j]+max/10)*(height-1)/(max*1.1));
-				if(k < 0) k = 0;
-				if(k >= height) k = height-1;
-
-				if(first) {
-					cairo_move_to(c,i+.5,height-k-.5);
-					first = 0;
-				} else
-					cairo_line_to(c,i+.5,height-k-.5);
-			}
-		}
 		cairo_set_source(c,old?yellow:white);
-		cairo_stroke(c);
+		cairo_stroke_preserve(c);
+		cairo_fill(c);
 	}
 
 	cairo_destroy(c);
@@ -527,14 +452,47 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	return FALSE;
 }
 
+#ifdef DEBUG
+gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	cairo_t *c;
+
+	c = gdk_cairo_create(widget->window);
+	cairo_set_line_width(c,1);
+
+	cairo_set_source(c,black);
+	cairo_paint(c);
+
+	int old = 0;
+	struct processing_buffers *p = w->get_data(w,&old);
+	//struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
+
+	if(p) {
+		double a = p->period / 10;
+		double b = p->period * 2;
+
+		draw_debug_graph(a,b,c,p,w->debug_drawing_area);
+
+		cairo_set_source(c,old?yellow:white);
+		cairo_stroke(c);
+	}
+
+	cairo_destroy(c);
+
+	return FALSE;
+}
+#endif
+
 void redraw(struct main_window *w)
 {
 	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,w->output_drawing_area->allocation.width,w->output_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->amp_drawing_area,0,0,w->amp_drawing_area->allocation.width,w->amp_drawing_area->allocation.height);
 	gtk_widget_queue_draw_area(w->tic_drawing_area,0,0,w->tic_drawing_area->allocation.width,w->tic_drawing_area->allocation.height);
 	gtk_widget_queue_draw_area(w->toc_drawing_area,0,0,w->toc_drawing_area->allocation.width,w->toc_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->waveform_drawing_area,0,0,w->waveform_drawing_area->allocation.width,w->waveform_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->period_drawing_area,0,0,w->period_drawing_area->allocation.width,w->period_drawing_area->allocation.height);
 	gtk_widget_queue_draw_area(w->paperstrip_drawing_area,0,0,w->paperstrip_drawing_area->allocation.width,w->paperstrip_drawing_area->allocation.height);
+#ifdef DEBUG
+	gtk_widget_queue_draw_area(w->debug_drawing_area,0,0,w->debug_drawing_area->allocation.width,w->debug_drawing_area->allocation.height);
+#endif
 }
 
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
@@ -655,21 +613,23 @@ void init_main_window(struct main_window *w)
 	gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->toc_drawing_area);
 
-	w->amp_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->amp_drawing_area),500,200);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->amp_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->amp_drawing_area),"expose_event",
-			(GtkSignalFunc)amp_expose_event, w);
-	gtk_widget_set_events(w->amp_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(w->amp_drawing_area);
+	w->period_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->period_drawing_area),500,200);
+	gtk_box_pack_start(GTK_BOX(vbox2),w->period_drawing_area,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->period_drawing_area),"expose_event",
+			(GtkSignalFunc)period_expose_event, w);
+	gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->period_drawing_area);
 
-	w->waveform_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->waveform_drawing_area),500,200);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->waveform_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->waveform_drawing_area),"expose_event",
-			(GtkSignalFunc)waveform_expose_event, w);
-	gtk_widget_set_events(w->waveform_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(w->waveform_drawing_area);
+#ifdef DEBUG
+	w->debug_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->debug_drawing_area),500,200);
+	gtk_box_pack_start(GTK_BOX(vbox2),w->debug_drawing_area,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->debug_drawing_area),"expose_event",
+			(GtkSignalFunc)debug_expose_event, w);
+	gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->debug_drawing_area);
+#endif
 
 	gtk_window_maximize(GTK_WINDOW(w->window));
 	gtk_widget_show(w->window);
@@ -687,7 +647,7 @@ struct processing_buffers *int_get_data(struct main_window *w, int *old)
 	int i;
 	for(i=0; i<NSTEPS && p[i].ready; i++);
 	if(i && p[i-1].sigma < p[i-1].period / 10000) {
-		if(d->old) pb_destroy(d->old);
+		if(d->old) pb_destroy_clone(d->old);
 		d->old = pb_clone(&p[i-1]);
 		*old = 0;
 		return &p[i-1];

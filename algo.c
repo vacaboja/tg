@@ -72,6 +72,9 @@ void setup_buffers(struct processing_buffers *b)
 	make_lp(b->lpf,(double)FILTER_CUTOFF/b->sample_rate);
 	b->events = malloc(EVENTS_MAX * sizeof(uint64_t));
 	b->ready = 0;
+#ifdef DEBUG
+	b->debug = fftwf_malloc(b->sample_count * sizeof(float));
+#endif
 }
 
 struct processing_buffers *pb_clone(struct processing_buffers *p)
@@ -81,10 +84,12 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->waveform = malloc(new->sample_rate * sizeof(float));
 	memcpy(new->waveform, p->waveform, new->sample_rate * sizeof(float));
 
-	new->sample_count = p->sample_count;
-	new->samples_sc = malloc(new->sample_count * sizeof(float));
-	memcpy(new->samples_sc, p->samples_sc, new->sample_rate * sizeof(float));
+#ifdef DEBUG
+	new->debug = malloc(p->sample_count * sizeof(float));
+	memcpy(new->debug, p->debug, p->sample_count * sizeof(float));
+#endif
 
+	new->sample_count = p->sample_count;
 	new->period = p->period;
 	new->sigma = p->sigma;
 	new->be = p->be;
@@ -95,11 +100,12 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	return new;
 }
 
-void pb_destroy(struct processing_buffers *p)
+void pb_destroy_clone(struct processing_buffers *p)
 {
-	// Future BUG: we free only waveform
 	free(p->waveform);
-	free(p->samples_sc);
+#ifdef DEBUG
+	free(p->debug);
+#endif
 	free(p);
 }
 
@@ -145,7 +151,6 @@ void noise_suppressor(struct processing_buffers *p)
 void prepare_data(struct processing_buffers *b)
 {
 	int i;
-	int first_fft_size = b->sample_count/2 + 1;
 
 	memset(b->samples + b->sample_count, 0, b->sample_count * sizeof(float));
 	run_filter(b->hpf, b->samples, b->sample_count);
@@ -173,6 +178,11 @@ void prepare_data(struct processing_buffers *b)
 	for(i=0; i < b->sample_count+1; i++)
 			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
+
+#ifdef DEBUG
+	for(i=0; i < b->sample_count+1; i++)
+		b->debug[i] = b->samples_sc[i];
+#endif
 }
 
 int peak_detector(float *buff, int a, int b)
@@ -187,7 +197,6 @@ int peak_detector(float *buff, int a, int b)
 		}
 	}
 	if(max <= 0) return -1;
-	//return i_max;
 	float v[b-a+1];
 	for(i=a; i<=b; i++)
 		v[i-a] = buff[i];
@@ -337,8 +346,6 @@ int compute_parameters(struct processing_buffers *p)
 			floor(p->period/2)-p->sample_rate/50,
 			floor(p->period/2)+p->sample_rate/50);
 	if(tic_to_toc < 0) {
-		p->tic = p->toc = -1;
-		p->be = -1;
 		debug("beat error = ---\n");
 		return 1;
 	} else {
@@ -346,27 +353,23 @@ int compute_parameters(struct processing_buffers *p)
 		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
-	double max = 0;
+	float max = 0;
 	int max_i = -1;
-	for(i=0;i<p->period;i++) {
-		if(p->waveform[i] > max) {
-			max = p->waveform[i];
+	for(i=0; i + tic_to_toc < p->period; i++) {
+		float x = p->waveform[i] + p->waveform[i+tic_to_toc];
+		if(x > max) {
+			max = x;
 			max_i = i;
 		}
 	}
-	p->waveform_max = max;
+	if(max_i < 0) return 1;
+	p->tic = max_i;
+	p->toc = max_i + tic_to_toc;
 
-	if(max_i < p->period/2) {
-		p->tic = max_i;
-		p->toc = max_i + tic_to_toc;
-		if(p->toc > p->period)
-			p->toc = floor(p->period);
-	} else {
-		p->toc = max_i;
-		p->tic = max_i - tic_to_toc;
-		if(p->tic < 0)
-			p->tic = 0;
-	}
+	p->waveform_max = 0;
+	for(i=0; i < p->period; i++)
+		if(p->waveform[i] > p->waveform_max)
+			p->waveform_max = p->waveform[i];
 
 	double phase = p->timestamp - p->last_tic;
 	double apparent_phase = p->sample_count - (s + p->tic);
@@ -434,20 +437,10 @@ void locate_events(struct processing_buffers *p)
 		p->events[j++] = events[i] + p->timestamp - p->sample_count;
 	}
 	p->events[j] = 0;
-/*
-	int i;
-	debug("events = ");
-	for(i=0; i<2*count; i++)
-		debug("%d ", events[i]);
-	debug("\n");
-*/
-	for(i=0;i<p->sample_count;i++)
-		p->samples_sc[i] = p->tic_c[i];
 }
 
 void process(struct processing_buffers *p, int bph)
 {
-	int i;
 	prepare_data(p);
 	p->ready = ! ( compute_period(p,bph) || compute_parameters(p) );
 	if(p->ready) locate_events(p);

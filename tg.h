@@ -35,6 +35,12 @@
 
 #define PRESET_BPH { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 0 };
 
+#ifdef DEBUG
+#define debug(...) print_debug(__VA_ARGS__)
+#else
+#define debug(...)
+#endif
+
 /* algo.c */
 struct filter {
 	double a0,a1,a2,b1,b2;
@@ -52,10 +58,14 @@ struct processing_buffers {
 	int ready;
 	uint64_t timestamp, last_tic, last_toc, events_from;
 	uint64_t *events;
+#ifdef DEBUG
+	float *debug;
+#endif
 };
 
 void setup_buffers(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
+void pb_destroy_clone(struct processing_buffers *p);
 void process(struct processing_buffers *p, int bph);
 
 /* audio.c */
@@ -63,5 +73,5 @@ int start_portaudio();
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
 
 /* interface.c */
-void debug(char *format,...);
+void print_debug(char *format,...);
 void error(char *format,...);
