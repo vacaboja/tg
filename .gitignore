@@ -1,4 +1,5 @@
 .*
 !.gitignore
 tg
+tg-lt
 tg-dbg

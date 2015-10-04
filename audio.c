@@ -72,15 +72,27 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 	int wp = write_pointer;
 	uint64_t ts = timestamp;
 	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
+#ifdef LIGHT
+	if(wp % 2) wp--;
+	ts /= 2;
+#endif
 	int i;
 	for(i=0; i<NSTEPS; i++) {
 		int j,k;
+#ifdef LIGHT
+		k = wp - 2*p[i].sample_count;
+#else
 		k = wp - p[i].sample_count;
+#endif
 		if(k < 0) k += PA_BUFF_SIZE;
 		for(j=0; j < p[i].sample_count; j++) {
 			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
-			//p[i].samples[j] = pa_buffers[1][k];
-			if(++k == PA_BUFF_SIZE) k = 0;
+#ifdef LIGHT
+			k += 2;
+#else
+			k++;
+#endif
+			if(k == PA_BUFF_SIZE) k = 0;
 		}
 	}
 	for(i=0; i<NSTEPS; i++) {

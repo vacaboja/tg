@@ -172,7 +172,9 @@ void prepare_data(struct processing_buffers *b)
 
 	memset(b->samples + b->sample_count, 0, b->sample_count * sizeof(float));
 	run_filter(b->hpf, b->samples, b->sample_count);
+#ifndef LIGHT
 	noise_suppressor(b);
+#endif
 
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);

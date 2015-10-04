@@ -467,7 +467,11 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 {
 	int i,old;
 	struct processing_buffers *p = get_data(w,&old);
-
+#ifdef LIGHT
+	uint64_t time = timestamp / 2;
+#else
+	uint64_t time = timestamp;
+#endif
 	if(p && !old) {
 		uint64_t last = w->events[w->events_wp];
 		for(i=0; i<EVENTS_MAX && p->events[i]; i++)
@@ -478,7 +482,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 			}
 		w->events_from = p->timestamp - ceil(p->period);
 	} else {
-		w->events_from = timestamp;
+		w->events_from = time;
 	}
 
 	cairo_t *c;
@@ -491,15 +495,14 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_source(c,black);
 	cairo_paint(c);
 
-	uint64_t time = timestamp;
 	int stopped = 0;
-	if(w->events[w->events_wp] && time > 5*PA_SAMPLE_RATE + w->events[w->events_wp]) {
-		time = 5*PA_SAMPLE_RATE + w->events[w->events_wp];
+	if(w->events[w->events_wp] && time > 5*SAMPLE_RATE + w->events[w->events_wp]) {
+		time = 5*SAMPLE_RATE + w->events[w->events_wp];
 		stopped = 1;
 	}
 
 	int strip_width = width * 9 / 10;
-	double sweep = PA_SAMPLE_RATE * 3600. / w->guessed_bph;
+	double sweep = SAMPLE_RATE * 3600. / w->guessed_bph;
 	double now = sweep*ceil(time/sweep);
 
 	cairo_move_to(c, width/20 + .5, .5);
@@ -509,7 +512,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_source(c, green);
 	cairo_stroke(c);
 
-	double ten_s = PA_SAMPLE_RATE * 10 / sweep;
+	double ten_s = SAMPLE_RATE * 10 / sweep;
 	double last_line = fmod(now/sweep, ten_s);
 	int last_tenth = floor(now/(sweep*ten_s));
 	for(i=0;;i++) {
@@ -683,7 +686,7 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(vbox2);
 
 	w->output_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->output_drawing_area),500,OUTPUT_WINDOW_HEIGHT);
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->output_drawing_area),700,OUTPUT_WINDOW_HEIGHT);
 	gtk_box_pack_start(GTK_BOX(vbox2),w->output_drawing_area,FALSE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->output_drawing_area),"expose_event",
 			(GtkSignalFunc)output_expose_event, w);
@@ -691,7 +694,7 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(w->output_drawing_area);
 
 	w->tic_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->tic_drawing_area),500,200);
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->tic_drawing_area),700,100);
 	gtk_box_pack_start(GTK_BOX(vbox2),w->tic_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->tic_drawing_area),"expose_event",
 			(GtkSignalFunc)tic_expose_event, w);
@@ -699,7 +702,7 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(w->tic_drawing_area);
 
 	w->toc_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->toc_drawing_area),500,200);
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->toc_drawing_area),700,100);
 	gtk_box_pack_start(GTK_BOX(vbox2),w->toc_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->toc_drawing_area),"expose_event",
 			(GtkSignalFunc)toc_expose_event, w);
@@ -707,7 +710,7 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(w->toc_drawing_area);
 
 	w->period_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->period_drawing_area),500,200);
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->period_drawing_area),700,100);
 	gtk_box_pack_start(GTK_BOX(vbox2),w->period_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->period_drawing_area),"expose_event",
 			(GtkSignalFunc)period_expose_event, w);
@@ -716,7 +719,7 @@ void init_main_window(struct main_window *w)
 
 #ifdef DEBUG
 	w->debug_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->debug_drawing_area),500,200);
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->debug_drawing_area),500,100);
 	gtk_box_pack_start(GTK_BOX(vbox2),w->debug_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->debug_drawing_area),"expose_event",
 			(GtkSignalFunc)debug_expose_event, w);
@@ -734,8 +737,8 @@ int run_interface()
 	struct processing_buffers p[NSTEPS];
 	int i;
 	for(i=0; i<NSTEPS; i++) {
-		p[i].sample_rate = PA_SAMPLE_RATE;
-		p[i].sample_count = PA_SAMPLE_RATE * (1<<(i+FIRST_STEP));
+		p[i].sample_rate = SAMPLE_RATE;
+		p[i].sample_count = SAMPLE_RATE * (1<<(i+FIRST_STEP));
 		setup_buffers(&p[i]);
 		p[i].period = -1;
 	}
