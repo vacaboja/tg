@@ -432,7 +432,9 @@ void locate_events(struct processing_buffers *p)
 
 	int i,j;
 	for(i=0, j=0; i < 2*count; i++) {
-		if(events[i] < 0 || events[i] + p->timestamp - p->sample_count < p->events_from)
+		if(events[i] < 0 ||
+				events[i] + p->timestamp < p->sample_count ||
+				events[i] + p->timestamp - p->sample_count < p->events_from)
 			continue;
 		p->events[j++] = events[i] + p->timestamp - p->sample_count;
 	}

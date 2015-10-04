@@ -31,9 +31,8 @@ struct main_window {
 	GtkWidget *debug_drawing_area;
 #endif
 
-	void (*destroy)(GtkWidget *widget, gpointer data);
-	struct processing_buffers *(*get_data)(struct main_window *w, int *old);
-	void (*recompute)(struct main_window *w);
+	struct processing_buffers *bfs;
+	struct processing_buffers *old;
 
 	int bph;
 	int guessed_bph;
@@ -45,9 +44,70 @@ struct main_window {
 	uint64_t events_from;
 
 	int signal;
-
-	void *data;
 };
+
+void redraw(struct main_window *w)
+{
+	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,w->output_drawing_area->allocation.width,w->output_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->tic_drawing_area,0,0,w->tic_drawing_area->allocation.width,w->tic_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->toc_drawing_area,0,0,w->toc_drawing_area->allocation.width,w->toc_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->period_drawing_area,0,0,w->period_drawing_area->allocation.width,w->period_drawing_area->allocation.height);
+	gtk_widget_queue_draw_area(w->paperstrip_drawing_area,0,0,w->paperstrip_drawing_area->allocation.width,w->paperstrip_drawing_area->allocation.height);
+#ifdef DEBUG
+	gtk_widget_queue_draw_area(w->debug_drawing_area,0,0,w->debug_drawing_area->allocation.width,w->debug_drawing_area->allocation.height);
+#endif
+}
+
+int guess_bph(double period)
+{
+	double bph = 7200 / period;
+	double min = bph;
+	int i,ret;
+
+	ret = 0;
+	for(i=0; preset_bph[i]; i++) {
+		double diff = fabs(bph - preset_bph[i]);
+		if(diff < min) {
+			min = diff;
+			ret = i;
+		}
+	}
+
+	return preset_bph[ret];
+}
+
+struct processing_buffers *get_data(struct main_window *w, int *old)
+{
+	struct processing_buffers *p = w->bfs;
+	int i;
+	for(i=0; i<NSTEPS && p[i].ready; i++);
+	if(i && p[i-1].sigma < p[i-1].period / 10000) {
+		if(w->old) pb_destroy_clone(w->old);
+		w->old = pb_clone(&p[i-1]);
+		*old = 0;
+		return &p[i-1];
+	} else {
+		*old = 1;
+		return w->old;
+	}
+}
+
+void recompute(struct main_window *w)
+{
+	w->signal = analyze_pa_data(w->bfs, w->bph, w->events_from);
+	int old;
+	struct processing_buffers *p = get_data(w,&old);
+	if(old) w->signal = -w->signal;
+	if(p)
+		w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / p->sample_rate);
+}
+
+guint refresh(struct main_window *w)
+{
+	recompute(w);
+	redraw(w);
+	return TRUE;
+}
 
 cairo_pattern_t *black,*white,*red,*green,*gray,*blue,*yellow,*yellowish,*magenta;
 
@@ -144,24 +204,6 @@ double amplitude_to_time(double lift_angle, double amp)
 	return asin(lift_angle / (2 * amp)) / M_PI;
 }
 
-int guess_bph(double period)
-{
-	double bph = 7200 / period;
-	double min = bph;
-	int i,ret;
-
-	ret = 0;
-	for(i=0; preset_bph[i]; i++) {
-		double diff = fabs(bph - preset_bph[i]);
-		if(diff < min) {
-			min = diff;
-			ret = i;
-		}
-	}
-
-	return preset_bph[ret];
-}
-
 double draw_watch_icon(cairo_t *c, int signal)
 {
 	int happy = !!signal;
@@ -200,7 +242,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	cairo_paint(c);
 
 	int old;
-	struct processing_buffers *p = w->get_data(w,&old);
+	struct processing_buffers *p = get_data(w,&old);
 
 	double x = draw_watch_icon(c,w->signal);
 
@@ -246,11 +288,6 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	return FALSE;
 }
 
-struct interactive_w_data {
-	struct processing_buffers *bfs;
-	struct processing_buffers *old;
-};
-
 void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get_offset)(struct processing_buffers*))
 {
 	int width = da->allocation.width;
@@ -288,7 +325,7 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 	}
 
 	int old;
-	struct processing_buffers *p = w->get_data(w,&old);
+	struct processing_buffers *p = get_data(w,&old);
 	double period = p ? p->period / p->sample_rate : 7200. / w->guessed_bph;
 
 	for(i = 10; i < 360; i+=10) {
@@ -361,14 +398,28 @@ gboolean toc_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window
 
 gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
+	int width = w->period_drawing_area->allocation.width;
+	int height = w->period_drawing_area->allocation.height;
 	cairo_t *c = gdk_cairo_create(widget->window);
 	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
 
+	int i;
+	for(i = 1; i < 16; i++) {
+		int x = i * width / 16;
+		cairo_move_to(c, x+.5, .5);
+		cairo_line_to(c, x+.5, height - .5);
+		if(i % 4)
+			cairo_set_source(c,green);
+		else
+			cairo_set_source(c,red);
+		cairo_stroke(c);
+	}
+
 	int old;
-	struct processing_buffers *p = w->get_data(w,&old);
+	struct processing_buffers *p = get_data(w,&old);
 
 	if(p) {
 		double toc = p->tic < p->toc ? p->toc : p->toc + p->period;
@@ -380,6 +431,11 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		cairo_set_source(c,old?yellow:white);
 		cairo_stroke_preserve(c);
 		cairo_fill(c);
+	} else {
+		cairo_move_to(c, .5, height / 2 + .5);
+		cairo_line_to(c, width - .5, height / 2 + .5);
+		cairo_set_source(c,yellow);
+		cairo_stroke(c);
 	}
 
 	cairo_destroy(c);
@@ -392,7 +448,7 @@ extern volatile uint64_t timestamp;
 gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
 	int i,old;
-	struct processing_buffers *p = w->get_data(w,&old);
+	struct processing_buffers *p = get_data(w,&old);
 
 	if(p && !old) {
 		uint64_t last = w->events[w->events_wp];
@@ -417,11 +473,37 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_source(c,black);
 	cairo_paint(c);
 
-	cairo_set_source(c,white);
+	uint64_t time = timestamp;
+	int stopped = 0;
+	if(w->events[w->events_wp] && time > 5*PA_SAMPLE_RATE + w->events[w->events_wp]) {
+		time = 5*PA_SAMPLE_RATE + w->events[w->events_wp];
+		stopped = 1;
+	}
 
 	int strip_width = width * 9 / 10;
 	double sweep = PA_SAMPLE_RATE * 3600. / w->guessed_bph;
-	double now = sweep*ceil(timestamp/sweep);
+	double now = sweep*ceil(time/sweep);
+
+	cairo_move_to(c, width/20 + .5, .5);
+	cairo_line_to(c, width/20 + .5, height - .5);
+	cairo_move_to(c, 19*width/20 + .5, .5);
+	cairo_line_to(c, 19*width/20 + .5, height - .5);
+	cairo_set_source(c, green);
+	cairo_stroke(c);
+
+	double ten_s = PA_SAMPLE_RATE * 10 / sweep;
+	double last_line = fmod(now/sweep, ten_s);
+	int last_tenth = floor(now/(sweep*ten_s));
+	for(i=0;;i++) {
+		double y = 0.5 + round(last_line + i*ten_s);
+		if(y > height) break;
+		cairo_move_to(c, .5, y);
+		cairo_line_to(c, width-.5, y);
+		cairo_set_source(c, (last_tenth-i)%6 ? green : red);
+		cairo_stroke(c);
+	}
+
+	cairo_set_source(c,stopped?yellow:white);
 	for(i = w->events_wp;;) {
 		if(!w->events[i]) break;
 		int column = floor(fmod(now - w->events[i], (sweep / PAPERSTRIP_ZOOM)) * strip_width / (sweep / PAPERSTRIP_ZOOM));
@@ -464,7 +546,7 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 	cairo_paint(c);
 
 	int old = 0;
-	struct processing_buffers *p = w->get_data(w,&old);
+	struct processing_buffers *p = get_data(w,&old);
 	//struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
 
 	if(p) {
@@ -483,18 +565,6 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 }
 #endif
 
-void redraw(struct main_window *w)
-{
-	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,w->output_drawing_area->allocation.width,w->output_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->tic_drawing_area,0,0,w->tic_drawing_area->allocation.width,w->tic_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->toc_drawing_area,0,0,w->toc_drawing_area->allocation.width,w->toc_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->period_drawing_area,0,0,w->period_drawing_area->allocation.width,w->period_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->paperstrip_drawing_area,0,0,w->paperstrip_drawing_area->allocation.width,w->paperstrip_drawing_area->allocation.height);
-#ifdef DEBUG
-	gtk_widget_queue_draw_area(w->debug_drawing_area,0,0,w->debug_drawing_area->allocation.width,w->debug_drawing_area->allocation.height);
-#endif
-}
-
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
 {
 	char *s = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(b));
@@ -505,7 +575,7 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 		if(*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
 		else w->bph = w->guessed_bph = n;
 		g_free(s);
-		w->recompute(w);
+		recompute(w);
 		redraw(w);
 	}
 }
@@ -516,6 +586,11 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
 	w->la = la;
 	redraw(w);
+}
+
+void quit()
+{
+	gtk_main_quit();
 }
 
 void init_main_window(struct main_window *w)
@@ -534,7 +609,7 @@ void init_main_window(struct main_window *w)
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_container_set_border_width(GTK_CONTAINER(w->window),10);
 	g_signal_connect(G_OBJECT(w->window),"delete_event",G_CALLBACK(delete_event),NULL);
-	g_signal_connect(G_OBJECT(w->window),"destroy",G_CALLBACK(w->destroy),w);
+	g_signal_connect(G_OBJECT(w->window),"destroy",G_CALLBACK(quit),w);
 
 	GtkWidget *vbox = gtk_vbox_new(FALSE,10);
 	gtk_container_add(GTK_CONTAINER(w->window),vbox);
@@ -633,49 +708,10 @@ void init_main_window(struct main_window *w)
 
 	gtk_window_maximize(GTK_WINDOW(w->window));
 	gtk_widget_show(w->window);
+	gtk_window_set_focus(GTK_WINDOW(w->window), NULL);
 }
 
-void quit()
-{
-	gtk_main_quit();
-}
-
-struct processing_buffers *int_get_data(struct main_window *w, int *old)
-{
-	struct interactive_w_data *d = w->data;
-	struct processing_buffers *p = d->bfs;
-	int i;
-	for(i=0; i<NSTEPS && p[i].ready; i++);
-	if(i && p[i-1].sigma < p[i-1].period / 10000) {
-		if(d->old) pb_destroy_clone(d->old);
-		d->old = pb_clone(&p[i-1]);
-		*old = 0;
-		return &p[i-1];
-	} else {
-		*old = 1;
-		return d->old;
-	}
-}
-
-void int_recompute(struct main_window *w)
-{
-	struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
-	w->signal = analyze_pa_data(p, w->bph, w->events_from);
-	int old;
-	p = int_get_data(w,&old);
-	if(old) w->signal = -w->signal;
-	if(p)
-		w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / p->sample_rate);
-}
-
-guint refresh(struct main_window *w)
-{
-	w->recompute(w);
-	redraw(w);
-	return TRUE;
-}
-
-int run_interactively()
+int run_interface()
 {
 	struct processing_buffers p[NSTEPS];
 	int i;
@@ -688,13 +724,8 @@ int run_interactively()
 	if(start_portaudio()) return 1;
 
 	struct main_window w;
-	struct interactive_w_data d;
-	d.bfs = p;
-	d.old = NULL;
-	w.destroy = quit;
-	w.data = &d;
-	w.get_data = int_get_data;
-	w.recompute = int_recompute;
+	w.bfs = p;
+	w.old = NULL;
 
 	init_main_window(&w);
 
@@ -710,5 +741,5 @@ int main(int argc, char **argv)
 	gtk_init(&argc, &argv);
 	initialize_palette();
 
-	return run_interactively();
+	return run_interface();
 }
