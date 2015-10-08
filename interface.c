@@ -333,8 +333,8 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 	}
 	cairo_set_source(c,white);
 	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
-		int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 		if(!(i%5)) {
+			int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 			char s[10];
 			sprintf(s,"%d",i);
 			cairo_move_to(c,x+font/4,height-font/2);
@@ -359,15 +359,23 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 			cairo_set_source(c,red);
 		cairo_stroke(c);
 	}
+
+	double last_x = 0;
 	cairo_set_source(c,white);
 	for(i = 50; i < 360; i+=50) {
 		double t = period*amplitude_to_time(w->la,i);
 		if(t > .001 * NEGATIVE_SPAN) continue;
 		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
-		char s[10];
-		sprintf(s,"%d",abs(i));
-		cairo_move_to(c,x+font/4,font * 3 / 2);
-		cairo_show_text(c,s);
+		if(x > last_x) {
+			char s[10];
+			cairo_text_extents_t extents;
+
+			sprintf(s,"%d",abs(i));
+			cairo_move_to(c, x + font/4, font * 3 / 2);
+			cairo_show_text(c,s);
+			cairo_text_extents(c,s,&extents);
+			last_x = x + font/4 + extents.x_advance;
+		}
 	}
 
 	if(p) {
@@ -491,6 +499,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	int height = w->paperstrip_drawing_area->allocation.height;
 
 	c = gdk_cairo_create(widget->window);
+	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
