@@ -318,7 +318,7 @@ float tmean(float *x, int n)
 	return sum/(n*4/5);
 }
 
-int compute_parameters(struct processing_buffers *p)
+void prepare_waveform(struct processing_buffers *p)
 {
 	int i;
 	double x = 0, y = 0;
@@ -327,7 +327,7 @@ int compute_parameters(struct processing_buffers *p)
 		x += p->samples[i] * cos(a);
 		y += p->samples[i] * sin(a);
 	}
-	double s = p->period * (M_PI + atan2(y,x)) / (4 * M_PI);
+	p->phase = p->period * (M_PI + atan2(y,x)) / (4 * M_PI);
 
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
@@ -335,7 +335,7 @@ int compute_parameters(struct processing_buffers *p)
 	float bin[(int)ceil(1 + p->sample_count / p->period)];
 	for(i=0; i < p->period; i++) {
 		int j;
-		double k = fmod(i+s,p->period);
+		double k = fmod(i+p->phase,p->period);
 		for(j=0;;j++) {
 			int n = round(k+j*p->period);
 			if(n >= p->sample_count) break;
@@ -348,20 +348,17 @@ int compute_parameters(struct processing_buffers *p)
 		p->waveform_sc[i] = p->waveform[i];
 	qsort(p->waveform_sc,floor(p->period),sizeof(float),fl_cmp);
 	double nl = p->waveform_sc[(int)floor(p->period/2)];
-	for(i=0; i<p->period; i++) {
+	for(i=0; i<p->period; i++)
 		p->waveform[i] -= nl;
-		//p->waveform[i] = cbrt(p->waveform[i]);
-		//if(p->waveform[i] <= 0) p->waveform[i] = 0;
-	}
 
 	fftwf_execute(p->plan_c);
 	for(i=0; i < p->sample_rate+1; i++)
 			p->sc_fft[i] = p->sc_fft[i] * conj(p->sc_fft[i]);
 	fftwf_execute(p->plan_d);
+}
 
-//	for(i=0;i<p->period;i++)
-//		p->samples_sc[i] = p->waveform_sc[i];
-
+int compute_parameters(struct processing_buffers *p)
+{
 	int tic_to_toc = peak_detector(p->waveform_sc,
 			floor(p->period/2)-p->sample_rate/50,
 			floor(p->period/2)+p->sample_rate/50);
@@ -373,18 +370,36 @@ int compute_parameters(struct processing_buffers *p)
 		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
-	float max = 0;
-	int max_i = -1;
-	for(i=0; i + tic_to_toc < p->period; i++) {
+	double r_av = 0;
+	double u = 0;
+	int window = p->sample_rate / 2000;
+	double k = 1 - (1. / window);
+	int i;
+	for(i=0; i < window; i++) {
+		u *= k;
 		float x = p->waveform[i] + p->waveform[i+tic_to_toc];
-		if(x > max) {
-			max = x;
+		if(x > u) u = x;
+		r_av += u;
+	}
+	double max = 0;
+	int max_i = -1;
+	double w = 0;
+	for(i=0; i + tic_to_toc + window < p->period; i++) {
+		if(r_av > max) {
+			max = r_av;
 			max_i = i;
 		}
+		u *= k;
+		w *= k;
+		float x = p->waveform[i+window] + p->waveform[i+tic_to_toc+window];
+		float y = p->waveform[i] + p->waveform[i+tic_to_toc];
+		if(x > u) u = x;
+		if(y > w) w = y;
+		r_av += u - w;
 	}
 	if(max_i < 0) return 1;
 	p->tic = max_i;
-	p->toc = max_i + tic_to_toc;
+	p->toc = p->tic + tic_to_toc;
 
 	p->waveform_max = 0;
 	for(i=0; i < p->period; i++)
@@ -392,7 +407,7 @@ int compute_parameters(struct processing_buffers *p)
 			p->waveform_max = p->waveform[i];
 
 	double phase = p->timestamp - p->last_tic;
-	double apparent_phase = p->sample_count - (s + p->tic);
+	double apparent_phase = p->sample_count - (p->phase + p->tic);
 	double shift = fmod(apparent_phase - phase, p->period);
 	if(shift < 0) shift += p->period;
 	debug("shift = %.3f\n",shift / p->period);
@@ -402,9 +417,9 @@ int compute_parameters(struct processing_buffers *p)
 		int t = p->tic;
 		p->tic = p->toc;
 		p->toc = t;
-		apparent_phase = p->sample_count - (s + p->tic);
+		apparent_phase = p->sample_count - (p->phase + p->tic);
 	} else
-		p->last_toc = p->timestamp - (uint64_t)round(fmod(p->sample_count - (s + p->toc), p->period));
+		p->last_toc = p->timestamp - (uint64_t)round(fmod(p->sample_count - (p->phase + p->toc), p->period));
 
 	p->last_tic = p->timestamp - (uint64_t)round(fmod(apparent_phase, p->period));
 
@@ -464,6 +479,10 @@ void locate_events(struct processing_buffers *p)
 void process(struct processing_buffers *p, int bph)
 {
 	prepare_data(p);
-	p->ready = ! ( compute_period(p,bph) || compute_parameters(p) );
-	if(p->ready) locate_events(p);
+	p->ready = !compute_period(p,bph);
+	if(!p->ready) return;
+	prepare_waveform(p);
+	p->ready = !compute_parameters(p);
+	if(!p->ready) return;
+	locate_events(p);
 }

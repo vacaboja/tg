@@ -84,7 +84,7 @@ struct processing_buffers {
 	fftwf_complex *fft, *sc_fft, *tic_fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d, plan_e, plan_f;
 	struct filter *hpf, *lpf;
-	double period,sigma,be,waveform_max;
+	double period,sigma,be,waveform_max,phase;
 	int tic,toc;
 	int ready;
 	uint64_t timestamp, last_tic, last_toc, events_from;
