@@ -249,6 +249,11 @@ double draw_watch_icon(cairo_t *c, int signal)
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
+double get_rate(int bph, struct processing_buffers *p)
+{
+	return (7200/(bph*p->period / p->sample_rate) - 1)*24*3600;
+}
+
 gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
 	cairo_t *c;
@@ -269,10 +274,9 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 	if(p) {
 		int bph = w->guessed_bph;
-		double rate = (7200/(bph*p->period / p->sample_rate) - 1)*24*3600;
-		double be = fabs(p->be) * 1000 / p->sample_rate;
-		rate = round(rate);
+		double rate = round(get_rate(bph, p));
 		if(rate == 0) rate = 0;
+		double be = fabs(p->be) * 1000 / p->sample_rate;
 		sprintf(rates,"%s%.0f s/d   %.1f ms   ",rate > 0 ? "+" : "",rate,be);
 		sprintf(bphs,"%d bph",bph);
 	} else {
@@ -499,7 +503,6 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	int height = w->paperstrip_drawing_area->allocation.height;
 
 	c = gdk_cairo_create(widget->window);
-	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
@@ -511,8 +514,40 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	}
 
 	int strip_width = width * 9 / 10;
-	double sweep = SAMPLE_RATE * 3600. / w->guessed_bph;
-	double now = sweep*ceil(time/sweep);
+
+	cairo_set_line_width(c,1.3);
+
+	if(p) {
+		double rate = get_rate(w->guessed_bph,p);
+		double slope = - rate * strip_width * PAPERSTRIP_ZOOM / (3600. * 24.);
+		if(slope <= 1 && slope >= -1) {
+			for(i=0; i<4; i++) {
+				double y = 0;
+				cairo_move_to(c, (double)width * (i+.5) / 4, 0);
+				for(;;) {
+					double x = y * slope + (double)width * (i+.5) / 4;
+					x = fmod(x, width);
+					if(x < 0) x += width;
+					double nx = x + slope * (height - y);
+					if(nx >= 0 && nx <= width) {
+						cairo_line_to(c, nx, height);
+						break;
+					} else {
+						double d = slope > 0 ? width - x : x;
+						y += d / fabs(slope);
+						cairo_line_to(c, slope > 0 ? width : 0, y);
+						y += 1;
+						if(y > height) break;
+						cairo_move_to(c, slope > 0 ? 0 : width, y);
+					}
+				}
+			}
+			cairo_set_source(c, blue);
+			cairo_stroke(c);
+		}
+	}
+
+	cairo_set_line_width(c,1);
 
 	cairo_move_to(c, width/20 + .5, .5);
 	cairo_line_to(c, width/20 + .5, height - .5);
@@ -521,6 +556,8 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_source(c, green);
 	cairo_stroke(c);
 
+	double sweep = SAMPLE_RATE * 3600. / w->guessed_bph;
+	double now = sweep*ceil(time/sweep);
 	double ten_s = SAMPLE_RATE * 10 / sweep;
 	double last_line = fmod(now/sweep, ten_s);
 	int last_tenth = floor(now/(sweep*ten_s));
@@ -577,7 +614,6 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 
 	int old = 0;
 	struct processing_buffers *p = get_data(w,&old);
-	//struct processing_buffers *p = ((struct interactive_w_data *)w->data)->bfs;
 
 	if(p) {
 		double a = p->period / 10;
