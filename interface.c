@@ -314,7 +314,7 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 {
 	int width = da->allocation.width;
 	int height = da->allocation.height;
-	int font = width / 90;
+	int font = w->window->allocation.width / 90;
 	if(font < 12)
 		font = 12;
 	int i;
@@ -346,6 +346,12 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 		}
 	}
 
+	cairo_text_extents_t extents;
+
+	cairo_text_extents(c,"ms",&extents);
+	cairo_move_to(c,width - extents.x_advance - font/4,height-font/2);
+	cairo_show_text(c,"ms");
+
 	int old;
 	struct processing_buffers *p = get_data(w,&old);
 	double period = p ? p->period / p->sample_rate : 7200. / w->guessed_bph;
@@ -372,7 +378,6 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
 		if(x > last_x) {
 			char s[10];
-			cairo_text_extents_t extents;
 
 			sprintf(s,"%d",abs(i));
 			cairo_move_to(c, x + font/4, font * 3 / 2);
@@ -381,6 +386,10 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 			last_x = x + font/4 + extents.x_advance;
 		}
 	}
+
+	cairo_text_extents(c,"deg",&extents);
+	cairo_move_to(c,width - extents.x_advance - font/4,font * 3 / 2);
+	cairo_show_text(c,"deg");
 
 	if(p) {
 		double span = 0.001 * p->sample_rate;
@@ -595,6 +604,36 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 		if(--i < 0) i = EVENTS_COUNT - 1;
 		if(i == w->events_wp) break;
 	}
+
+	cairo_set_source(c,white);
+	cairo_set_line_width(c,2);
+	cairo_move_to(c, width/20 + 3, height - 20.5);
+	cairo_line_to(c, 19*width/20 - 3, height - 20.5);
+	cairo_stroke(c);
+	cairo_set_line_width(c,1);
+	cairo_move_to(c, width/20 + .5, height - 20.5);
+	cairo_line_to(c, width/20 + 5.5, height - 15.5);
+	cairo_line_to(c, width/20 + 5.5, height - 25.5);
+	cairo_line_to(c, width/20 + .5, height - 20.5);
+	cairo_fill(c);
+	cairo_move_to(c, 19*width/20 + .5, height - 20.5);
+	cairo_line_to(c, 19*width/20 - 4.5, height - 15.5);
+	cairo_line_to(c, 19*width/20 - 4.5, height - 25.5);
+	cairo_line_to(c, 19*width/20 + .5, height - 20.5);
+	cairo_fill(c);
+
+	char s[100];
+	cairo_text_extents_t extents;
+
+	int font = w->window->allocation.width / 90;
+	if(font < 12)
+		font = 12;
+	cairo_set_font_size(c,font);
+
+	sprintf(s, "%.1f ms", 3600000. / (w->guessed_bph * PAPERSTRIP_ZOOM));
+	cairo_text_extents(c,s,&extents);
+	cairo_move_to(c, (width - extents.x_advance)/2, height - 30);
+	cairo_show_text(c,s);
 
 	cairo_destroy(c);
 
