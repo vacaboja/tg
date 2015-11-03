@@ -1,23 +1,33 @@
-all: tg tg-lt
+CFLAGS = -Wall -O3 -fcx-limited-range `pkg-config --cflags gtk+-2.0 portaudio-2.0 fftw3f`
+LDFLAGS = -lm `pkg-config --libs gtk+-2.0 portaudio-2.0 fftw3f`
 
-debug: tg-dbg
+ifeq ($(OS),Windows_NT)
+	CFLAGS += -mwindows
+	EXT = .exe
+else
+	EXT =
+endif
 
-profile: tg-prf tg-lt-prf
+all: tg$(EXT) tg-lt$(EXT)
 
-tg: interface.c algo.c audio.c tg.h
-	gcc -Wall `pkg-config --libs --cflags gtk+-2.0 portaudio-2.0 fftw3f` -lm -O3 -fcx-limited-range -o tg interface.c algo.c audio.c
+debug: tg-dbg$(EXT)
 
-tg-lt: interface.c algo.c audio.c tg.h
-	gcc -Wall `pkg-config --libs --cflags gtk+-2.0 portaudio-2.0 fftw3f` -lm -O3 -fcx-limited-range -o tg-lt -DLIGHT interface.c algo.c audio.c
+profile: tg-prf$(EXT) tg-lt-prf$(EXT)
 
-tg-dbg: interface.c algo.c audio.c tg.h
-	gcc -Wall `pkg-config --libs --cflags gtk+-2.0 portaudio-2.0 fftw3f` -lm -O3 -fcx-limited-range -o tg-dbg -DDEBUG interface.c algo.c audio.c
+tg$(EXT): interface.c algo.c audio.c tg.h
+	gcc $(CFLAGS) -o tg$(EXT) interface.c algo.c audio.c $(LDFLAGS)
 
-tg-prf: interface.c algo.c audio.c tg.h
-	gcc -Wall `pkg-config --libs --cflags gtk+-2.0 portaudio-2.0 fftw3f` -lm -O3 -fcx-limited-range -o tg-prf -pg interface.c algo.c audio.c
+tg-lt$(EXT): interface.c algo.c audio.c tg.h
+	gcc $(CFLAGS) -DLIGHT -o tg-lt$(EXT) interface.c algo.c audio.c $(LDFLAGS)
 
-tg-lt-prf: interface.c algo.c audio.c tg.h
-	gcc -Wall `pkg-config --libs --cflags gtk+-2.0 portaudio-2.0 fftw3f` -lm -O3 -fcx-limited-range -o tg-lt-prf -pg -DLIGHT interface.c algo.c audio.c
+tg-dbg$(EXT): interface.c algo.c audio.c tg.h
+	gcc $(CFLAGS) -DDEBUG -o tg-dbg$(EXT) interface.c algo.c audio.c $(LDFLAGS)
+
+tg-prf$(EXT): interface.c algo.c audio.c tg.h
+	gcc $(CFLAGS) -pg -o tg-prf$(EXT) interface.c algo.c audio.c $(LDFLAGS)
+
+tg-lt-prf$(EXT): interface.c algo.c audio.c tg.h
+	gcc $(CFLAGS) -DLIGHT -pg -o tg-lt-prf$(EXT) interface.c algo.c audio.c $(LDFLAGS)
 
 clean:
-	rm -f tg tg-lt tg-dbg tg-prf tg-lt-prf gmon.out
+	rm -f tg$(EXT) tg-lt$(EXT) tg-dbg$(EXT) tg-prf$(EXT) tg-lt-prf$(EXT) gmon.out
