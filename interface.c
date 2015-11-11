@@ -128,7 +128,7 @@ guint refresh(struct main_window *w)
 	return TRUE;
 }
 
-cairo_pattern_t *black,*white,*red,*green,*gray,*blue,*yellow,*yellowish,*magenta;
+cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
 
 void define_color(cairo_pattern_t **gc,double r,double g,double b)
 {
@@ -141,11 +141,9 @@ void initialize_palette()
 	define_color(&white,1,1,1);
 	define_color(&red,1,0,0);
 	define_color(&green,0,0.8,0);
-	define_color(&gray,0.5,0.5,0.5);
 	define_color(&blue,0,0,1);
+	define_color(&blueish,0,0,.5);
 	define_color(&yellow,1,1,0);
-	define_color(&yellowish,0.5,0.5,0);
-	define_color(&magenta,1,0,1);
 }
 
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
@@ -446,6 +444,31 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	cairo_set_source(c,black);
 	cairo_paint(c);
 
+	int old;
+	struct processing_buffers *p = get_data(w,&old);
+
+	double toc,a=0,b=0;
+
+	if(p) {
+		toc = p->tic < p->toc ? p->toc : p->toc + p->period;
+		a = ((double)p->tic + toc)/2 - p->period/2;
+		b = ((double)p->tic + toc)/2 + p->period/2;
+
+		cairo_move_to(c, (p->tic - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
+		cairo_line_to(c, (p->tic - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
+		cairo_set_source(c,blueish);
+		cairo_fill(c);
+
+		cairo_move_to(c, (toc - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
+		cairo_line_to(c, (toc - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
+		cairo_set_source(c,blueish);
+		cairo_fill(c);
+	}
+
 	int i;
 	for(i = 1; i < 16; i++) {
 		int x = i * width / 16;
@@ -458,14 +481,7 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		cairo_stroke(c);
 	}
 
-	int old;
-	struct processing_buffers *p = get_data(w,&old);
-
 	if(p) {
-		double toc = p->tic < p->toc ? p->toc : p->toc + p->period;
-		double a = ((double)p->tic + toc)/2 - p->period/2;
-		double b = ((double)p->tic + toc)/2 + p->period/2;
-
 		draw_graph(a,b,c,p,w->period_drawing_area);
 
 		cairo_set_source(c,old?yellow:white);
