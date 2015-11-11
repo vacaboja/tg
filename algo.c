@@ -217,14 +217,31 @@ int peak_detector(float *buff, int a, int b)
 		}
 	}
 	if(max <= 0) return -1;
+
 	float v[b-a+1];
 	for(i=a; i<=b; i++)
 		v[i-a] = buff[i];
 	qsort(v, b-a+1, sizeof(float), fl_cmp);
-	float x = v[(b-a+1)/10];
-	float y = v[(b-a+1)/2];
-	debug("max = %f  x = %f  y = %f\n",max,x,y);
-	if(max < 4*y - 3*x)
+	float med = v[(b-a+1)/2];
+
+	for(i=a+1; i<i_max; i++)
+		if(buff[i] <= med) break;
+	if(i==i_max) return -1;
+	for(i=i_max+1; i<=b; i++)
+		if(buff[i] <= med) break;
+	if(i==b+1) return -1;
+
+	int cnt = 0, down = 1;
+	for(i=a+1; i<=b; i++) {
+		if(buff[i] > (max + med) / 2) {
+			cnt += down;
+			down = 0;
+		}
+		if(buff[i] < med)
+			down = 1;
+	}
+	debug("max = %f med = %f cnt = %d\n",max,med,cnt);
+	if(cnt > 20)
 		return -1;
 	return i_max;
 }

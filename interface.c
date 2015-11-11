@@ -99,11 +99,12 @@ struct processing_buffers *get_data(struct main_window *w, int *old)
 	struct processing_buffers *p = w->bfs;
 	int i;
 	for(i=0; i<NSTEPS && p[i].ready; i++);
-	if(i && p[i-1].sigma < p[i-1].period / 10000) {
+	for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
+	if(i>=0) {
 		if(w->old) pb_destroy_clone(w->old);
-		w->old = pb_clone(&p[i-1]);
+		w->old = pb_clone(&p[i]);
 		*old = 0;
-		return &p[i-1];
+		return &p[i];
 	} else {
 		*old = 1;
 		return w->old;
