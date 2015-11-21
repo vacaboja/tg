@@ -21,7 +21,7 @@ tg-lt$(EXT): interface.c algo.c audio.c tg.h
 	gcc $(CFLAGS) -DLIGHT -o tg-lt$(EXT) interface.c algo.c audio.c $(LDFLAGS)
 
 tg-dbg$(EXT): interface.c algo.c audio.c tg.h
-	gcc $(CFLAGS) -DDEBUG -o tg-dbg$(EXT) interface.c algo.c audio.c $(LDFLAGS)
+	gcc $(CFLAGS) -ggdb -DDEBUG -o tg-dbg$(EXT) interface.c algo.c audio.c $(LDFLAGS)
 
 tg-prf$(EXT): interface.c algo.c audio.c tg.h
 	gcc $(CFLAGS) -pg -o tg-prf$(EXT) interface.c algo.c audio.c $(LDFLAGS)

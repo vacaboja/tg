@@ -58,13 +58,13 @@
 #define PAPERSTRIP_ZOOM 10
 
 #define MIN_BPH 12000
-#define MAX_BPH 36000
+#define MAX_BPH 72000
 #define DEFAULT_BPH 21600
 #define MIN_LA 10
 #define MAX_LA 90
 #define DEFAULT_LA 52
 
-#define PRESET_BPH { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 0 };
+#define PRESET_BPH { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 43200, 72000, 0 };
 
 #ifdef DEBUG
 #define debug(...) print_debug(__VA_ARGS__)
