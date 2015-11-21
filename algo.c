@@ -505,6 +505,46 @@ void locate_events(struct processing_buffers *p)
 	p->events[j] = 0;
 }
 
+void compute_amplitude(struct processing_buffers *p)
+{
+	int i,j,k;
+	double min = 0, max = 0;
+	for(k = 0; k < 2; k++) {
+		j = floor(fmod((k ? p->tic : p->toc) + p->period/8, p->period));
+		for(i = 0; i < p->period/8; i++) {
+			double x = p->waveform[j];
+			if(x < min) min = x;
+			if(x > max) max = x;
+			if(++j > p->period) j = 0;
+		}
+	}
+	debug("amp min = %f max = %f wmax = %f\n",min,max,p->waveform_max);
+	double threshold = 2*max - min;
+	for(k = 0; k < 2; k++) {
+		double max = 0;
+		int max_i = 1 + ceil(p->period/8);
+		j = floor(fmod((k ? p->tic : p->toc) - p->period/8, p->period));
+		for(i = 0; i < p->period/8; i++) {
+			if(p->waveform[j] > threshold) break;
+			if(++j > p->period) j = 0;
+		}
+		for(; i < max_i + p->sample_rate / 2000 && i < p->period/8; i++) {
+			double x = p->waveform[j];
+			if(x > max) {
+				max = x;
+				max_i = i;
+			}
+			if(++j > p->period) j = 0;
+		}
+		double pulse = i < p->period/8 ? p->period/8 - max_i : -1;
+		debug("amp pulse = %f\n", 1000 * pulse / p->sample_rate);
+		if(pulse > 0) {
+			double amp = 52 * .5 / sin(M_PI * pulse / p->period);
+			debug("%s amplitude = %.0f\n",k ? "tic" : "toc", amp);
+		}
+	}
+}
+
 void process(struct processing_buffers *p, int bph)
 {
 	prepare_data(p);
@@ -514,4 +554,5 @@ void process(struct processing_buffers *p, int bph)
 	p->ready = !compute_parameters(p);
 	if(!p->ready) return;
 	locate_events(p);
+	compute_amplitude(p);
 }
