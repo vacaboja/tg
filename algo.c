@@ -386,6 +386,31 @@ void prepare_waveform(struct processing_buffers *p)
 	fftwf_execute(p->plan_d);
 }
 
+void smooth(float *in, float *out, int window, int size)
+{
+	int i;
+	double k = 1 - (1. / window);
+	double r_av = 0;
+	double u = 0;
+	for(i=0; i < window; i++) {
+		u *= k;
+		float x = in[i];
+		if(x > u) u = x;
+		r_av += u;
+	}
+	double w = 0;
+	for(i=0; i + window < size; i++) {
+		out[i] = r_av;
+		u *= k;
+		w *= k;
+		float x = in[i+window];
+		float y = in[i];
+		if(x > u) u = x;
+		if(y > w) w = y;
+		r_av += u - w;
+	}
+}
+
 int compute_parameters(struct processing_buffers *p)
 {
 	int tic_to_toc = peak_detector(p->waveform_sc,
@@ -399,32 +424,21 @@ int compute_parameters(struct processing_buffers *p)
 		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
-	double r_av = 0;
-	double u = 0;
-	int window = p->sample_rate / 2000;
-	double k = 1 - (1. / window);
+	int wf_size = ceil(p->period);
+	float fold_wf[wf_size - tic_to_toc];
 	int i;
-	for(i=0; i < window; i++) {
-		u *= k;
-		float x = p->waveform[i] + p->waveform[i+tic_to_toc];
-		if(x > u) u = x;
-		r_av += u;
-	}
-	double max = 0;
+	for(i = 0; i < wf_size - tic_to_toc; i++)
+		fold_wf[i] = p->waveform[i] + p->waveform[i+tic_to_toc];
+	int window = p->sample_rate / 2000;
+	float smooth_wf[wf_size - tic_to_toc - window];
+	smooth(fold_wf, smooth_wf, window, wf_size - tic_to_toc);
+	float max = 0;
 	int max_i = -1;
-	double w = 0;
-	for(i=0; i + tic_to_toc + window < p->period; i++) {
-		if(r_av > max) {
-			max = r_av;
+	for(i=0; i < wf_size - tic_to_toc - window; i++) {
+		if(smooth_wf[i] > max) {
+			max = smooth_wf[i];
 			max_i = i;
 		}
-		u *= k;
-		w *= k;
-		float x = p->waveform[i+window] + p->waveform[i+tic_to_toc+window];
-		float y = p->waveform[i] + p->waveform[i+tic_to_toc];
-		if(x > u) u = x;
-		if(y > w) w = y;
-		r_av += u - w;
 	}
 	if(max_i < 0) return 1;
 	p->tic = max_i;
@@ -508,28 +522,35 @@ void locate_events(struct processing_buffers *p)
 void compute_amplitude(struct processing_buffers *p)
 {
 	int i,j,k;
+
+	int wf_size = ceil(p->period);
+	int window = p->sample_rate / 2000;
+	for(i = 0; i < window; i++)
+		p->waveform[i + wf_size] = p->waveform[i];
+	float smooth_wf[wf_size];
+	smooth(p->waveform, smooth_wf, window, wf_size + window);
+
 	double min = 0, max = 0;
 	for(k = 0; k < 2; k++) {
 		j = floor(fmod((k ? p->tic : p->toc) + p->period/8, p->period));
 		for(i = 0; i < p->period/8; i++) {
-			double x = p->waveform[j];
+			double x = smooth_wf[j];
 			if(x < min) min = x;
 			if(x > max) max = x;
 			if(++j > p->period) j = 0;
 		}
 	}
-	debug("amp min = %f max = %f wmax = %f\n",min,max,p->waveform_max);
-	double threshold = 2*max - min;
+	double threshold = 5*max - 4*min;
 	for(k = 0; k < 2; k++) {
 		double max = 0;
 		int max_i = 1 + ceil(p->period/8);
 		j = floor(fmod((k ? p->tic : p->toc) - p->period/8, p->period));
 		for(i = 0; i < p->period/8; i++) {
-			if(p->waveform[j] > threshold) break;
+			if(smooth_wf[j] > threshold) break;
 			if(++j > p->period) j = 0;
 		}
 		for(; i < max_i + p->sample_rate / 2000 && i < p->period/8; i++) {
-			double x = p->waveform[j];
+			double x = smooth_wf[j];
 			if(x > max) {
 				max = x;
 				max_i = i;
