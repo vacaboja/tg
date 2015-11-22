@@ -112,6 +112,8 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->sigma = p->sigma;
 	new->be = p->be;
 	new->waveform_max = p->waveform_max;
+	new->tic_pulse = p->tic_pulse;
+	new->toc_pulse = p->toc_pulse;
 	new->tic = p->tic;
 	new->toc = p->toc;
 	new->ready = p->ready;
@@ -543,26 +545,23 @@ void compute_amplitude(struct processing_buffers *p)
 	double threshold = 5*max - 4*min;
 	for(k = 0; k < 2; k++) {
 		double max = 0;
-		int max_i = 1 + ceil(p->period/8);
 		j = floor(fmod((k ? p->tic : p->toc) - p->period/8, p->period));
 		for(i = 0; i < p->period/8; i++) {
 			if(smooth_wf[j] > threshold) break;
 			if(++j > p->period) j = 0;
 		}
-		for(; i < max_i + p->sample_rate / 2000 && i < p->period/8; i++) {
+		for(; i < p->period/8; i++) {
 			double x = smooth_wf[j];
-			if(x > max) {
-				max = x;
-				max_i = i;
-			}
+			if(x > max) max = x;
+			else break;
 			if(++j > p->period) j = 0;
 		}
-		double pulse = i < p->period/8 ? p->period/8 - max_i : -1;
-		debug("amp pulse = %f\n", 1000 * pulse / p->sample_rate);
-		if(pulse > 0) {
-			double amp = 52 * .5 / sin(M_PI * pulse / p->period);
-			debug("%s amplitude = %.0f\n",k ? "tic" : "toc", amp);
-		}
+		double pulse = i < p->period/8 ? p->period/8 - i - 1: -1;
+		if(k)
+			p->tic_pulse = pulse;
+		else
+			p->toc_pulse = pulse;
+		debug("amp %s pulse = %f\n", k ? "tic" : "toc", 1000 * pulse / p->sample_rate);
 	}
 }
 

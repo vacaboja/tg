@@ -253,6 +253,18 @@ double get_rate(int bph, struct processing_buffers *p)
 	return (7200/(bph*p->period / p->sample_rate) - 1)*24*3600;
 }
 
+double get_amplitude(double la, struct processing_buffers *p)
+{
+	double ret = -1;
+	if(p->tic_pulse > 0 && p->toc_pulse > 0) {
+		double tic_amp = la * .5 / sin(M_PI * p->tic_pulse / p->period);
+		double toc_amp = la * .5 / sin(M_PI * p->toc_pulse / p->period);
+		if(la < tic_amp && tic_amp < 360 && la < toc_amp && toc_amp < 360 && fabs(tic_amp - toc_amp) < 60)
+			ret = (tic_amp + toc_amp) / 2;
+	}
+	return ret;
+}
+
 gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
 	cairo_t *c;
@@ -276,10 +288,16 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		double rate = round(get_rate(bph, p));
 		if(rate == 0) rate = 0;
 		double be = fabs(p->be) * 1000 / p->sample_rate;
-		sprintf(rates,"%s%.0f s/d   %.1f ms   ",rate > 0 ? "+" : "",rate,be);
+		double amp = get_amplitude(w->la, p);
+		char amps[100];
+		if(amp > 0)
+			sprintf(amps,"%.0f",amp);
+		else
+			strcpy(amps,"---");
+		sprintf(rates,"%s%.0f s/d   %.1f ms   %s deg   ",rate > 0 ? "+" : "",rate,be,amps);
 		sprintf(bphs,"%d bph",bph);
 	} else {
-		strcpy(rates,"--- s/d   --- ms    ");
+		strcpy(rates,"--- s/d   --- ms   --- deg   ");
 		sprintf(bphs,"%d bph",w->guessed_bph);
 	}
 
@@ -309,7 +327,11 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	return FALSE;
 }
 
-void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get_offset)(struct processing_buffers*))
+void expose_waveform(cairo_t *c,
+		struct main_window *w,
+		GtkWidget *da,
+		int (*get_offset)(struct processing_buffers*),
+		double (*get_pulse)(struct processing_buffers*))
 {
 	int width = da->allocation.width;
 	int height = da->allocation.height;
@@ -402,6 +424,16 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 		cairo_set_source(c,old?yellow:white);
 		cairo_stroke_preserve(c);
 		cairo_fill(c);
+
+		double pulse = get_pulse(p);
+		if(pulse > 0) {
+			int x = round((NEGATIVE_SPAN - pulse * 1000 / p->sample_rate) * width / (POSITIVE_SPAN + NEGATIVE_SPAN));
+			cairo_move_to(c, x, 1);
+			cairo_line_to(c, x, height - 1);
+			cairo_set_source(c,blue);
+			cairo_set_line_width(c,2);
+			cairo_stroke(c);
+		}
 	} else {
 		cairo_move_to(c, .5, height / 2 + .5);
 		cairo_line_to(c, width - .5, height / 2 + .5);
@@ -422,15 +454,25 @@ int get_toc(struct processing_buffers *p)
 	return p->toc;
 }
 
+double get_tic_pulse(struct processing_buffers *p)
+{
+	return p->tic_pulse;
+}
+
+double get_toc_pulse(struct processing_buffers *p)
+{
+	return p->toc_pulse;
+}
+
 gboolean tic_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	expose_waveform(gdk_cairo_create(widget->window), w, w->tic_drawing_area, get_tic);
+	expose_waveform(gdk_cairo_create(widget->window), w, w->tic_drawing_area, get_tic, get_tic_pulse);
 	return FALSE;
 }
 
 gboolean toc_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	expose_waveform(gdk_cairo_create(widget->window), w, w->toc_drawing_area, get_toc);
+	expose_waveform(gdk_cairo_create(widget->window), w, w->toc_drawing_area, get_toc, get_toc_pulse);
 	return FALSE;
 }
 
