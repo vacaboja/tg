@@ -1,4 +1,4 @@
-CFLAGS = -Wall -O3 -fcx-limited-range `pkg-config --cflags gtk+-2.0 portaudio-2.0 fftw3f`
+CFLAGS = -Wall -O3 `pkg-config --cflags gtk+-2.0 portaudio-2.0 fftw3f`
 LDFLAGS = -lm `pkg-config --libs gtk+-2.0 portaudio-2.0 fftw3f`
 
 ifeq ($(OS),Windows_NT)
