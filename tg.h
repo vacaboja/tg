@@ -34,7 +34,6 @@
 #define NSTEPS 4
 #define FIRST_STEP 0
 #define PA_SAMPLE_RATE 44100
-#define SAMPLE_RATE 22050
 #define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP + 1))
 
 #else
@@ -42,7 +41,6 @@
 #define NSTEPS 4
 #define FIRST_STEP 1
 #define PA_SAMPLE_RATE 44100
-#define SAMPLE_RATE 44100
 #define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
 #endif
@@ -100,7 +98,7 @@ void pb_destroy_clone(struct processing_buffers *p);
 void process(struct processing_buffers *p, int bph);
 
 /* audio.c */
-int start_portaudio();
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
 
 /* interface.c */

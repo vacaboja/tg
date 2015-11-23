@@ -40,7 +40,7 @@ int paudio_callback(const void *input_buffer,
 	return 0;
 }
 
-int start_portaudio()
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 {
 	PaStream *stream;
 
@@ -58,6 +58,16 @@ int start_portaudio()
 	err = Pa_StartStream(stream);
 	if(err!=paNoError)
 		goto error;
+
+	const PaStreamInfo *info = Pa_GetStreamInfo(stream);
+#ifdef LIGHT
+	*nominal_sample_rate = PA_SAMPLE_RATE / 2;
+	*real_sample_rate = info->sampleRate / 2;
+#else
+	*nominal_sample_rate = PA_SAMPLE_RATE;
+	*real_sample_rate = info->sampleRate;
+#endif
+	debug("sample rate: nominal = %d real = %f\n",*nominal_sample_rate,*real_sample_rate);
 
 	return 0;
 
@@ -92,7 +102,7 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 #else
 			k++;
 #endif
-			if(k == PA_BUFF_SIZE) k = 0;
+			if(k >= PA_BUFF_SIZE) k -= PA_BUFF_SIZE;
 		}
 	}
 	for(i=0; i<NSTEPS; i++) {

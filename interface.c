@@ -56,6 +56,7 @@ struct main_window {
 	int guessed_bph;
 	int last_bph;
 	double la;
+	double sample_rate;
 
 	uint64_t *events;
 	int events_wp;
@@ -118,7 +119,7 @@ void recompute(struct main_window *w)
 	struct processing_buffers *p = get_data(w,&old);
 	if(old) w->signal = -w->signal;
 	if(p)
-		w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / p->sample_rate);
+		w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / w->sample_rate);
 }
 
 guint refresh(struct main_window *w)
@@ -248,9 +249,9 @@ double draw_watch_icon(cairo_t *c, int signal)
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
-double get_rate(int bph, struct processing_buffers *p)
+double get_rate(int bph, double sample_rate, struct processing_buffers *p)
 {
-	return (7200/(bph*p->period / p->sample_rate) - 1)*24*3600;
+	return (7200/(bph*p->period / sample_rate) - 1)*24*3600;
 }
 
 gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
@@ -273,9 +274,9 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 	if(p) {
 		int bph = w->guessed_bph;
-		double rate = round(get_rate(bph, p));
+		double rate = round(get_rate(bph, w->sample_rate, p));
 		if(rate == 0) rate = 0;
-		double be = fabs(p->be) * 1000 / p->sample_rate;
+		double be = fabs(p->be) * 1000 / w->sample_rate;
 		sprintf(rates,"%s%.0f s/d   %.1f ms   ",rate > 0 ? "+" : "",rate,be);
 		sprintf(bphs,"%d bph",bph);
 	} else {
@@ -353,7 +354,7 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 
 	int old;
 	struct processing_buffers *p = get_data(w,&old);
-	double period = p ? p->period / p->sample_rate : 7200. / w->guessed_bph;
+	double period = p ? p->period / w->sample_rate : 7200. / w->guessed_bph;
 
 	for(i = 10; i < 360; i+=10) {
 		if(2*i < w->la) continue;
@@ -391,7 +392,7 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 	cairo_show_text(c,"deg");
 
 	if(p) {
-		double span = 0.001 * p->sample_rate;
+		double span = 0.001 * w->sample_rate;
 		int offset = get_offset(p);
 
 		double a = offset - span * NEGATIVE_SPAN;
@@ -454,17 +455,17 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		a = ((double)p->tic + toc)/2 - p->period/2;
 		b = ((double)p->tic + toc)/2 + p->period/2;
 
-		cairo_move_to(c, (p->tic - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
-		cairo_line_to(c, (p->tic - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
+		cairo_move_to(c, (p->tic - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
+		cairo_line_to(c, (p->tic - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
 		cairo_set_source(c,blueish);
 		cairo_fill(c);
 
-		cairo_move_to(c, (toc - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
-		cairo_line_to(c, (toc - a - NEGATIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*p->sample_rate) * width/p->period, 0);
+		cairo_move_to(c, (toc - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
+		cairo_line_to(c, (toc - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
 		cairo_set_source(c,blueish);
 		cairo_fill(c);
 	}
@@ -534,8 +535,8 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_paint(c);
 
 	int stopped = 0;
-	if(w->events[w->events_wp] && time > 5*SAMPLE_RATE + w->events[w->events_wp]) {
-		time = 5*SAMPLE_RATE + w->events[w->events_wp];
+	if(w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
+		time = 5 * w->sample_rate + w->events[w->events_wp];
 		stopped = 1;
 	}
 
@@ -544,7 +545,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_line_width(c,1.3);
 
 	if(p) {
-		double rate = get_rate(w->guessed_bph,p);
+		double rate = get_rate(w->guessed_bph, w->sample_rate, p);
 		double slope = - rate * strip_width * PAPERSTRIP_ZOOM / (3600. * 24.);
 		if(slope <= 1 && slope >= -1) {
 			for(i=0; i<4; i++) {
@@ -582,9 +583,9 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_source(c, green);
 	cairo_stroke(c);
 
-	double sweep = SAMPLE_RATE * 3600. / w->guessed_bph;
+	double sweep = w->sample_rate * 3600. / w->guessed_bph;
 	double now = sweep*ceil(time/sweep);
-	double ten_s = SAMPLE_RATE * 10 / sweep;
+	double ten_s = w->sample_rate * 10 / sweep;
 	double last_line = fmod(now/sweep, ten_s);
 	int last_tenth = floor(now/(sweep*ten_s));
 	for(i=0;;i++) {
@@ -835,17 +836,22 @@ void init_main_window(struct main_window *w)
 
 int run_interface()
 {
+	int nominal_sr;
+	double real_sr;
+
+	if(start_portaudio(&nominal_sr, &real_sr)) return 1;
+
 	struct processing_buffers p[NSTEPS];
 	int i;
 	for(i=0; i<NSTEPS; i++) {
-		p[i].sample_rate = SAMPLE_RATE;
-		p[i].sample_count = SAMPLE_RATE * (1<<(i+FIRST_STEP));
+		p[i].sample_rate = nominal_sr;
+		p[i].sample_count = nominal_sr * (1<<(i+FIRST_STEP));
 		setup_buffers(&p[i]);
 		p[i].period = -1;
 	}
-	if(start_portaudio()) return 1;
 
 	struct main_window w;
+	w.sample_rate = real_sr;
 	w.bfs = p;
 	w.old = NULL;
 
