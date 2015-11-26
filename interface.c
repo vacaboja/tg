@@ -765,6 +765,11 @@ void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
 	gtk_widget_show(label);
 
+	label = gtk_label_new(PROGRAM_NAME " " VERSION);
+	GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
+	gtk_box_pack_end(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	gtk_widget_show(label);
+
 	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA,MAX_LA,1);
 	gtk_box_pack_start(GTK_BOX(hbox),w->la_spin_button,FALSE,TRUE,0);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button),DEFAULT_LA);
