@@ -254,12 +254,24 @@ double get_rate(int bph, double sample_rate, struct processing_buffers *p)
 	return (7200/(bph*p->period / sample_rate) - 1)*24*3600;
 }
 
+double get_amplitude(double la, struct processing_buffers *p)
+{
+	double ret = -1;
+	if(p->tic_pulse > 0 && p->toc_pulse > 0) {
+		double tic_amp = la * .5 / sin(M_PI * p->tic_pulse / p->period);
+		double toc_amp = la * .5 / sin(M_PI * p->toc_pulse / p->period);
+		if(la < tic_amp && tic_amp < 360 && la < toc_amp && toc_amp < 360 && fabs(tic_amp - toc_amp) < 60)
+			ret = (tic_amp + toc_amp) / 2;
+	}
+	return ret;
+}
+
 gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
 	cairo_t *c;
 
 	c = gdk_cairo_create(widget->window);
-	cairo_set_font_size(c,OUTPUT_FONT);
+	cairo_select_font_face(c,"monospace",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
@@ -269,20 +281,32 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 	double x = draw_watch_icon(c,w->signal);
 
-	char rates[100];
-	char bphs[100];
+	char outputs[8][20];
 
 	if(p) {
 		int bph = w->guessed_bph;
-		double rate = round(get_rate(bph, w->sample_rate, p));
-		if(rate == 0) rate = 0;
-		double be = fabs(p->be) * 1000 / w->sample_rate;
-		sprintf(rates,"%s%.0f s/d   %.1f ms   ",rate > 0 ? "+" : "",rate,be);
-		sprintf(bphs,"%d bph",bph);
+		int rate = round(get_rate(bph, w->sample_rate, p));
+		double be = fabs(p->be) * 1000 / p->sample_rate;
+		double amp = get_amplitude(w->la, p);
+		char rates[20];
+		sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
+		sprintf(outputs[0],"%4s",rates);
+		sprintf(outputs[2]," %4.1f",be);
+		if(amp > 0)
+			sprintf(outputs[4]," %3.0f",amp);
+		else
+			strcpy(outputs[4]," ---");
 	} else {
-		strcpy(rates,"--- s/d   --- ms    ");
-		sprintf(bphs,"%d bph",w->guessed_bph);
+		strcpy(outputs[0],"----");
+		strcpy(outputs[2]," ----");
+		strcpy(outputs[4]," ---");
 	}
+	sprintf(outputs[6]," %d",w->guessed_bph);
+
+	strcpy(outputs[1]," s/d");
+	strcpy(outputs[3]," ms");
+	strcpy(outputs[5]," deg");
+	strcpy(outputs[7]," bph");
 
 	if(p && old)
 		cairo_set_source(c,yellow);
@@ -291,26 +315,30 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 	cairo_text_extents_t extents;
 
+	cairo_set_font_size(c, OUTPUT_FONT);
 	cairo_text_extents(c,"0",&extents);
 	double y = (double)OUTPUT_WINDOW_HEIGHT/2 - extents.y_bearing - extents.height/2;
 
-	cairo_move_to(c,x,y);
-	cairo_show_text(c,rates);
-	cairo_text_extents(c,rates,&extents);
-	x += extents.x_advance;
-
-	cairo_set_source(c,white);
-	cairo_move_to(c,x,y);
-	cairo_show_text(c,bphs);
-	cairo_text_extents(c,bphs,&extents);
-	x += extents.x_advance;
+	int i;
+	for(i=0; i<8; i++) {
+		if(i==6) cairo_set_source(c,white);
+		cairo_move_to(c,x,y);
+		cairo_set_font_size(c, i%2 ? OUTPUT_FONT*2/3 : OUTPUT_FONT);
+		cairo_show_text(c,outputs[i]);
+		cairo_text_extents(c,outputs[i],&extents);
+		x += extents.x_advance;
+	}
 
 	cairo_destroy(c);
 
 	return FALSE;
 }
 
-void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get_offset)(struct processing_buffers*))
+void expose_waveform(cairo_t *c,
+		struct main_window *w,
+		GtkWidget *da,
+		int (*get_offset)(struct processing_buffers*),
+		double (*get_pulse)(struct processing_buffers*))
 {
 	int width = da->allocation.width;
 	int height = da->allocation.height;
@@ -320,6 +348,7 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 	int i;
 
 	cairo_set_line_width(c,1);
+	cairo_select_font_face(c,"monospace",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(c,font);
 
 	cairo_set_source(c,black);
@@ -403,6 +432,16 @@ void expose_waveform(cairo_t *c, struct main_window *w, GtkWidget *da, int (*get
 		cairo_set_source(c,old?yellow:white);
 		cairo_stroke_preserve(c);
 		cairo_fill(c);
+
+		double pulse = get_pulse(p);
+		if(pulse > 0) {
+			int x = round((NEGATIVE_SPAN - pulse * 1000 / p->sample_rate) * width / (POSITIVE_SPAN + NEGATIVE_SPAN));
+			cairo_move_to(c, x, 1);
+			cairo_line_to(c, x, height - 1);
+			cairo_set_source(c,blue);
+			cairo_set_line_width(c,2);
+			cairo_stroke(c);
+		}
 	} else {
 		cairo_move_to(c, .5, height / 2 + .5);
 		cairo_line_to(c, width - .5, height / 2 + .5);
@@ -423,15 +462,25 @@ int get_toc(struct processing_buffers *p)
 	return p->toc;
 }
 
+double get_tic_pulse(struct processing_buffers *p)
+{
+	return p->tic_pulse;
+}
+
+double get_toc_pulse(struct processing_buffers *p)
+{
+	return p->toc_pulse;
+}
+
 gboolean tic_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	expose_waveform(gdk_cairo_create(widget->window), w, w->tic_drawing_area, get_tic);
+	expose_waveform(gdk_cairo_create(widget->window), w, w->tic_drawing_area, get_tic, get_tic_pulse);
 	return FALSE;
 }
 
 gboolean toc_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	expose_waveform(gdk_cairo_create(widget->window), w, w->toc_drawing_area, get_toc);
+	expose_waveform(gdk_cairo_create(widget->window), w, w->toc_drawing_area, get_toc, get_toc_pulse);
 	return FALSE;
 }
 
@@ -646,6 +695,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	int font = w->window->allocation.width / 90;
 	if(font < 12)
 		font = 12;
+	cairo_select_font_face(c,"monospace",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(c,font);
 
 	sprintf(s, "%.1f ms", 3600000. / (w->guessed_bph * PAPERSTRIP_ZOOM));
@@ -776,12 +826,20 @@ void init_main_window(struct main_window *w)
 	gtk_signal_connect(GTK_OBJECT(w->la_spin_button),"value_changed",(GtkSignalFunc)handle_la_change,w);
 	gtk_widget_show(w->la_spin_button);
 
+	w->output_drawing_area = gtk_drawing_area_new();
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->output_drawing_area),700,OUTPUT_WINDOW_HEIGHT);
+	gtk_box_pack_start(GTK_BOX(vbox),w->output_drawing_area,FALSE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(w->output_drawing_area),"expose_event",
+			(GtkSignalFunc)output_expose_event, w);
+	gtk_widget_set_events(w->output_drawing_area, GDK_EXPOSURE_MASK);
+	gtk_widget_show(w->output_drawing_area);
+
 	GtkWidget *hbox2 = gtk_hbox_new(FALSE,10);
 	gtk_box_pack_start(GTK_BOX(vbox),hbox2,TRUE,TRUE,0);
 	gtk_widget_show(hbox2);
 
 	w->paperstrip_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->paperstrip_drawing_area),200,500);
+	gtk_drawing_area_size(GTK_DRAWING_AREA(w->paperstrip_drawing_area),200,400);
 	gtk_box_pack_start(GTK_BOX(hbox2),w->paperstrip_drawing_area,FALSE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->paperstrip_drawing_area),"expose_event",
 			(GtkSignalFunc)paperstrip_expose_event, w);
@@ -791,14 +849,6 @@ void init_main_window(struct main_window *w)
 	GtkWidget *vbox2 = gtk_vbox_new(FALSE,10);
 	gtk_box_pack_start(GTK_BOX(hbox2),vbox2,TRUE,TRUE,0);
 	gtk_widget_show(vbox2);
-
-	w->output_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->output_drawing_area),700,OUTPUT_WINDOW_HEIGHT);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->output_drawing_area,FALSE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->output_drawing_area),"expose_event",
-			(GtkSignalFunc)output_expose_event, w);
-	gtk_widget_set_events(w->output_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(w->output_drawing_area);
 
 	w->tic_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->tic_drawing_area),700,100);
