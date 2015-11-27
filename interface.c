@@ -266,15 +266,21 @@ double get_amplitude(double la, struct processing_buffers *p)
 	return ret;
 }
 
-gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+cairo_t *cairo_init(GtkWidget *widget)
 {
-	cairo_t *c;
-
-	c = gdk_cairo_create(widget->window);
+	cairo_t *c = gdk_cairo_create(widget->window);
 	cairo_select_font_face(c,"monospace",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);
+	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
+
+	return c;
+}
+
+gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	cairo_t *c = cairo_init(widget);
 
 	int old;
 	struct processing_buffers *p = get_data(w,&old);
@@ -334,12 +340,14 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	return FALSE;
 }
 
-void expose_waveform(cairo_t *c,
+void expose_waveform(
 		struct main_window *w,
 		GtkWidget *da,
 		int (*get_offset)(struct processing_buffers*),
 		double (*get_pulse)(struct processing_buffers*))
 {
+	cairo_t *c = cairo_init(da);
+
 	int width = da->allocation.width;
 	int height = da->allocation.height;
 	int font = w->window->allocation.width / 90;
@@ -347,12 +355,7 @@ void expose_waveform(cairo_t *c,
 		font = 12;
 	int i;
 
-	cairo_set_line_width(c,1);
-	cairo_select_font_face(c,"monospace",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(c,font);
-
-	cairo_set_source(c,black);
-	cairo_paint(c);
 
 	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
 		int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
@@ -474,25 +477,22 @@ double get_toc_pulse(struct processing_buffers *p)
 
 gboolean tic_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	expose_waveform(gdk_cairo_create(widget->window), w, w->tic_drawing_area, get_tic, get_tic_pulse);
+	expose_waveform(w, w->tic_drawing_area, get_tic, get_tic_pulse);
 	return FALSE;
 }
 
 gboolean toc_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	expose_waveform(gdk_cairo_create(widget->window), w, w->toc_drawing_area, get_toc, get_toc_pulse);
+	expose_waveform(w, w->toc_drawing_area, get_toc, get_toc_pulse);
 	return FALSE;
 }
 
 gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
+	cairo_t *c = cairo_init(widget);
+
 	int width = w->period_drawing_area->allocation.width;
 	int height = w->period_drawing_area->allocation.height;
-	cairo_t *c = gdk_cairo_create(widget->window);
-	cairo_set_line_width(c,1);
-
-	cairo_set_source(c,black);
-	cairo_paint(c);
 
 	int old;
 	struct processing_buffers *p = get_data(w,&old);
@@ -573,15 +573,10 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 		w->events_from = time;
 	}
 
-	cairo_t *c;
+	cairo_t *c = cairo_init(widget);
 
 	int width = w->paperstrip_drawing_area->allocation.width;
 	int height = w->paperstrip_drawing_area->allocation.height;
-
-	c = gdk_cairo_create(widget->window);
-
-	cairo_set_source(c,black);
-	cairo_paint(c);
 
 	int stopped = 0;
 	if(w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
@@ -695,7 +690,6 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	int font = w->window->allocation.width / 90;
 	if(font < 12)
 		font = 12;
-	cairo_select_font_face(c,"monospace",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);
 	cairo_set_font_size(c,font);
 
 	sprintf(s, "%.1f ms", 3600000. / (w->guessed_bph * PAPERSTRIP_ZOOM));
@@ -711,13 +705,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 #ifdef DEBUG
 gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	cairo_t *c;
-
-	c = gdk_cairo_create(widget->window);
-	cairo_set_line_width(c,1);
-
-	cairo_set_source(c,black);
-	cairo_paint(c);
+	cairo_t *c = cairo_init(widget);
 
 	int old = 0;
 	struct processing_buffers *p = get_data(w,&old);
@@ -784,6 +772,8 @@ void init_main_window(struct main_window *w)
 	g_signal_connect(G_OBJECT(w->window),"delete_event",G_CALLBACK(delete_event),NULL);
 	g_signal_connect(G_OBJECT(w->window),"destroy",G_CALLBACK(quit),w);
 
+	gtk_window_set_title(GTK_WINDOW(w->window),PROGRAM_NAME " " VERSION);
+
 	GtkWidget *vbox = gtk_vbox_new(FALSE,10);
 	gtk_container_add(GTK_CONTAINER(w->window),vbox);
 	gtk_widget_show(vbox);
@@ -813,11 +803,6 @@ void init_main_window(struct main_window *w)
 	label = gtk_label_new("lift angle");
 	GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
-	gtk_widget_show(label);
-
-	label = gtk_label_new(PROGRAM_NAME " " VERSION);
-	GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
-	gtk_box_pack_end(GTK_BOX(hbox),label,FALSE,FALSE,0);
 	gtk_widget_show(label);
 
 	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA,MAX_LA,1);
