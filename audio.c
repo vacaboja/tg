@@ -17,6 +17,7 @@
 */
 
 #include "tg.h"
+#include <portaudio.h>
 
 volatile float pa_buffers[2][PA_BUFF_SIZE];
 volatile int write_pointer = 0;

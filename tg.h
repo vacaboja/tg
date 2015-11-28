@@ -23,9 +23,6 @@
 #include <complex.h>
 #include <fftw3.h>
 #include <stdint.h>
-#include <portaudio.h>
-#include <stdarg.h>
-#include <gtk/gtk.h>
 
 #define FILTER_CUTOFF 3000
 
@@ -63,6 +60,8 @@
 #define DEFAULT_LA 52
 
 #define PRESET_BPH { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 43200, 72000, 0 };
+
+#define INTERFACE_FONT "VeraMono.ttf"
 
 #ifdef DEBUG
 #define debug(...) print_debug(__VA_ARGS__)

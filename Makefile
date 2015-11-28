@@ -3,10 +3,11 @@ VERSION = 0.1.0
 CC = gcc
 
 CFLAGS = -Wall -O3 -DVERSION='"$(VERSION)"' `pkg-config --cflags gtk+-2.0 portaudio-2.0 fftw3f`
-LDFLAGS = -lm `pkg-config --libs gtk+-2.0 portaudio-2.0 fftw3f`
+LDFLAGS = -lm `pkg-config --libs gtk+-2.0 freetype2 portaudio-2.0 fftw3f`
 
 CFILES = interface.c algo.c audio.c
 HFILES = tg.h
+ALLFILES = $(CFILES) $(HFILES) Makefile
 
 ifeq ($(OS),Windows_NT)
 	CFLAGS += -mwindows
@@ -23,20 +24,20 @@ debug: tg-dbg$(EXT)
 
 profile: tg-prf$(EXT) tg-lt-prf$(EXT)
 
-tg$(EXT): $(CFILES) $(HFILES)
+tg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg,)
 
-tg-lt$(EXT): $(CFILES) $(HFILES)
+tg-lt$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt,-DLIGHT)
 
-tg-dbg$(EXT): $(CFILES) $(HFILES)
+tg-dbg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-dbg,-ggdb -DDEBUG)
 
-tg-prf$(EXT): $(CFILES) $(HFILES)
+tg-prf$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-prf,-pg)
 
-tg-lt-prf$(EXT): $(CFILES) $(HFILES)
-	$(call COMPILE,tg-prf,-DLIGHT -pg)
+tg-lt-prf$(EXT): $(ALLFILES)
+	$(call COMPILE,tg-lt-prf,-DLIGHT -pg)
 
 clean:
 	rm -f tg$(EXT) tg-lt$(EXT) tg-dbg$(EXT) tg-prf$(EXT) tg-lt-prf$(EXT) gmon.out

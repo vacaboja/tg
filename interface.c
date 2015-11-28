@@ -17,8 +17,19 @@
 */
 
 #include "tg.h"
+#include <stdarg.h>
+#include <gtk/gtk.h>
+#include <cairo/cairo-ft.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 int preset_bph[] = PRESET_BPH;
+
+cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
+
+FT_Library ft_library;
+FT_Face ft_face;
+cairo_font_face_t *cr_face;
 
 void print_debug(char *format,...)
 {
@@ -34,6 +45,38 @@ void error(char *format,...)
 	va_start(args,format);
 	vfprintf(stderr,format,args);
 	va_end(args);
+}
+
+void define_color(cairo_pattern_t **gc,double r,double g,double b)
+{
+	*gc = cairo_pattern_create_rgb(r,g,b);
+}
+
+void initialize_palette()
+{
+	define_color(&black,0,0,0);
+	define_color(&white,1,1,1);
+	define_color(&red,1,0,0);
+	define_color(&green,0,0.8,0);
+	define_color(&blue,0,0,1);
+	define_color(&blueish,0,0,.5);
+	define_color(&yellow,1,1,0);
+}
+
+int initialize_freetype()
+{
+	int e = FT_Init_FreeType(&ft_library);
+	if(e) goto error;
+
+	e = FT_New_Face(ft_library,INTERFACE_FONT,0,&ft_face);
+	if(e) goto error;
+
+	cr_face = cairo_ft_font_face_create_for_ft_face(ft_face,0);
+
+	return 0;
+error:
+	error("Error loading font\n");
+	return 1;
 }
 
 struct main_window {
@@ -127,24 +170,6 @@ guint refresh(struct main_window *w)
 	recompute(w);
 	redraw(w);
 	return TRUE;
-}
-
-cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
-
-void define_color(cairo_pattern_t **gc,double r,double g,double b)
-{
-	*gc = cairo_pattern_create_rgb(r,g,b);
-}
-
-void initialize_palette()
-{
-	define_color(&black,0,0,0);
-	define_color(&white,1,1,1);
-	define_color(&red,1,0,0);
-	define_color(&green,0,0.8,0);
-	define_color(&blue,0,0,1);
-	define_color(&blueish,0,0,.5);
-	define_color(&yellow,1,1,0);
 }
 
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
@@ -269,7 +294,7 @@ double get_amplitude(double la, struct processing_buffers *p)
 cairo_t *cairo_init(GtkWidget *widget)
 {
 	cairo_t *c = gdk_cairo_create(widget->window);
-	cairo_select_font_face(c,"monospace",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);
+	cairo_set_font_face(c,cr_face);
 	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
@@ -314,11 +339,6 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	strcpy(outputs[5]," deg");
 	strcpy(outputs[7]," bph");
 
-	if(p && old)
-		cairo_set_source(c,yellow);
-	else
-		cairo_set_source(c,white);
-
 	cairo_text_extents_t extents;
 
 	cairo_set_font_size(c, OUTPUT_FONT);
@@ -327,7 +347,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 	int i;
 	for(i=0; i<8; i++) {
-		if(i==6) cairo_set_source(c,white);
+		cairo_set_source(c, i % 2 || i > 4 || !p || !old ? white : yellow);
 		cairo_move_to(c,x,y);
 		cairo_set_font_size(c, i%2 ? OUTPUT_FONT*2/3 : OUTPUT_FONT);
 		cairo_show_text(c,outputs[i]);
@@ -908,6 +928,7 @@ int main(int argc, char **argv)
 {
 	gtk_init(&argc, &argv);
 	initialize_palette();
+	if(initialize_freetype()) return 1;
 
 	return run_interface();
 }

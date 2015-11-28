@@ -3,3 +3,6 @@
 tg
 tg-lt
 tg-dbg
+tg-prf
+tg-lt-prf
+*.exe
