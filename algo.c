@@ -532,17 +532,19 @@ void compute_amplitude(struct processing_buffers *p)
 	float smooth_wf[wf_size];
 	smooth(p->waveform, smooth_wf, window, wf_size + window);
 
-	double min = 0, max = 0;
+	double max = 0;
 	for(k = 0; k < 2; k++) {
 		j = floor(fmod((k ? p->tic : p->toc) + p->period/8, p->period));
 		for(i = 0; i < p->period/8; i++) {
-			double x = smooth_wf[j];
-			if(x < min) min = x;
-			if(x > max) max = x;
+			if(smooth_wf[j] > max) max = smooth_wf[j];
 			if(++j > p->period) j = 0;
 		}
 	}
-	double threshold = 5*max - 4*min;
+	double glob_max = 0;
+	for(i = 0; i < p->period; i++)
+		if(smooth_wf[i] > glob_max) glob_max = smooth_wf[i];
+	double threshold = fmax(.01 * glob_max, 1.2 * max);
+	debug("amp threshold from %s\n", .01 * glob_max > 1.2 * max ? "global maximum" : "noise level");
 	for(k = 0; k < 2; k++) {
 		double max = 0;
 		j = floor(fmod((k ? p->tic : p->toc) - p->period/8, p->period));
@@ -569,10 +571,16 @@ void process(struct processing_buffers *p, int bph)
 {
 	prepare_data(p);
 	p->ready = !compute_period(p,bph);
-	if(!p->ready) return;
+	if(!p->ready) {
+		debug("abort after compute_period()\n");
+		return;
+	}
 	prepare_waveform(p);
 	p->ready = !compute_parameters(p);
-	if(!p->ready) return;
+	if(!p->ready) {
+		debug("abort after compute_parameters()\n");
+		return;
+	}
 	locate_events(p);
 	compute_amplitude(p);
 }

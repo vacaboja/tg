@@ -106,6 +106,7 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 			if(k >= PA_BUFF_SIZE) k -= PA_BUFF_SIZE;
 		}
 	}
+	debug("\nSTART OF COMPUTATION CYCLE\n\n");
 	for(i=0; i<NSTEPS; i++) {
 		p[i].timestamp = ts;
 		p[i].last_tic = last_tic;
