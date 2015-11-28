@@ -608,7 +608,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 
 	cairo_set_line_width(c,1.3);
 
-	if(p) {
+	if(p && w->events[w->events_wp]) {
 		double rate = get_rate(w->guessed_bph, w->sample_rate, p);
 		double slope = - rate * strip_width * PAPERSTRIP_ZOOM / (3600. * 24.);
 		if(slope <= 1 && slope >= -1) {
@@ -769,6 +769,12 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	redraw(w);
 }
 
+void handle_clear_trace(GtkButton *b, struct main_window *w)
+{
+	memset(w->events,0,EVENTS_COUNT*sizeof(uint64_t));
+	redraw(w);
+}
+
 void quit()
 {
 	gtk_main_quit();
@@ -843,21 +849,30 @@ void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(vbox),hbox2,TRUE,TRUE,0);
 	gtk_widget_show(hbox2);
 
+	GtkWidget *vbox2 = gtk_vbox_new(FALSE,10);
+	gtk_box_pack_start(GTK_BOX(hbox2),vbox2,FALSE,TRUE,0);
+	gtk_widget_show(vbox2);
+
 	w->paperstrip_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->paperstrip_drawing_area),200,400);
-	gtk_box_pack_start(GTK_BOX(hbox2),w->paperstrip_drawing_area,FALSE,TRUE,0);
+	gtk_box_pack_start(GTK_BOX(vbox2),w->paperstrip_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->paperstrip_drawing_area),"expose_event",
 			(GtkSignalFunc)paperstrip_expose_event, w);
 	gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->paperstrip_drawing_area);
 
-	GtkWidget *vbox2 = gtk_vbox_new(FALSE,10);
-	gtk_box_pack_start(GTK_BOX(hbox2),vbox2,TRUE,TRUE,0);
-	gtk_widget_show(vbox2);
+	GtkWidget *clear_button = gtk_button_new_with_label("clear trace");
+	gtk_box_pack_start(GTK_BOX(vbox2),clear_button,FALSE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(clear_button),"clicked",(GtkSignalFunc)handle_clear_trace,w);
+	gtk_widget_show(clear_button);
+
+	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10);
+	gtk_box_pack_start(GTK_BOX(hbox2),vbox3,TRUE,TRUE,0);
+	gtk_widget_show(vbox3);
 
 	w->tic_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->tic_drawing_area),700,100);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->tic_drawing_area,TRUE,TRUE,0);
+	gtk_box_pack_start(GTK_BOX(vbox3),w->tic_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->tic_drawing_area),"expose_event",
 			(GtkSignalFunc)tic_expose_event, w);
 	gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
@@ -865,7 +880,7 @@ void init_main_window(struct main_window *w)
 
 	w->toc_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->toc_drawing_area),700,100);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->toc_drawing_area,TRUE,TRUE,0);
+	gtk_box_pack_start(GTK_BOX(vbox3),w->toc_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->toc_drawing_area),"expose_event",
 			(GtkSignalFunc)toc_expose_event, w);
 	gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
@@ -873,7 +888,7 @@ void init_main_window(struct main_window *w)
 
 	w->period_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->period_drawing_area),700,100);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->period_drawing_area,TRUE,TRUE,0);
+	gtk_box_pack_start(GTK_BOX(vbox3),w->period_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->period_drawing_area),"expose_event",
 			(GtkSignalFunc)period_expose_event, w);
 	gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
@@ -882,7 +897,7 @@ void init_main_window(struct main_window *w)
 #ifdef DEBUG
 	w->debug_drawing_area = gtk_drawing_area_new();
 	gtk_drawing_area_size(GTK_DRAWING_AREA(w->debug_drawing_area),500,100);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->debug_drawing_area,TRUE,TRUE,0);
+	gtk_box_pack_start(GTK_BOX(vbox3),w->debug_drawing_area,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(w->debug_drawing_area),"expose_event",
 			(GtkSignalFunc)debug_expose_event, w);
 	gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
