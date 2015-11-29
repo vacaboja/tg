@@ -66,17 +66,20 @@ void initialize_palette()
 int initialize_freetype()
 {
 	int e = FT_Init_FreeType(&ft_library);
-	if(e) goto error;
+	if(e) {
+		error("error #%d in FT_Init_FreeType()\n",e);
+		return 1;
+	}
 
 	e = FT_New_Face(ft_library,INTERFACE_FONT,0,&ft_face);
-	if(e) goto error;
+	if(e) {
+		error("error #%d in FT_New_Face()\n",e);
+		return 1;
+	}
 
 	cr_face = cairo_ft_font_face_create_for_ft_face(ft_face,0);
 
 	return 0;
-error:
-	error("Error loading font\n");
-	return 1;
 }
 
 struct main_window {
