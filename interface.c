@@ -104,6 +104,7 @@ struct main_window {
 	uint64_t *events;
 	int events_wp;
 	uint64_t events_from;
+	double trace_centering;
 
 	int signal;
 };
@@ -604,7 +605,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 		stopped = 1;
 	}
 
-	int strip_width = width * 9 / 10;
+	int strip_width = round(width / (1 + PAPERSTRIP_MARGIN));
 
 	cairo_set_line_width(c,1.3);
 
@@ -640,10 +641,12 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 
 	cairo_set_line_width(c,1);
 
-	cairo_move_to(c, width/20 + .5, .5);
-	cairo_line_to(c, width/20 + .5, height - .5);
-	cairo_move_to(c, 19*width/20 + .5, .5);
-	cairo_line_to(c, 19*width/20 + .5, height - .5);
+	int left_margin = (width - strip_width) / 2;
+	int right_margin = (width + strip_width) / 2;
+	cairo_move_to(c, left_margin + .5, .5);
+	cairo_line_to(c, left_margin + .5, height - .5);
+	cairo_move_to(c, right_margin + .5, .5);
+	cairo_line_to(c, right_margin + .5, height - .5);
 	cairo_set_source(c, green);
 	cairo_stroke(c);
 
@@ -664,8 +667,9 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_source(c,stopped?yellow:white);
 	for(i = w->events_wp;;) {
 		if(!w->events[i]) break;
-		int column = floor(fmod(now - w->events[i], (sweep / PAPERSTRIP_ZOOM)) * strip_width / (sweep / PAPERSTRIP_ZOOM));
-		int row = floor((now - w->events[i]) / sweep);
+		double event = now - w->events[i] + w->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * PAPERSTRIP_ZOOM);
+		int column = floor(fmod(event, (sweep / PAPERSTRIP_ZOOM)) * strip_width / (sweep / PAPERSTRIP_ZOOM));
+		int row = floor(event / sweep);
 		if(row >= height) break;
 		cairo_move_to(c,column,row);
 		cairo_line_to(c,column+1,row);
@@ -689,19 +693,19 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 
 	cairo_set_source(c,white);
 	cairo_set_line_width(c,2);
-	cairo_move_to(c, width/20 + 3, height - 20.5);
-	cairo_line_to(c, 19*width/20 - 3, height - 20.5);
+	cairo_move_to(c, left_margin + 3, height - 20.5);
+	cairo_line_to(c, right_margin - 3, height - 20.5);
 	cairo_stroke(c);
 	cairo_set_line_width(c,1);
-	cairo_move_to(c, width/20 + .5, height - 20.5);
-	cairo_line_to(c, width/20 + 5.5, height - 15.5);
-	cairo_line_to(c, width/20 + 5.5, height - 25.5);
-	cairo_line_to(c, width/20 + .5, height - 20.5);
+	cairo_move_to(c, left_margin + .5, height - 20.5);
+	cairo_line_to(c, left_margin + 5.5, height - 15.5);
+	cairo_line_to(c, left_margin + 5.5, height - 25.5);
+	cairo_line_to(c, left_margin + .5, height - 20.5);
 	cairo_fill(c);
-	cairo_move_to(c, 19*width/20 + .5, height - 20.5);
-	cairo_line_to(c, 19*width/20 - 4.5, height - 15.5);
-	cairo_line_to(c, 19*width/20 - 4.5, height - 25.5);
-	cairo_line_to(c, 19*width/20 + .5, height - 20.5);
+	cairo_move_to(c, right_margin + .5, height - 20.5);
+	cairo_line_to(c, right_margin - 4.5, height - 15.5);
+	cairo_line_to(c, right_margin - 4.5, height - 25.5);
+	cairo_line_to(c, right_margin + .5, height - 20.5);
 	cairo_fill(c);
 
 	char s[100];
@@ -775,6 +779,16 @@ void handle_clear_trace(GtkButton *b, struct main_window *w)
 	redraw(w);
 }
 
+void handle_center_trace(GtkButton *b, struct main_window *w)
+{
+	uint64_t last_ev = w->events[w->events_wp];
+	if(last_ev) {
+		double sweep = w->sample_rate * 3600. / (PAPERSTRIP_ZOOM * w->guessed_bph);
+		w->trace_centering = fmod(last_ev + .5*sweep , sweep);
+	} else
+		w->trace_centering = 0;
+}
+
 void quit()
 {
 	gtk_main_quit();
@@ -788,6 +802,7 @@ void init_main_window(struct main_window *w)
 	memset(w->events,0,EVENTS_COUNT * sizeof(uint64_t));
 	w->events_wp = 0;
 	w->events_from = 0;
+	w->trace_centering = 0;
 
 	w->guessed_bph = w->last_bph = DEFAULT_BPH;
 	w->bph = 0;
@@ -861,10 +876,19 @@ void init_main_window(struct main_window *w)
 	gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->paperstrip_drawing_area);
 
-	GtkWidget *clear_button = gtk_button_new_with_label("clear trace");
-	gtk_box_pack_start(GTK_BOX(vbox2),clear_button,FALSE,TRUE,0);
+	GtkWidget *hbox3 = gtk_hbox_new(FALSE,10);
+	gtk_box_pack_start(GTK_BOX(vbox2),hbox3,FALSE,TRUE,0);
+	gtk_widget_show(hbox3);
+
+	GtkWidget *clear_button = gtk_button_new_with_label("clear");
+	gtk_box_pack_start(GTK_BOX(hbox3),clear_button,TRUE,TRUE,0);
 	gtk_signal_connect(GTK_OBJECT(clear_button),"clicked",(GtkSignalFunc)handle_clear_trace,w);
 	gtk_widget_show(clear_button);
+
+	GtkWidget *center_button = gtk_button_new_with_label("center");
+	gtk_box_pack_start(GTK_BOX(hbox3),center_button,TRUE,TRUE,0);
+	gtk_signal_connect(GTK_OBJECT(center_button),"clicked",(GtkSignalFunc)handle_center_trace,w);
+	gtk_widget_show(center_button);
 
 	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10);
 	gtk_box_pack_start(GTK_BOX(hbox2),vbox3,TRUE,TRUE,0);
