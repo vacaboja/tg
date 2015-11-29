@@ -526,7 +526,7 @@ void compute_amplitude(struct processing_buffers *p)
 	int i,j,k;
 
 	int wf_size = ceil(p->period);
-	int window = p->sample_rate / 2000;
+	int window = p->sample_rate / 1000;
 	for(i = 0; i < window; i++)
 		p->waveform[i + wf_size] = p->waveform[i];
 	float smooth_wf[wf_size];
