@@ -73,7 +73,7 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	return 0;
 
 error:
-	error("Error opening audio input: %s\n", Pa_GetErrorText(err));
+	error("Error opening audio input: %s", Pa_GetErrorText(err));
 	return 1;
 }
 

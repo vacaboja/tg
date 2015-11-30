@@ -18,10 +18,9 @@
 
 #include "tg.h"
 #include <stdarg.h>
+#include <libgen.h>
 #include <gtk/gtk.h>
-#include <cairo/cairo-ft.h>
-#include <ft2build.h>
-#include FT_FREETYPE_H
+#include <cairo-ft.h>
 
 int preset_bph[] = PRESET_BPH;
 
@@ -41,10 +40,28 @@ void print_debug(char *format,...)
 
 void error(char *format,...)
 {
+	char s[100];
 	va_list args;
+
 	va_start(args,format);
-	vfprintf(stderr,format,args);
+	int size = vsnprintf(s,100,format,args);
 	va_end(args);
+
+	char *t;
+	if(size < 100) {
+		t = s;
+	} else {
+		t = alloca(size+1);
+		va_start(args,format);
+		vsnprintf(t,size+1,format,args);
+		va_end(args);
+	}
+
+	fprintf(stderr,"%s\n",t);
+
+	GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,"%s",t);
+	gtk_dialog_run(GTK_DIALOG(dialog));
+	gtk_widget_destroy(dialog);
 }
 
 void define_color(cairo_pattern_t **gc,double r,double g,double b)
@@ -63,17 +80,25 @@ void initialize_palette()
 	define_color(&yellow,1,1,0);
 }
 
-int initialize_freetype()
+int initialize_freetype(char *dir)
 {
 	int e = FT_Init_FreeType(&ft_library);
 	if(e) {
-		error("error #%d in FT_Init_FreeType()\n",e);
+		error("error #%d in FT_Init_FreeType()",e);
 		return 1;
 	}
 
-	e = FT_New_Face(ft_library,INTERFACE_FONT,0,&ft_face);
+	char fontfile[strlen(dir)+strlen(INTERFACE_FONT)+10];
+	sprintf(fontfile,"%s/%s",dir,INTERFACE_FONT);
+
+	FT_Open_Args args;
+	args.flags = FT_OPEN_PATHNAME;
+	args.pathname = fontfile;
+	args.stream = NULL;
+
+	e = FT_Open_Face(ft_library,&args,0,&ft_face);
 	if(e) {
-		error("error #%d in FT_New_Face()\n",e);
+		error("error #%d in FT_Open_Face(), filename was %s",e,fontfile);
 		return 1;
 	}
 
@@ -790,6 +815,7 @@ void handle_center_trace(GtkButton *b, struct main_window *w)
 		w->trace_centering = fmod(last_ev + .5*sweep , sweep);
 	} else
 		w->trace_centering = 0;
+	redraw(w);
 }
 
 void quit()
@@ -969,8 +995,14 @@ int run_interface()
 int main(int argc, char **argv)
 {
 	gtk_init(&argc, &argv);
+
+	char path[strlen(argv[0])+1];
+	char dir[strlen(argv[0])+1];
+	strcpy(path,argv[0]);
+	strcpy(dir,dirname(path));
+
 	initialize_palette();
-	if(initialize_freetype()) return 1;
+	if(initialize_freetype(dir)) return 1;
 
 	return run_interface();
 }
