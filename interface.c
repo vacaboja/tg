@@ -18,17 +18,11 @@
 
 #include "tg.h"
 #include <stdarg.h>
-#include <libgen.h>
 #include <gtk/gtk.h>
-#include <cairo-ft.h>
 
 int preset_bph[] = PRESET_BPH;
 
 cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
-
-FT_Library ft_library;
-FT_Face ft_face;
-cairo_font_face_t *cr_face;
 
 void print_debug(char *format,...)
 {
@@ -78,33 +72,6 @@ void initialize_palette()
 	define_color(&blue,0,0,1);
 	define_color(&blueish,0,0,.5);
 	define_color(&yellow,1,1,0);
-}
-
-int initialize_freetype(char *dir)
-{
-	int e = FT_Init_FreeType(&ft_library);
-	if(e) {
-		error("error #%d in FT_Init_FreeType()",e);
-		return 1;
-	}
-
-	char fontfile[strlen(dir)+strlen(INTERFACE_FONT)+10];
-	sprintf(fontfile,"%s/%s",dir,INTERFACE_FONT);
-
-	FT_Open_Args args;
-	args.flags = FT_OPEN_PATHNAME;
-	args.pathname = fontfile;
-	args.stream = NULL;
-
-	e = FT_Open_Face(ft_library,&args,0,&ft_face);
-	if(e) {
-		error("error #%d in FT_Open_Face(), filename was %s",e,fontfile);
-		return 1;
-	}
-
-	cr_face = cairo_ft_font_face_create_for_ft_face(ft_face,0);
-
-	return 0;
 }
 
 struct main_window {
@@ -323,13 +290,28 @@ double get_amplitude(double la, struct processing_buffers *p)
 cairo_t *cairo_init(GtkWidget *widget)
 {
 	cairo_t *c = gdk_cairo_create(widget->window);
-	cairo_set_font_face(c,cr_face);
 	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
 
 	return c;
+}
+
+double print_number(cairo_t *c, double x, double y, char *s)
+{
+	cairo_text_extents_t extents;
+	cairo_text_extents(c,"0",&extents);
+	double z = extents.x_advance;
+	char t[2];
+	t[1] = 0;
+	while((t[0] = *s++)) {
+		cairo_text_extents(c,t,&extents);
+		cairo_move_to(c, x + (z - extents.x_advance) / 2, y);
+		cairo_show_text(c,t);
+		x += z;
+	}
+	return x;
 }
 
 gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
@@ -376,12 +358,18 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 	int i;
 	for(i=0; i<8; i++) {
-		cairo_set_source(c, i % 2 || i > 4 || !p || !old ? white : yellow);
-		cairo_move_to(c,x,y);
-		cairo_set_font_size(c, i%2 ? OUTPUT_FONT*2/3 : OUTPUT_FONT);
-		cairo_show_text(c,outputs[i]);
-		cairo_text_extents(c,outputs[i],&extents);
-		x += extents.x_advance;
+		if(i%2) {
+			cairo_set_source(c, white);
+			cairo_move_to(c,x,y);
+			cairo_set_font_size(c, OUTPUT_FONT*2/3);
+			cairo_show_text(c,outputs[i]);
+			cairo_text_extents(c,outputs[i],&extents);
+			x += extents.x_advance;
+		} else {
+			cairo_set_source(c, i > 4 || !p || !old ? white : yellow);
+			cairo_set_font_size(c, OUTPUT_FONT);
+			x = print_number(c,x,y,outputs[i]);
+		}
 	}
 
 	cairo_destroy(c);
@@ -995,14 +983,6 @@ int run_interface()
 int main(int argc, char **argv)
 {
 	gtk_init(&argc, &argv);
-
-	char path[strlen(argv[0])+1];
-	char dir[strlen(argv[0])+1];
-	strcpy(path,argv[0]);
-	strcpy(dir,dirname(path));
-
 	initialize_palette();
-	if(initialize_freetype(dir)) return 1;
-
 	return run_interface();
 }
