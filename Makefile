@@ -1,4 +1,4 @@
-VERSION = 0.2.2
+VERSION = 0.2.3-test
 
 CC = gcc
 
@@ -40,4 +40,4 @@ tg-lt-prf$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt-prf,-DLIGHT -pg)
 
 clean:
-	rm -f tg$(EXT) tg-lt$(EXT) tg-dbg$(EXT) tg-prf$(EXT) tg-lt-prf$(EXT) gmon.out
+	rm -f tg$(EXT) tg-lt$(EXT) tg-dbg$(EXT) tg-prf$(EXT) tg-lt-prf$(EXT) gmon.out perf.data*

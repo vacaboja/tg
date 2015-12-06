@@ -371,6 +371,21 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 			x = print_number(c,x,y,outputs[i]);
 		}
 	}
+#ifdef DEBUG
+	{
+		static GTimer *timer = NULL;
+		if (!timer) timer = g_timer_new();
+		else {
+			char s[100];
+			sprintf(s,"  %.2f fps",1./g_timer_elapsed(timer, NULL));
+			cairo_set_source(c, white);
+			cairo_set_font_size(c, OUTPUT_FONT);
+			cairo_move_to(c,x,y);
+			cairo_show_text(c,s);
+			g_timer_reset(timer);
+		}
+	}
+#endif
 
 	cairo_destroy(c);
 

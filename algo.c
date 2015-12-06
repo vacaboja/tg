@@ -129,6 +129,20 @@ void pb_destroy_clone(struct processing_buffers *p)
 	free(p);
 }
 
+float vmax(float *v, int a, int b, int *i_max)
+{
+	float max = v[a];
+	if(i_max) *i_max = a;
+	int i;
+	for(i = a+1; i < b; i++) {
+		if(v[i] > max) {
+			max = v[i];
+			if(i_max) *i_max = i;
+		}
+	}
+	return max;
+}
+
 void noise_suppressor(struct processing_buffers *p)
 {
 	float *a = p->samples_sc;
@@ -149,15 +163,10 @@ void noise_suppressor(struct processing_buffers *p)
 	}
 
 	int m = p->sample_count - window + 1;
-	float max = 0;
+	int step = p->sample_rate / 2;
 	int j = 0;
-	for(i = 0; i < m; i++) {
-		if(b[i] > max) max = b[i];
-		if((i+1) % (p->sample_rate/2) == 0) {
-			a[j++] = max;
-			max = 0;
-		}
-	}
+	for(i = 0; i + step - 1 < m; i += step)
+		a[j++] = vmax(b, i, i+step, NULL);
 	qsort(a, j, sizeof(float), fl_cmp);
 	float k = a[j/2];
 
@@ -209,17 +218,11 @@ void prepare_data(struct processing_buffers *b)
 
 int peak_detector(float *buff, int a, int b)
 {
-	int i;
-	double max = buff[a];
-	int i_max = a;
-	for(i=a+1; i<=b; i++) {
-		if(buff[i] > max) {
-			max = buff[i];
-			i_max = i;
-		}
-	}
+	int i_max;
+	double max = vmax(buff, a, b+1, &i_max);
 	if(max <= 0) return -1;
 
+	int i;
 	float v[b-a+1];
 	for(i=a; i<=b; i++)
 		v[i-a] = buff[i];
@@ -250,7 +253,11 @@ int peak_detector(float *buff, int a, int b)
 
 double estimate_period(struct processing_buffers *p)
 {
-	int first_estimate = peak_detector(p->samples_sc, p->sample_rate / 12, p->sample_rate );
+	int first_estimate;
+	vmax(p->samples_sc, p->sample_rate / 12, p->sample_rate, &first_estimate);
+	first_estimate = peak_detector(p->samples_sc,
+			fmax(p->sample_rate / 12, first_estimate - p->sample_rate / 12),
+			first_estimate + p->sample_rate / 12);
 	if(first_estimate == -1) {
 		debug("no candidate period\n");
 		return -1;
@@ -269,11 +276,7 @@ double estimate_period(struct processing_buffers *p)
 	}
 	int a = estimate*3/2 - p->sample_rate / 50;
 	int b = estimate*3/2 + p->sample_rate / 50;
-	double max = p->samples_sc[a];
-	int i;
-	for(i=a+1; i<=b; i++)
-		if(p->samples_sc[i] > max)
-			max = p->samples_sc[i];
+	double max = vmax(p->samples_sc, a, b+1, NULL);
 	if(max < 0.2 * p->samples_sc[estimate]) {
 		if(first_estimate * 2 / factor < p->sample_rate ) {
 			debug("double triggered\n");
@@ -341,6 +344,22 @@ int compute_period(struct processing_buffers *b, int bph)
 
 float tmean(float *x, int n)
 {
+	if(n>16) {
+		qsort(x,16,sizeof(float),fl_cmp);
+		float t = x[12];
+		int i, c1 = 0, c2 = 0;
+		for(i = 0; i < n; i++) {
+			if(x[i] < t) c1++;
+			if(x[i] > t) c2++;
+		}
+		double r = (double)c1/(c1+c2);
+		if(r < .9 && r > .7) {
+			double sum = 0;
+			for(i=0; i < n; i++)
+				if(x[i] < t) sum += x[i];
+			return sum/c1;
+		}
+	}
 	qsort(x,n,sizeof(float),fl_cmp);
 	int i;
 	double sum = 0;
@@ -353,10 +372,20 @@ void prepare_waveform(struct processing_buffers *p)
 {
 	int i;
 	double x = 0, y = 0;
-	for(i=0; i<p->sample_count; i++) {
+	for(i = 0; i < p->period/2; i++) {
+		int j;
+		p->waveform[i] = 0;
+		for(j=0;;j++) {
+			int n = round(i + j * p->period/2);
+			if(n >= p->sample_count) break;
+			p->waveform[i] += p->samples[n];
+		}
+		p->waveform[i] /= j;
+	}
+	for(i=0; i<p->period/2; i++) {
 		double a = i * 4 * M_PI / p->period;
-		x += p->samples[i] * cos(a);
-		y += p->samples[i] * sin(a);
+		x += p->waveform[i] * cos(a);
+		y += p->waveform[i] * sin(a);
 	}
 	p->phase = p->period * (M_PI + atan2(y,x)) / (4 * M_PI);
 
@@ -375,10 +404,11 @@ void prepare_waveform(struct processing_buffers *p)
 		p->waveform[i] = tmean(bin,j);
 	}
 
-	for(i=0; i<p->period; i++)
-		p->waveform_sc[i] = p->waveform[i];
-	qsort(p->waveform_sc,floor(p->period),sizeof(float),fl_cmp);
-	double nl = p->waveform_sc[(int)floor(p->period/2)];
+	int step = ceil(p->period / 100);
+	for(i=0; i * step < p->period; i++)
+		p->waveform_sc[i] = p->waveform[i * step];
+	qsort(p->waveform_sc,i,sizeof(float),fl_cmp);
+	double nl = p->waveform_sc[i/2];
 	for(i=0; i<p->period; i++)
 		p->waveform[i] -= nl;
 
@@ -434,22 +464,13 @@ int compute_parameters(struct processing_buffers *p)
 	int window = p->sample_rate / 2000;
 	float smooth_wf[wf_size - tic_to_toc - window];
 	smooth(fold_wf, smooth_wf, window, wf_size - tic_to_toc);
-	float max = 0;
-	int max_i = -1;
-	for(i=0; i < wf_size - tic_to_toc - window; i++) {
-		if(smooth_wf[i] > max) {
-			max = smooth_wf[i];
-			max_i = i;
-		}
-	}
-	if(max_i < 0) return 1;
+	int max_i;
+	float max = vmax(smooth_wf, 0, wf_size - tic_to_toc - window, &max_i);
+	if(max <= 0) return 1;
 	p->tic = max_i;
 	p->toc = p->tic + tic_to_toc;
 
-	p->waveform_max = 0;
-	for(i=0; i < p->period; i++)
-		if(p->waveform[i] > p->waveform_max)
-			p->waveform_max = p->waveform[i];
+	p->waveform_max = vmax(p->waveform, 0, ceil(p->period), NULL);
 
 	double phase = p->timestamp - p->last_tic;
 	double apparent_phase = p->sample_count - (p->phase + p->tic);
@@ -540,10 +561,8 @@ void compute_amplitude(struct processing_buffers *p)
 			if(++j > p->period) j = 0;
 		}
 	}
-	double glob_max = 0;
-	for(i = 0; i < p->period; i++)
-		if(smooth_wf[i] > glob_max) glob_max = smooth_wf[i];
-	double threshold = fmax(.01 * glob_max, 1.2 * max);
+	double glob_max = vmax(smooth_wf, 0, ceil(p->period), NULL);
+	double threshold = fmax(.01 * glob_max, 1.4 * max);
 	debug("amp threshold from %s\n", .01 * glob_max > 1.2 * max ? "global maximum" : "noise level");
 	for(k = 0; k < 2; k++) {
 		double max = 0;
