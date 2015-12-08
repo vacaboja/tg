@@ -999,5 +999,12 @@ int main(int argc, char **argv)
 {
 	gtk_init(&argc, &argv);
 	initialize_palette();
+
+	if(!fftwf_init_threads()) {
+		error("Error initializing fftw threads");
+		return 1;
+	}
+	fftwf_plan_with_nthreads(2);
+
 	return run_interface();
 }
