@@ -245,29 +245,63 @@ double amplitude_to_time(double lift_angle, double amp)
 
 double draw_watch_icon(cairo_t *c, int signal)
 {
-	int happy = !!signal;
-	cairo_set_line_width(c,3);
-	cairo_set_source(c,happy?green:red);
-	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
-	cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
-	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
-	cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.35, OUTPUT_WINDOW_HEIGHT * (0.65 - 0.3*happy));
-	cairo_stroke(c);
-	cairo_arc(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
-	cairo_stroke(c);
-	const int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
-	int i;
-	cairo_set_line_width(c,1);
-	for(i = 0; i < signal; i++) {
-		cairo_move_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
-		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
-		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-		cairo_stroke_preserve(c);
-		cairo_fill(c);
-	}
-	return OUTPUT_WINDOW_HEIGHT + 3*l;
+    int happy = !!signal;
+    cairo_set_line_width(c,3);
+    cairo_set_source(c,happy?green:red);
+    
+    int midx, midy;
+    time_t now;
+    struct tm *now_tm;
+    float dRadians;
+    int radius;
+    
+    radius = midx = midy = OUTPUT_WINDOW_HEIGHT * 0.5;
+    
+    // Get system time
+    time (&now);
+    now_tm = localtime (&now);
+    
+    // MINUTES
+    cairo_move_to(c, midx, midy);
+    // Get radians from minutes and seconds
+    dRadians = (now_tm->tm_min * M_PI / 30.0) + (M_PI * now_tm->tm_sec / 1800.0);
+    cairo_line_to(c, midx+(int) (0.7 * radius * sin (dRadians)), midy-(int) (0.7 * radius * cos (dRadians)));
+    
+    // HOURS
+    cairo_move_to(c, midx, midy);
+    // Get radians from hours and minutes
+    dRadians = (now_tm->tm_hour % 12) * M_PI / 6.0 + (3.14 * now_tm->tm_min / 360.0);
+    cairo_line_to(c, midx + (int) (radius * 0.5 * sin (dRadians)), midy - (int) (radius * 0.5 * cos (dRadians)));
+    
+    cairo_set_line_cap (c, CAIRO_LINE_CAP_ROUND); // Rounded hands
+    cairo_stroke(c);
+    cairo_set_line_cap (c, CAIRO_LINE_CAP_BUTT); // Revert to default
+    
+    // SECONDS
+    cairo_set_line_width (c,1);
+    cairo_move_to(c, midx, midy);
+    // Get radians from seconds
+    dRadians = now_tm->tm_sec * M_PI / 30.0;
+    cairo_line_to(c, midx + (0.8 * radius * sin (dRadians)), midy - (0.8 * radius * cos (dRadians)));
+    cairo_stroke(c);
+    
+    cairo_set_line_width (c,5); // Fat outline
+    cairo_arc(c, midx, midy, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
+    cairo_stroke(c);
+    
+    const int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
+    int i;
+    cairo_set_line_width(c,1);
+    for(i = 0; i < signal; i++) {
+        cairo_move_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
+        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
+        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
+        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
+        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
+        cairo_stroke_preserve(c);
+        cairo_fill(c);
+    }
+    return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
 double get_rate(int bph, double sample_rate, struct processing_buffers *p)
