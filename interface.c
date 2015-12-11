@@ -161,7 +161,7 @@ void recompute(struct main_window *w)
 		w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / w->sample_rate);
 }
 
-guint refresh(struct main_window *w)
+guint refresh_window(struct main_window *w)
 {
 	recompute(w);
 	redraw(w);
@@ -988,7 +988,7 @@ int run_interface()
 
 	init_main_window(&w);
 
-	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)refresh,&w,NULL);
+	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)refresh_window,&w,NULL);
 
 	gtk_main();
 
