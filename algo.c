@@ -525,10 +525,10 @@ void locate_events(struct processing_buffers *p)
 	int events[2*count];
 	int half = p->tic < p->period/2 ? 0 : round(p->period / 2);
 	int offset = p->tic - half;
-	do_locate_events(events, p, p->waveform + half, p->last_tic + p->sample_count - p->timestamp, offset, count);
+	do_locate_events(events, p, p->waveform + half, (int)(p->last_tic + p->sample_count - p->timestamp), offset, count);
 	half = p->toc < p->period/2 ? 0 : round(p->period / 2);
 	offset = p->toc - half;
-	do_locate_events(events+count, p, p->waveform + half, p->last_toc + p->sample_count - p->timestamp, offset, count);
+	do_locate_events(events+count, p, p->waveform + half, (int)(p->last_toc + p->sample_count - p->timestamp), offset, count);
 	qsort(events, 2*count, sizeof(int), int_cmp);
 
 	int i,j;
