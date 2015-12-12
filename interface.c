@@ -821,7 +821,7 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 	if(s) {
 		int n;
 		char *t;
-		n = strtol(s,&t,10);
+		n = (int)strtol(s,&t,10);
 		if(*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
 		else w->bph = w->guessed_bph = n;
 		g_free(s);
