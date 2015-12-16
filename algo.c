@@ -509,8 +509,10 @@ void do_locate_events(int *events, struct processing_buffers *p, float *waveform
 		int b = round(last - offset - i*p->period + 0.02*p->sample_rate);
 		if(a < 0 || b >= p->sample_count)
 			events[i] = -1;
-		else
-			events[i] = offset + peak_detector(p->tic_c,a,b);
+		else {
+			int peak = peak_detector(p->tic_c,a,b);
+			events[i] = peak >= 0 ? offset + peak : -1;
+		}
 	}
 }
 
