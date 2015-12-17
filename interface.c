@@ -106,13 +106,20 @@ struct main_window {
 
 void redraw(struct main_window *w)
 {
-	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,w->output_drawing_area->allocation.width,w->output_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->tic_drawing_area,0,0,w->tic_drawing_area->allocation.width,w->tic_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->toc_drawing_area,0,0,w->toc_drawing_area->allocation.width,w->toc_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->period_drawing_area,0,0,w->period_drawing_area->allocation.width,w->period_drawing_area->allocation.height);
-	gtk_widget_queue_draw_area(w->paperstrip_drawing_area,0,0,w->paperstrip_drawing_area->allocation.width,w->paperstrip_drawing_area->allocation.height);
+    GtkAllocation temp;
+    gtk_widget_get_allocation (w->output_drawing_area, &temp);
+	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,temp.width,temp.height);
+    gtk_widget_get_allocation (w->tic_drawing_area, &temp);
+	gtk_widget_queue_draw_area(w->tic_drawing_area,0,0,temp.width,temp.height);
+    gtk_widget_get_allocation (w->toc_drawing_area, &temp);
+	gtk_widget_queue_draw_area(w->toc_drawing_area,0,0,temp.width,temp.height);
+    gtk_widget_get_allocation (w->period_drawing_area, &temp);
+	gtk_widget_queue_draw_area(w->period_drawing_area,0,0,temp.width,temp.height);
+    gtk_widget_get_allocation (w->paperstrip_drawing_area, &temp);
+	gtk_widget_queue_draw_area(w->paperstrip_drawing_area,0,0,temp.width,temp.height);
 #ifdef DEBUG
-	gtk_widget_queue_draw_area(w->debug_drawing_area,0,0,w->debug_drawing_area->allocation.width,w->debug_drawing_area->allocation.height);
+    gtk_widget_get_allocation (w->debug_drawing_area, &temp);
+	gtk_widget_queue_draw_area(w->debug_drawing_area,0,0,temp.width,temp.height);
 #endif
 }
 
@@ -175,8 +182,10 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
 
 void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
-	int width = da->allocation.width;
-	int height = da->allocation.height;
+    GtkAllocation temp;
+    gtk_widget_get_allocation (da, &temp);
+	int width = temp.width;
+	int height = temp.height;
 
 	int n;
 
@@ -248,47 +257,13 @@ double draw_watch_icon(cairo_t *c, int signal)
     int happy = !!signal;
     cairo_set_line_width(c,3);
     cairo_set_source(c,happy?green:red);
-    
-    int midx, midy;
-    time_t now;
-    struct tm *now_tm;
-    float dRadians;
-    int radius;
-    
-    radius = midx = midy = OUTPUT_WINDOW_HEIGHT * 0.5;
-    
-    // Get system time
-    time (&now);
-    now_tm = localtime (&now);
-    
-    // MINUTES
-    cairo_move_to(c, midx, midy);
-    // Get radians from minutes and seconds
-    dRadians = (now_tm->tm_min * M_PI / 30.0) + (M_PI * now_tm->tm_sec / 1800.0);
-    cairo_line_to(c, midx+(int) (0.7 * radius * sin (dRadians)), midy-(int) (0.7 * radius * cos (dRadians)));
-    
-    // HOURS
-    cairo_move_to(c, midx, midy);
-    // Get radians from hours and minutes
-    dRadians = (now_tm->tm_hour % 12) * M_PI / 6.0 + (3.14 * now_tm->tm_min / 360.0);
-    cairo_line_to(c, midx + (int) (radius * 0.5 * sin (dRadians)), midy - (int) (radius * 0.5 * cos (dRadians)));
-    
-    cairo_set_line_cap (c, CAIRO_LINE_CAP_ROUND); // Rounded hands
+    cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
+    cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
+    cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
+    cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.35, OUTPUT_WINDOW_HEIGHT * (0.65 - 0.3*happy));
     cairo_stroke(c);
-    cairo_set_line_cap (c, CAIRO_LINE_CAP_BUTT); // Revert to default
-    
-    // SECONDS
-    cairo_set_line_width (c,1);
-    cairo_move_to(c, midx, midy);
-    // Get radians from seconds
-    dRadians = now_tm->tm_sec * M_PI / 30.0;
-    cairo_line_to(c, midx + (0.8 * radius * sin (dRadians)), midy - (0.8 * radius * cos (dRadians)));
+    cairo_arc(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
     cairo_stroke(c);
-    
-    cairo_set_line_width (c,5); // Fat outline
-    cairo_arc(c, midx, midy, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
-    cairo_stroke(c);
-    
     const int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
     int i;
     cairo_set_line_width(c,1);
@@ -323,7 +298,7 @@ double get_amplitude(double la, struct processing_buffers *p)
 
 cairo_t *cairo_init(GtkWidget *widget)
 {
-	cairo_t *c = gdk_cairo_create(widget->window);
+	cairo_t *c = gdk_cairo_create(gtk_widget_get_window(widget));
 	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
@@ -434,9 +409,14 @@ void expose_waveform(
 {
 	cairo_t *c = cairo_init(da);
 
-	int width = da->allocation.width;
-	int height = da->allocation.height;
-	int font = w->window->allocation.width / 90;
+    GtkAllocation temp;
+    gtk_widget_get_allocation (da, &temp);
+    
+	int width = temp.width;
+	int height = temp.height;
+    
+    gtk_widget_get_allocation (w->window, &temp);
+	int font = temp.width / 90;
 	if(font < 12)
 		font = 12;
 	int i;
@@ -577,8 +557,11 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 {
 	cairo_t *c = cairo_init(widget);
 
-	int width = w->period_drawing_area->allocation.width;
-	int height = w->period_drawing_area->allocation.height;
+    GtkAllocation temp;
+    gtk_widget_get_allocation (w->period_drawing_area, &temp);
+    
+	int width = temp.width;
+	int height = temp.height;
 
 	int old;
 	struct processing_buffers *p = get_data(w,&old);
@@ -661,8 +644,11 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 
 	cairo_t *c = cairo_init(widget);
 
-	int width = w->paperstrip_drawing_area->allocation.width;
-	int height = w->paperstrip_drawing_area->allocation.height;
+    GtkAllocation temp;
+    gtk_widget_get_allocation (w->paperstrip_drawing_area, &temp);
+    
+    int width = temp.width;
+    int height = temp.height;
 
 	int stopped = 0;
 	if(w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
@@ -776,7 +762,8 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	char s[100];
 	cairo_text_extents_t extents;
 
-	int font = w->window->allocation.width / 90;
+    gtk_widget_get_allocation (w->window, &temp);
+	int font = temp.width / 90;
 	if(font < 12)
 		font = 12;
 	cairo_set_font_size(c,font);
@@ -890,7 +877,7 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(hbox);
 
 	GtkWidget *label = gtk_label_new("bph");
-	GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
+    // gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
 	gtk_widget_show(label);
 
@@ -904,25 +891,25 @@ void init_main_window(struct main_window *w)
 		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box),s);
 	}
 	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box),0);
-	gtk_signal_connect(GTK_OBJECT(w->bph_combo_box),"changed",(GtkSignalFunc)handle_bph_change,w);
+    g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK (handle_bph_change), w);
+    
 	gtk_widget_show(w->bph_combo_box);
 
 	label = gtk_label_new("lift angle");
-	GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
+    // gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
 	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
 	gtk_widget_show(label);
 
 	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA,MAX_LA,1);
 	gtk_box_pack_start(GTK_BOX(hbox),w->la_spin_button,FALSE,TRUE,0);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button),DEFAULT_LA);
-	gtk_signal_connect(GTK_OBJECT(w->la_spin_button),"value_changed",(GtkSignalFunc)handle_la_change,w);
+    g_signal_connect (w->la_spin_button, "value_changed", G_CALLBACK (handle_la_change), w);
 	gtk_widget_show(w->la_spin_button);
 
 	w->output_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->output_drawing_area),700,OUTPUT_WINDOW_HEIGHT);
+    gtk_widget_set_size_request(w->output_drawing_area, 700, OUTPUT_WINDOW_HEIGHT);
 	gtk_box_pack_start(GTK_BOX(vbox),w->output_drawing_area,FALSE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->output_drawing_area),"expose_event",
-			(GtkSignalFunc)output_expose_event, w);
+    g_signal_connect (w->output_drawing_area, "expose_event", G_CALLBACK (output_expose_event), w);
 	gtk_widget_set_events(w->output_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->output_drawing_area);
 
@@ -935,10 +922,9 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(vbox2);
 
 	w->paperstrip_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->paperstrip_drawing_area),200,400);
+    gtk_widget_set_size_request(w->paperstrip_drawing_area, 200, 400);
 	gtk_box_pack_start(GTK_BOX(vbox2),w->paperstrip_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->paperstrip_drawing_area),"expose_event",
-			(GtkSignalFunc)paperstrip_expose_event, w);
+    g_signal_connect (w->paperstrip_drawing_area, "expose_event", G_CALLBACK (paperstrip_expose_event), w);
 	gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->paperstrip_drawing_area);
 
@@ -948,12 +934,12 @@ void init_main_window(struct main_window *w)
 
 	GtkWidget *clear_button = gtk_button_new_with_label("clear");
 	gtk_box_pack_start(GTK_BOX(hbox3),clear_button,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(clear_button),"clicked",(GtkSignalFunc)handle_clear_trace,w);
+    g_signal_connect (clear_button, "clicked", G_CALLBACK (handle_clear_trace), w);
 	gtk_widget_show(clear_button);
 
 	GtkWidget *center_button = gtk_button_new_with_label("center");
 	gtk_box_pack_start(GTK_BOX(hbox3),center_button,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(center_button),"clicked",(GtkSignalFunc)handle_center_trace,w);
+    g_signal_connect (center_button, "clicked", G_CALLBACK (handle_center_trace), w);
 	gtk_widget_show(center_button);
 
 	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10);
@@ -961,35 +947,31 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(vbox3);
 
 	w->tic_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->tic_drawing_area),700,100);
+    gtk_widget_set_size_request(w->tic_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3),w->tic_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->tic_drawing_area),"expose_event",
-			(GtkSignalFunc)tic_expose_event, w);
+    g_signal_connect (w->tic_drawing_area, "expose_event", G_CALLBACK (tic_expose_event), w);
 	gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->tic_drawing_area);
 
 	w->toc_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->toc_drawing_area),700,100);
+    gtk_widget_set_size_request(w->toc_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3),w->toc_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->toc_drawing_area),"expose_event",
-			(GtkSignalFunc)toc_expose_event, w);
+    g_signal_connect (w->toc_drawing_area, "expose_event", G_CALLBACK (toc_expose_event), w);
 	gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->toc_drawing_area);
 
 	w->period_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->period_drawing_area),700,100);
+    gtk_widget_set_size_request(w->period_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3),w->period_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->period_drawing_area),"expose_event",
-			(GtkSignalFunc)period_expose_event, w);
+    g_signal_connect (w->period_drawing_area, "expose_event", G_CALLBACK (period_expose_event), w);
 	gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->period_drawing_area);
 
 #ifdef DEBUG
 	w->debug_drawing_area = gtk_drawing_area_new();
-	gtk_drawing_area_size(GTK_DRAWING_AREA(w->debug_drawing_area),500,100);
+    gtk_widget_set_size_request(w->debug_drawing_area, 500, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3),w->debug_drawing_area,TRUE,TRUE,0);
-	gtk_signal_connect(GTK_OBJECT(w->debug_drawing_area),"expose_event",
-			(GtkSignalFunc)debug_expose_event, w);
+    g_signal_connect (w->debug_drawing_area, "expose_event", G_CALLBACK (debug_expose_event), w);
 	gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->debug_drawing_area);
 #endif
