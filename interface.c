@@ -840,6 +840,7 @@ void quit()
 	gtk_main_quit();
 }
 
+/* Set up the main window and populate with widgets */
 void init_main_window(struct main_window *w)
 {
 	w->signal = 0;
@@ -855,116 +856,128 @@ void init_main_window(struct main_window *w)
 	w->la = DEFAULT_LA;
 
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	gtk_container_set_border_width(GTK_CONTAINER(w->window),10);
-	g_signal_connect(G_OBJECT(w->window),"delete_event",G_CALLBACK(delete_event),NULL);
-	g_signal_connect(G_OBJECT(w->window),"destroy",G_CALLBACK(quit),w);
+    
+    gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
+	g_signal_connect(G_OBJECT(w->window), "delete_event", G_CALLBACK(delete_event), NULL);
+	g_signal_connect(G_OBJECT(w->window), "destroy", G_CALLBACK(quit), w);
 
 	gtk_window_set_title(GTK_WINDOW(w->window),PROGRAM_NAME " " VERSION);
 
-	GtkWidget *vbox = gtk_vbox_new(FALSE,10);
-	gtk_container_add(GTK_CONTAINER(w->window),vbox);
+    GtkWidget *vbox = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	gtk_container_add(GTK_CONTAINER(w->window), vbox);
 	gtk_widget_show(vbox);
 
-	GtkWidget *hbox = gtk_hbox_new(FALSE,10);
-	gtk_box_pack_start(GTK_BOX(vbox),hbox,FALSE,TRUE,0);
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, TRUE, 0);
 	gtk_widget_show(hbox);
 
+    // BPH label
 	GtkWidget *label = gtk_label_new("bph");
     // gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
-	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	gtk_widget_show(label);
 
+    // BPH combo box
 	w->bph_combo_box = gtk_combo_box_text_new_with_entry();
-	gtk_box_pack_start(GTK_BOX(hbox),w->bph_combo_box,FALSE,TRUE,0);
-	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box),"guess");
+	gtk_box_pack_start(GTK_BOX(hbox), w->bph_combo_box, FALSE, TRUE, 0);
+    // Fill in pre-defined values
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), "guess");
 	int *bph;
 	for(bph = preset_bph; *bph; bph++) {
 		char s[100];
-		sprintf(s,"%d",*bph);
-		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box),s);
+		sprintf(s,"%d", *bph);
+		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), s);
 	}
-	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box),0);
-    g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK (handle_bph_change), w);
-    
+	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), 0);
+    g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
 	gtk_widget_show(w->bph_combo_box);
-
+    
+    // Lift angle label
 	label = gtk_label_new("lift angle");
     // gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
-	gtk_box_pack_start(GTK_BOX(hbox),label,FALSE,FALSE,0);
+	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	gtk_widget_show(label);
 
-	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA,MAX_LA,1);
-	gtk_box_pack_start(GTK_BOX(hbox),w->la_spin_button,FALSE,TRUE,0);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button),DEFAULT_LA);
-    g_signal_connect (w->la_spin_button, "value_changed", G_CALLBACK (handle_la_change), w);
+    // Lift angle spin button
+	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
+	gtk_box_pack_start(GTK_BOX(hbox), w->la_spin_button, FALSE, TRUE, 0);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), DEFAULT_LA); // Start at default value
+    g_signal_connect (w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 	gtk_widget_show(w->la_spin_button);
 
+    // Info area on top
 	w->output_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->output_drawing_area, 700, OUTPUT_WINDOW_HEIGHT);
-	gtk_box_pack_start(GTK_BOX(vbox),w->output_drawing_area,FALSE,TRUE,0);
-    g_signal_connect (w->output_drawing_area, "expose_event", G_CALLBACK (output_expose_event), w);
+	gtk_box_pack_start(GTK_BOX(vbox),w->output_drawing_area, FALSE, TRUE, 0);
+    g_signal_connect (w->output_drawing_area, "expose_event", G_CALLBACK(output_expose_event), w);
 	gtk_widget_set_events(w->output_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->output_drawing_area);
 
-	GtkWidget *hbox2 = gtk_hbox_new(FALSE,10);
-	gtk_box_pack_start(GTK_BOX(vbox),hbox2,TRUE,TRUE,0);
+	GtkWidget *hbox2 = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	gtk_box_pack_start(GTK_BOX(vbox), hbox2, TRUE, TRUE, 0);
 	gtk_widget_show(hbox2);
 
-	GtkWidget *vbox2 = gtk_vbox_new(FALSE,10);
-	gtk_box_pack_start(GTK_BOX(hbox2),vbox2,FALSE,TRUE,0);
+	GtkWidget *vbox2 = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	gtk_box_pack_start(GTK_BOX(hbox2), vbox2, FALSE, TRUE, 0);
 	gtk_widget_show(vbox2);
 
+    // Paperstrip
 	w->paperstrip_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->paperstrip_drawing_area, 200, 400);
-	gtk_box_pack_start(GTK_BOX(vbox2),w->paperstrip_drawing_area,TRUE,TRUE,0);
-    g_signal_connect (w->paperstrip_drawing_area, "expose_event", G_CALLBACK (paperstrip_expose_event), w);
+	gtk_box_pack_start(GTK_BOX(vbox2), w->paperstrip_drawing_area, TRUE, TRUE, 0);
+    g_signal_connect (w->paperstrip_drawing_area, "expose_event", G_CALLBACK(paperstrip_expose_event), w);
 	gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->paperstrip_drawing_area);
 
-	GtkWidget *hbox3 = gtk_hbox_new(FALSE,10);
-	gtk_box_pack_start(GTK_BOX(vbox2),hbox3,FALSE,TRUE,0);
+	GtkWidget *hbox3 = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
 	gtk_widget_show(hbox3);
 
-	GtkWidget *clear_button = gtk_button_new_with_label("clear");
-	gtk_box_pack_start(GTK_BOX(hbox3),clear_button,TRUE,TRUE,0);
-    g_signal_connect (clear_button, "clicked", G_CALLBACK (handle_clear_trace), w);
+    // CLEAR button
+	GtkWidget *clear_button = gtk_button_new_with_label("Clear");
+	gtk_box_pack_start(GTK_BOX(hbox3), clear_button, TRUE, TRUE, 0);
+    g_signal_connect (clear_button, "clicked", G_CALLBACK(handle_clear_trace), w);
 	gtk_widget_show(clear_button);
 
-	GtkWidget *center_button = gtk_button_new_with_label("center");
-	gtk_box_pack_start(GTK_BOX(hbox3),center_button,TRUE,TRUE,0);
-    g_signal_connect (center_button, "clicked", G_CALLBACK (handle_center_trace), w);
+    // CENTER button
+	GtkWidget *center_button = gtk_button_new_with_label("Center");
+	gtk_box_pack_start(GTK_BOX(hbox3), center_button, TRUE, TRUE, 0);
+    g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), w);
 	gtk_widget_show(center_button);
 
-	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10);
-	gtk_box_pack_start(GTK_BOX(hbox2),vbox3,TRUE,TRUE,0);
+	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10); // Replaced by GtkGrid in GTK+ 3.2
+	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);
 	gtk_widget_show(vbox3);
 
+    // Tic waveform area
 	w->tic_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->tic_drawing_area, 700, 100);
-	gtk_box_pack_start(GTK_BOX(vbox3),w->tic_drawing_area,TRUE,TRUE,0);
-    g_signal_connect (w->tic_drawing_area, "expose_event", G_CALLBACK (tic_expose_event), w);
+	gtk_box_pack_start(GTK_BOX(vbox3), w->tic_drawing_area, TRUE, TRUE, 0);
+    g_signal_connect (w->tic_drawing_area, "expose_event", G_CALLBACK(tic_expose_event), w);
 	gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->tic_drawing_area);
 
+    // Toc waveform area
 	w->toc_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->toc_drawing_area, 700, 100);
-	gtk_box_pack_start(GTK_BOX(vbox3),w->toc_drawing_area,TRUE,TRUE,0);
-    g_signal_connect (w->toc_drawing_area, "expose_event", G_CALLBACK (toc_expose_event), w);
+	gtk_box_pack_start(GTK_BOX(vbox3), w->toc_drawing_area, TRUE, TRUE, 0);
+    g_signal_connect (w->toc_drawing_area, "expose_event", G_CALLBACK(toc_expose_event), w);
 	gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->toc_drawing_area);
 
+    // Period waveform area
 	w->period_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->period_drawing_area, 700, 100);
-	gtk_box_pack_start(GTK_BOX(vbox3),w->period_drawing_area,TRUE,TRUE,0);
-    g_signal_connect (w->period_drawing_area, "expose_event", G_CALLBACK (period_expose_event), w);
+	gtk_box_pack_start(GTK_BOX(vbox3), w->period_drawing_area, TRUE, TRUE, 0);
+    g_signal_connect (w->period_drawing_area, "expose_event", G_CALLBACK(period_expose_event), w);
 	gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->period_drawing_area);
 
 #ifdef DEBUG
 	w->debug_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->debug_drawing_area, 500, 100);
-	gtk_box_pack_start(GTK_BOX(vbox3),w->debug_drawing_area,TRUE,TRUE,0);
-    g_signal_connect (w->debug_drawing_area, "expose_event", G_CALLBACK (debug_expose_event), w);
+	gtk_box_pack_start(GTK_BOX(vbox3), w->debug_drawing_area, TRUE, TRUE, 0);
+    g_signal_connect (w->debug_drawing_area, "expose_event", G_CALLBACK(debug_expose_event), w);
 	gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->debug_drawing_area);
 #endif
