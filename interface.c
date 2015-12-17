@@ -106,20 +106,13 @@ struct main_window {
 
 void redraw(struct main_window *w)
 {
-    GtkAllocation temp;
-    gtk_widget_get_allocation (w->output_drawing_area, &temp);
-	gtk_widget_queue_draw_area(w->output_drawing_area,0,0,temp.width,temp.height);
-    gtk_widget_get_allocation (w->tic_drawing_area, &temp);
-	gtk_widget_queue_draw_area(w->tic_drawing_area,0,0,temp.width,temp.height);
-    gtk_widget_get_allocation (w->toc_drawing_area, &temp);
-	gtk_widget_queue_draw_area(w->toc_drawing_area,0,0,temp.width,temp.height);
-    gtk_widget_get_allocation (w->period_drawing_area, &temp);
-	gtk_widget_queue_draw_area(w->period_drawing_area,0,0,temp.width,temp.height);
-    gtk_widget_get_allocation (w->paperstrip_drawing_area, &temp);
-	gtk_widget_queue_draw_area(w->paperstrip_drawing_area,0,0,temp.width,temp.height);
+    gtk_widget_queue_draw(w->output_drawing_area);
+    gtk_widget_queue_draw(w->tic_drawing_area);
+    gtk_widget_queue_draw(w->toc_drawing_area);
+    gtk_widget_queue_draw(w->period_drawing_area);
+    gtk_widget_queue_draw(w->paperstrip_drawing_area);
 #ifdef DEBUG
-    gtk_widget_get_allocation (w->debug_drawing_area, &temp);
-	gtk_widget_queue_draw_area(w->debug_drawing_area,0,0,temp.width,temp.height);
+    gtk_widget_queue_draw(w->debug_drawing_area);
 #endif
 }
 
