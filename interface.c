@@ -106,13 +106,13 @@ struct main_window {
 
 void redraw(struct main_window *w)
 {
-    gtk_widget_queue_draw(w->output_drawing_area);
-    gtk_widget_queue_draw(w->tic_drawing_area);
-    gtk_widget_queue_draw(w->toc_drawing_area);
-    gtk_widget_queue_draw(w->period_drawing_area);
-    gtk_widget_queue_draw(w->paperstrip_drawing_area);
+	gtk_widget_queue_draw(w->output_drawing_area);
+	gtk_widget_queue_draw(w->tic_drawing_area);
+	gtk_widget_queue_draw(w->toc_drawing_area);
+	gtk_widget_queue_draw(w->period_drawing_area);
+	gtk_widget_queue_draw(w->paperstrip_drawing_area);
 #ifdef DEBUG
-    gtk_widget_queue_draw(w->debug_drawing_area);
+	gtk_widget_queue_draw(w->debug_drawing_area);
 #endif
 }
 
@@ -176,8 +176,8 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
 
 void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
-    GtkAllocation temp;
-    gtk_widget_get_allocation (da, &temp);
+	GtkAllocation temp;
+	gtk_widget_get_allocation (da, &temp);
 	int width = temp.width;
 	int height = temp.height;
 
@@ -248,29 +248,29 @@ double amplitude_to_time(double lift_angle, double amp)
 
 double draw_watch_icon(cairo_t *c, int signal)
 {
-    int happy = !!signal;
-    cairo_set_line_width(c,3);
-    cairo_set_source(c,happy?green:red);
-    cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
-    cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
-    cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
-    cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.35, OUTPUT_WINDOW_HEIGHT * (0.65 - 0.3*happy));
-    cairo_stroke(c);
-    cairo_arc(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
-    cairo_stroke(c);
-    const int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
-    int i;
-    cairo_set_line_width(c,1);
-    for(i = 0; i < signal; i++) {
-        cairo_move_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
-        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
-        cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-        cairo_stroke_preserve(c);
-        cairo_fill(c);
-    }
-    return OUTPUT_WINDOW_HEIGHT + 3*l;
+	int happy = !!signal;
+	cairo_set_line_width(c,3);
+	cairo_set_source(c,happy?green:red);
+	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
+	cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
+	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
+	cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.35, OUTPUT_WINDOW_HEIGHT * (0.65 - 0.3*happy));
+	cairo_stroke(c);
+	cairo_arc(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
+	cairo_stroke(c);
+	const int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
+	int i;
+	cairo_set_line_width(c,1);
+	for(i = 0; i < signal; i++) {
+		cairo_move_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
+		cairo_stroke_preserve(c);
+		cairo_fill(c);
+	}
+	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
 double get_rate(int bph, double sample_rate, struct processing_buffers *p)
@@ -403,13 +403,13 @@ void expose_waveform(
 {
 	cairo_t *c = cairo_init(da);
 
-    GtkAllocation temp;
-    gtk_widget_get_allocation (da, &temp);
-    
+	GtkAllocation temp;
+	gtk_widget_get_allocation (da, &temp);
+
 	int width = temp.width;
 	int height = temp.height;
-    
-    gtk_widget_get_allocation (w->window, &temp);
+
+	gtk_widget_get_allocation (w->window, &temp);
 	int font = temp.width / 90;
 	if(font < 12)
 		font = 12;
@@ -551,9 +551,9 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 {
 	cairo_t *c = cairo_init(widget);
 
-    GtkAllocation temp;
-    gtk_widget_get_allocation (w->period_drawing_area, &temp);
-    
+	GtkAllocation temp;
+	gtk_widget_get_allocation (w->period_drawing_area, &temp);
+
 	int width = temp.width;
 	int height = temp.height;
 
@@ -638,11 +638,11 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 
 	cairo_t *c = cairo_init(widget);
 
-    GtkAllocation temp;
-    gtk_widget_get_allocation (w->paperstrip_drawing_area, &temp);
-    
-    int width = temp.width;
-    int height = temp.height;
+	GtkAllocation temp;
+	gtk_widget_get_allocation (w->paperstrip_drawing_area, &temp);
+
+	int width = temp.width;
+	int height = temp.height;
 
 	int stopped = 0;
 	if(w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
@@ -756,7 +756,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	char s[100];
 	cairo_text_extents_t extents;
 
-    gtk_widget_get_allocation (w->window, &temp);
+	gtk_widget_get_allocation (w->window, &temp);
 	int font = temp.width / 90;
 	if(font < 12)
 		font = 12;
@@ -857,14 +857,14 @@ void init_main_window(struct main_window *w)
 	w->la = DEFAULT_LA;
 
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    
-    gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
-    g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL);
+
+	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
+	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL);
 	g_signal_connect(w->window, "destroy", G_CALLBACK(quit), w);
 
 	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
 
-    GtkWidget *vbox = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *vbox = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_container_add(GTK_CONTAINER(w->window), vbox);
 	gtk_widget_show(vbox);
 
@@ -872,17 +872,17 @@ void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, TRUE, 0);
 	gtk_widget_show(hbox);
 
-    // BPH label
+	// BPH label
 	GtkWidget *label = gtk_label_new("bph");
-    // gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
+	// gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	gtk_widget_show(label);
 
-    // BPH combo box
+	// BPH combo box
 	w->bph_combo_box = gtk_combo_box_text_new_with_entry();
 	gtk_box_pack_start(GTK_BOX(hbox), w->bph_combo_box, FALSE, TRUE, 0);
-    // Fill in pre-defined values
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), "guess");
+	// Fill in pre-defined values
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), "guess");
 	int *bph;
 	for(bph = preset_bph; *bph; bph++) {
 		char s[100];
@@ -890,27 +890,27 @@ void init_main_window(struct main_window *w)
 		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), s);
 	}
 	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), 0);
-    g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
+	g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
 	gtk_widget_show(w->bph_combo_box);
-    
-    // Lift angle label
+
+	// Lift angle label
 	label = gtk_label_new("lift angle");
-    // gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
+	// gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	gtk_widget_show(label);
 
-    // Lift angle spin button
+	// Lift angle spin button
 	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
 	gtk_box_pack_start(GTK_BOX(hbox), w->la_spin_button, FALSE, TRUE, 0);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), DEFAULT_LA); // Start at default value
-    g_signal_connect (w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), DEFAULT_LA); // Start at default value
+	g_signal_connect (w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 	gtk_widget_show(w->la_spin_button);
 
-    // Info area on top
+	// Info area on top
 	w->output_drawing_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(w->output_drawing_area, 700, OUTPUT_WINDOW_HEIGHT);
+	gtk_widget_set_size_request(w->output_drawing_area, 700, OUTPUT_WINDOW_HEIGHT);
 	gtk_box_pack_start(GTK_BOX(vbox),w->output_drawing_area, FALSE, TRUE, 0);
-    g_signal_connect (w->output_drawing_area, "expose_event", G_CALLBACK(output_expose_event), w);
+	g_signal_connect (w->output_drawing_area, "expose_event", G_CALLBACK(output_expose_event), w);
 	gtk_widget_set_events(w->output_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->output_drawing_area);
 
@@ -922,11 +922,11 @@ void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox2, FALSE, TRUE, 0);
 	gtk_widget_show(vbox2);
 
-    // Paperstrip
+	// Paperstrip
 	w->paperstrip_drawing_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(w->paperstrip_drawing_area, 200, 400);
+	gtk_widget_set_size_request(w->paperstrip_drawing_area, 200, 400);
 	gtk_box_pack_start(GTK_BOX(vbox2), w->paperstrip_drawing_area, TRUE, TRUE, 0);
-    g_signal_connect (w->paperstrip_drawing_area, "expose_event", G_CALLBACK(paperstrip_expose_event), w);
+	g_signal_connect (w->paperstrip_drawing_area, "expose_event", G_CALLBACK(paperstrip_expose_event), w);
 	gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->paperstrip_drawing_area);
 
@@ -934,51 +934,51 @@ void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
 	gtk_widget_show(hbox3);
 
-    // CLEAR button
+	// CLEAR button
 	GtkWidget *clear_button = gtk_button_new_with_label("Clear");
 	gtk_box_pack_start(GTK_BOX(hbox3), clear_button, TRUE, TRUE, 0);
-    g_signal_connect (clear_button, "clicked", G_CALLBACK(handle_clear_trace), w);
+	g_signal_connect (clear_button, "clicked", G_CALLBACK(handle_clear_trace), w);
 	gtk_widget_show(clear_button);
 
-    // CENTER button
+	// CENTER button
 	GtkWidget *center_button = gtk_button_new_with_label("Center");
 	gtk_box_pack_start(GTK_BOX(hbox3), center_button, TRUE, TRUE, 0);
-    g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), w);
+	g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), w);
 	gtk_widget_show(center_button);
 
 	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);
 	gtk_widget_show(vbox3);
 
-    // Tic waveform area
+	// Tic waveform area
 	w->tic_drawing_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(w->tic_drawing_area, 700, 100);
+	gtk_widget_set_size_request(w->tic_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), w->tic_drawing_area, TRUE, TRUE, 0);
-    g_signal_connect (w->tic_drawing_area, "expose_event", G_CALLBACK(tic_expose_event), w);
+	g_signal_connect (w->tic_drawing_area, "expose_event", G_CALLBACK(tic_expose_event), w);
 	gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->tic_drawing_area);
 
-    // Toc waveform area
+	// Toc waveform area
 	w->toc_drawing_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(w->toc_drawing_area, 700, 100);
+	gtk_widget_set_size_request(w->toc_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), w->toc_drawing_area, TRUE, TRUE, 0);
-    g_signal_connect (w->toc_drawing_area, "expose_event", G_CALLBACK(toc_expose_event), w);
+	g_signal_connect (w->toc_drawing_area, "expose_event", G_CALLBACK(toc_expose_event), w);
 	gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->toc_drawing_area);
 
-    // Period waveform area
+	// Period waveform area
 	w->period_drawing_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(w->period_drawing_area, 700, 100);
+	gtk_widget_set_size_request(w->period_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), w->period_drawing_area, TRUE, TRUE, 0);
-    g_signal_connect (w->period_drawing_area, "expose_event", G_CALLBACK(period_expose_event), w);
+	g_signal_connect (w->period_drawing_area, "expose_event", G_CALLBACK(period_expose_event), w);
 	gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->period_drawing_area);
 
 #ifdef DEBUG
 	w->debug_drawing_area = gtk_drawing_area_new();
-    gtk_widget_set_size_request(w->debug_drawing_area, 500, 100);
+	gtk_widget_set_size_request(w->debug_drawing_area, 500, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), w->debug_drawing_area, TRUE, TRUE, 0);
-    g_signal_connect (w->debug_drawing_area, "expose_event", G_CALLBACK(debug_expose_event), w);
+	g_signal_connect (w->debug_drawing_area, "expose_event", G_CALLBACK(debug_expose_event), w);
 	gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
 	gtk_widget_show(w->debug_drawing_area);
 #endif
@@ -994,7 +994,7 @@ int run_interface()
 	int nominal_sr;
 	double real_sr;
 
-    // Initialize audio
+	// Initialize audio
 	if(start_portaudio(&nominal_sr, &real_sr)) return 1;
 
 	struct processing_buffers p[NSTEPS];
@@ -1011,13 +1011,13 @@ int run_interface()
 	w.bfs = p;
 	w.old = NULL;
 
-    // Set up GDK+ widgets
+	// Set up GDK+ widgets
 	init_main_window(&w);
 
-    // Call refresh_window() 10 times/second
+	// Call refresh_window() 10 times/second
 	g_timeout_add_full(G_PRIORITY_LOW, 100, (GSourceFunc)refresh_window, &w, NULL);
 
-    gtk_main(); // Runs the main loop
+	gtk_main(); // Runs the main loop
 
 	return 0;
 }
