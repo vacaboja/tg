@@ -116,6 +116,7 @@ void redraw(struct main_window *w)
 #endif
 }
 
+/* Find the preset bph value closest corresponding to the current period */
 int guess_bph(double period)
 {
 	double bph = 7200 / period;
@@ -858,10 +859,10 @@ void init_main_window(struct main_window *w)
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
 	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
-	g_signal_connect(G_OBJECT(w->window), "delete_event", G_CALLBACK(delete_event), NULL);
-	g_signal_connect(G_OBJECT(w->window), "destroy", G_CALLBACK(quit), w);
+	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL);
+	g_signal_connect(w->window, "destroy", G_CALLBACK(quit), w);
 
-	gtk_window_set_title(GTK_WINDOW(w->window),PROGRAM_NAME " " VERSION);
+	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
 
 	GtkWidget *vbox = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_container_add(GTK_CONTAINER(w->window), vbox);
@@ -987,11 +988,13 @@ void init_main_window(struct main_window *w)
 	gtk_window_set_focus(GTK_WINDOW(w->window), NULL);
 }
 
+/* Start up the app loop */
 int run_interface()
 {
 	int nominal_sr;
 	double real_sr;
 
+	// Initialize audio
 	if(start_portaudio(&nominal_sr, &real_sr)) return 1;
 
 	struct processing_buffers p[NSTEPS];
@@ -1008,11 +1011,13 @@ int run_interface()
 	w.bfs = p;
 	w.old = NULL;
 
+	// Set up GDK+ widgets
 	init_main_window(&w);
 
-	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)refresh_window,&w,NULL);
+	// Call refresh_window() 10 times/second
+	g_timeout_add_full(G_PRIORITY_LOW, 100, (GSourceFunc)refresh_window, &w, NULL);
 
-	gtk_main();
+	gtk_main(); // Runs the main loop
 
 	return 0;
 }
