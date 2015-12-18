@@ -859,10 +859,10 @@ void init_main_window(struct main_window *w)
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     
     gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
-    g_signal_connect(GTK_WIDGET(w->window), "delete_event", G_CALLBACK(delete_event), NULL);
-	g_signal_connect(GTK_WIDGET(w->window), "destroy", G_CALLBACK(quit), w);
+    g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL);
+	g_signal_connect(w->window, "destroy", G_CALLBACK(quit), w);
 
-	gtk_window_set_title(GTK_WINDOW(w->window),PROGRAM_NAME " " VERSION);
+	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
 
     GtkWidget *vbox = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_container_add(GTK_CONTAINER(w->window), vbox);
