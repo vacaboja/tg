@@ -517,10 +517,10 @@ gboolean info_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
         else {
             char s[100];
             sprintf(s,"  %.2f fps",1./g_timer_elapsed(timer, NULL));
-            cairo_set_source(c, white);
-            cairo_set_font_size(c, OUTPUT_FONT);
-            cairo_move_to(c,x,y);
-            cairo_show_text(c,s);
+            cairo_set_source(cr, white);
+            cairo_set_font_size(cr, OUTPUT_FONT);
+            cairo_move_to(cr,x,y);
+            cairo_show_text(cr,s);
             g_timer_reset(timer);
         }
     }
@@ -1000,17 +1000,15 @@ void init_main_window(struct main_window *w)
     
     // All done. Show all the widgets.
     gtk_widget_show_all (w->window);
-    gtk_window_set_focus (GTK_WINDOW(w->window), NULL); // Unsets the focus widget (not working atm)
-
+    
+    // gtk_window_set_interactive_debugging(TRUE);
     // gtk_window_maximize(GTK_WINDOW(w->window));
 }
 
 
-/* Called when the application starts running */
+/* Called when the GTK application starts running */
 static void activate (GtkApplication* app, gpointer user_data)
 {
-    initialize_palette(); // Set up the color definitions we'll be using
-    
     int nominal_sr;
     double real_sr;
     
@@ -1032,7 +1030,12 @@ static void activate (GtkApplication* app, gpointer user_data)
     w.bfs = p;
     w.old = NULL;
     w.window = gtk_application_window_new (app);
-    
+
+    initialize_palette(); // Set up the color definitions we'll be using
+
+    // Use the dark theme
+    g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", TRUE, NULL);
+
     // Set up GDK+ widgets for the UI
     init_main_window(&w);
     
