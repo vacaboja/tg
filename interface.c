@@ -357,7 +357,7 @@ void draw_waveform(
         if(!(i%5)) {
             int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
             char s[10];
-            sprintf(s, "%d", i);
+            snprintf(s, 10, "%d", i);
             cairo_move_to(cr, x+fontsize/4, height-fontsize/2);
             cairo_show_text(cr, s);
         }
@@ -398,8 +398,7 @@ void draw_waveform(
         int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
         if(x > last_x) {
             char s[10];
-            
-            sprintf(s,"%d",abs(i));
+            snprintf(s, 10, "%d", abs(i));
             cairo_move_to(cr, x + fontsize/4, fontsize * 3 / 2);
             cairo_show_text(cr, s);
             cairo_text_extents(cr, s, &extents);
@@ -487,11 +486,11 @@ gboolean info_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
         double be = fabs(p->be) * 1000 / p->sample_rate;
         double amp = get_amplitude(w->la, p);
         char rates[20];
-        sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
-        sprintf(outputs[0],"%4s",rates);
-        sprintf(outputs[2]," %4.1f",be);
+        snprintf(rates, 20, "%s%d", rate > 0 ? "+" : rate < 0 ? "-" : "", abs(rate));
+        snprintf(outputs[0], 20, "%4s",rates);
+        snprintf(outputs[2], 20, " %4.1f",be);
         if(amp > 0)
-            sprintf(outputs[4]," %3.0f",amp);
+            snprintf(outputs[4], 20, " %3.0f",amp);
         else
             strcpy(outputs[4]," ---");
     } else {
@@ -499,7 +498,7 @@ gboolean info_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
         strcpy(outputs[2]," ----");
         strcpy(outputs[4]," ---");
     }
-    sprintf(outputs[6]," %d",w->guessed_bph);
+    snprintf(outputs[6], 20, " %d",w->guessed_bph);
     
     strcpy(outputs[1]," s/d");
     strcpy(outputs[3]," ms");
@@ -532,8 +531,8 @@ gboolean info_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
         static GTimer *timer = NULL;
         if (!timer) timer = g_timer_new();
         else {
-            char s[100];
-            sprintf(s,"  %.2f fps",1./g_timer_elapsed(timer, NULL));
+            char s[50];
+            snprintf(s, 50, "  %.2f fps",1./g_timer_elapsed(timer, NULL));
             cairo_set_source(cr, white);
             cairo_set_font_size(cr, OUTPUT_FONT);
             cairo_move_to(cr,x,y);
@@ -764,10 +763,10 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
         fontsize = 12;
     cairo_set_font_size(cr, fontsize);
     
-    char s[100];
+    char s[50];
     cairo_text_extents_t extents;
     
-    sprintf(s, "%.1f ms", 3600000. / (w->guessed_bph * PAPERSTRIP_ZOOM));
+    snprintf(s, 50, "%.1f ms", 3600000. / (w->guessed_bph * PAPERSTRIP_ZOOM));
     cairo_text_extents(cr,s,&extents);
     cairo_move_to(cr, (width - extents.x_advance)/2, height - 30);
     cairo_show_text(cr, s);
@@ -881,8 +880,8 @@ void init_main_window(struct main_window *w)
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), "Auto");
     int *bph;
     for(bph = preset_bph; *bph; bph++) {
-        char s[100];
-        sprintf(s,"%d", *bph);
+        char s[50];
+        snprintf(s, 50, "%d", *bph);
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), s);
     }
     gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), 0);
