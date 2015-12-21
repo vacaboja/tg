@@ -22,7 +22,7 @@
 
 int preset_bph[] = PRESET_BPH;
 
-cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
+cairo_pattern_t *bg_color,*waveform_color,*grid2_color,*grid_color,*pulse_color,*range_color,*stopped_color, *icon1, *icon2, *text;
 
 void print_debug(char *format,...)
 {
@@ -58,20 +58,39 @@ void error(char *format,...)
     gtk_widget_destroy(dialog);
 }
 
-void define_color(cairo_pattern_t **gc,double r,double g,double b)
+void define_color(cairo_pattern_t **gc, GdkRGBA col)
 {
-    *gc = cairo_pattern_create_rgb(r,g,b);
+    *gc = cairo_pattern_create_rgb(col.red, col.green, col.blue);
 }
 
-void initialize_palette()
+/* Grab color definitions from css */
+void initialize_palette(GtkWidget *win)
 {
-    define_color(&black,0,0,0);
-    define_color(&white,1,1,1);
-    define_color(&red,1,0,0);
-    define_color(&green,0,0.8,0);
-    define_color(&blue,0,0,1);
-    define_color(&blueish,0,0,.5);
-    define_color(&yellow,1,1,0);
+    GtkStyleContext *sc = gtk_widget_get_style_context(win);
+    
+    GdkRGBA color;
+    
+    gtk_style_context_lookup_color (sc, "graph_background", &color);
+    define_color(&bg_color, color);
+    gtk_style_context_lookup_color (sc, "waveform_active", &color);
+    define_color(&waveform_color, color);
+    gtk_style_context_lookup_color (sc, "waveform_stopped", &color);
+    define_color(&stopped_color, color);
+    gtk_style_context_lookup_color (sc, "grid_line", &color);
+    define_color(&grid_color, color);
+    gtk_style_context_lookup_color (sc, "grid_line_alternate", &color);
+    define_color(&grid2_color, color);
+    gtk_style_context_lookup_color (sc, "pulse", &color);
+    define_color(&pulse_color, color);
+    gtk_style_context_lookup_color (sc, "pulse_range", &color);
+    define_color(&range_color, color);
+    
+    gtk_style_context_lookup_color (sc, "text", &color);
+    define_color(&text, color);
+    gtk_style_context_lookup_color (sc, "icon_on", &color);
+    define_color(&icon1, color);
+    gtk_style_context_lookup_color (sc, "icon_off", &color);
+    define_color(&icon2, color);
 }
 
 struct main_window {
@@ -252,7 +271,7 @@ double draw_watch_icon(cairo_t *c, int signal)
 {
     int happy = !!signal;
     cairo_set_line_width(c,3);
-    cairo_set_source(c,happy?green:red);
+    cairo_set_source(c, happy ? icon1 : icon2);
     cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
     cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
     cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
@@ -298,7 +317,7 @@ void cairo_init(cairo_t *c)
 {
     cairo_set_line_width(c, 1);
     
-    cairo_set_source(c,black);
+    cairo_set_source(c, bg_color);
     cairo_paint(c);
 }
 
@@ -345,14 +364,14 @@ void draw_waveform(
         cairo_move_to(cr, x + .5, height / 2 + .5);
         cairo_line_to(cr, x + .5, height - .5);
         if(i%5)
-            cairo_set_source(cr, green);
+            cairo_set_source(cr, grid_color);
         else
-            cairo_set_source(cr, red);
+            cairo_set_source(cr, grid2_color);
         cairo_stroke(cr);
     }
     
     // Draw numbers for time scale, every 5 ms
-    cairo_set_source(cr, white);
+    cairo_set_source(cr, text);
     for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
         if(!(i%5)) {
             int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
@@ -383,15 +402,15 @@ void draw_waveform(
         cairo_move_to(cr, x+.5, .5);
         cairo_line_to(cr, x+.5, height / 2 + .5);
         if (i % 50)
-            cairo_set_source(cr,green);
+            cairo_set_source(cr, grid_color);
         else
-            cairo_set_source(cr,red);
+            cairo_set_source(cr, grid2_color);
         cairo_stroke(cr);
     }
     
     // Draw numbers for amplitude scale
     double last_x = 0;
-    cairo_set_source(cr, white);
+    cairo_set_source(cr, text);
     for(i = 50; i < 360; i+=50) {
         double t = period*amplitude_to_time(w->la, i);
         if(t > .001 * NEGATIVE_SPAN) continue;
@@ -422,7 +441,7 @@ void draw_waveform(
         draw_graph(a,b,cr,p,da);
         
         // Make the audio waveform yellow if it's not current.
-        cairo_set_source(cr, old?yellow:white);
+        cairo_set_source(cr, old ? stopped_color : waveform_color);
         cairo_stroke_preserve(cr);
         cairo_fill(cr);
         
@@ -432,14 +451,14 @@ void draw_waveform(
             int x = round((NEGATIVE_SPAN - pulse * 1000 / p->sample_rate) * width / (POSITIVE_SPAN + NEGATIVE_SPAN));
             cairo_move_to(cr, x, 1);
             cairo_line_to(cr, x, height - 1);
-            cairo_set_source(cr, blue);
+            cairo_set_source(cr, pulse_color);
             cairo_set_line_width(cr, 2);
             cairo_stroke(cr);
         }
     } else { // If no data, just draw the center line in yellow
         cairo_move_to(cr, .5, height / 2 + .5);
         cairo_line_to(cr, width - .5, height / 2 + .5);
-        cairo_set_source(cr, yellow);
+        cairo_set_source(cr, stopped_color);
         cairo_stroke(cr);
     }
     
@@ -514,14 +533,14 @@ gboolean info_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
     int i;
     for(i=0; i <8; i++) {
         if(i%2) {
-            cairo_set_source(cr, white);
+            cairo_set_source(cr, text);
             cairo_move_to(cr,x,y);
             cairo_set_font_size(cr, OUTPUT_FONT*2/3);
             cairo_show_text(cr,outputs[i]);
             cairo_text_extents(cr,outputs[i],&extents);
             x += extents.x_advance;
         } else {
-            cairo_set_source(cr, i > 4 || !p || !old ? white : yellow);
+            cairo_set_source(cr, i > 4 || !p || !old ? text : stopped_color);
             cairo_set_font_size(cr, OUTPUT_FONT);
             x = print_number(cr,x,y,outputs[i]);
         }
@@ -533,7 +552,7 @@ gboolean info_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
         else {
             char s[50];
             snprintf(s, 50, "  %.2f fps",1./g_timer_elapsed(timer, NULL));
-            cairo_set_source(cr, white);
+            cairo_set_source(cr, text);
             cairo_set_font_size(cr, OUTPUT_FONT);
             cairo_move_to(cr,x,y);
             cairo_show_text(cr,s);
@@ -578,14 +597,14 @@ gboolean period_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w
         cairo_line_to(cr, (p->tic - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
         cairo_line_to(cr, (p->tic - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
         cairo_line_to(cr, (p->tic - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
-        cairo_set_source(cr, blueish);
+        cairo_set_source(cr, range_color);
         cairo_fill(cr);
         
         cairo_move_to(cr, (toc - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
         cairo_line_to(cr, (toc - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
         cairo_line_to(cr, (toc - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
         cairo_line_to(cr, (toc - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
-        cairo_set_source(cr, blueish);
+        cairo_set_source(cr, range_color);
         cairo_fill(cr);
     }
     
@@ -595,22 +614,22 @@ gboolean period_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w
         cairo_move_to(cr, x+.5, .5);
         cairo_line_to(cr, x+.5, height - .5);
         if(i % 4)
-            cairo_set_source(cr, green);
+            cairo_set_source(cr, grid_color);
         else
-            cairo_set_source(cr, red);
+            cairo_set_source(cr, grid2_color);
         cairo_stroke(cr);
     }
     
     if(p) {
         draw_graph(a,b,cr,p,w->period_drawing_area);
         
-        cairo_set_source(cr, old?yellow:white);
+        cairo_set_source(cr, old ? stopped_color : waveform_color);
         cairo_stroke_preserve(cr);
         cairo_fill(cr);
     } else {
         cairo_move_to(cr, .5, height / 2 + .5);
         cairo_line_to(cr, width - .5, height / 2 + .5);
-        cairo_set_source(cr, yellow);
+        cairo_set_source(cr, stopped_color);
         cairo_stroke(cr);
     }
     
@@ -681,7 +700,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
                     }
                 }
             }
-            cairo_set_source(cr, blue);
+            cairo_set_source(cr, pulse_color);
             cairo_stroke(cr);
         }
     }
@@ -694,7 +713,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
     cairo_line_to(cr, left_margin + .5, height - .5);
     cairo_move_to(cr, right_margin + .5, .5);
     cairo_line_to(cr, right_margin + .5, height - .5);
-    cairo_set_source(cr, green);
+    cairo_set_source(cr, grid_color);
     cairo_stroke(cr);
     
     double sweep = w->sample_rate * 3600. / w->guessed_bph;
@@ -707,11 +726,11 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
         if(y > height) break;
         cairo_move_to(cr, .5, y);
         cairo_line_to(cr, width-.5, y);
-        cairo_set_source(cr, (last_tenth-i)%6 ? green : red);
+        cairo_set_source(cr, (last_tenth-i)%6 ? grid_color : grid2_color);
         cairo_stroke(cr);
     }
     
-    cairo_set_source(cr, stopped?yellow:white);
+    cairo_set_source(cr, stopped ? stopped_color : waveform_color);
     for(i = w->events_wp;;) {
         if(!w->events[i]) break;
         double event = now - w->events[i] + w->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * PAPERSTRIP_ZOOM);
@@ -739,7 +758,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
     }
     
     // Draw the arrowed line for the ms scale at the bottom
-    cairo_set_source(cr, white);
+    cairo_set_source(cr, text);
     cairo_set_line_width(cr, 2);
     cairo_move_to(cr, left_margin + 3, height - 20.5);
     cairo_line_to(cr, right_margin - 3, height - 20.5);
@@ -788,7 +807,7 @@ gboolean debug_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
         
         draw_debug_graph(a,b,cr,p,w->debug_drawing_area);
         
-        cairo_set_source(cr, old?yellow:white);
+        cairo_set_source(cr, stopped ? stopped_color : waveform_color);
         cairo_stroke(cr);
     }
     
@@ -920,19 +939,6 @@ void init_main_window(struct main_window *w)
     GtkWidget *panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
     gtk_paned_set_wide_handle(GTK_PANED(panes), TRUE);
     
-    /* Clunky way to make the pane handle bigger, but seems to be the only option
-     otherwise the max is 5px with  gtk_paned_set_wide_handle() */
-    GtkStyleContext *sc = gtk_widget_get_style_context(panes);
-    GtkCssProvider *provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(provider, "* {\n"
-                                    "    -GtkPaned-handle-size: 10;\n"
-                                    " }\n"
-                                    , -1, NULL);
-    
-    gtk_style_context_add_provider(sc, GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    g_object_unref (provider);
-    
-    
     GtkWidget *left_grid = gtk_grid_new();
     GtkWidget *right_grid = gtk_grid_new();
     
@@ -965,12 +971,14 @@ void init_main_window(struct main_window *w)
     
     // CLEAR button
     GtkWidget *clear_button = gtk_button_new_with_label("Clear");
+    gtk_widget_set_name(clear_button, "clear_button"); // To allow for CSS styling
     gtk_container_set_border_width (GTK_CONTAINER(clear_button), 2);
     g_signal_connect (clear_button, "clicked", G_CALLBACK(handle_clear_trace), w);
     gtk_grid_attach(GTK_GRID(left_grid), clear_button, 0,1,1,1);
     
     // CENTER button
     GtkWidget *center_button = gtk_button_new_with_label("Center");
+    gtk_widget_set_name(center_button, "center_button"); // To allow for CSS styling
     gtk_container_set_border_width (GTK_CONTAINER(center_button), 2);
     g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), w);
     gtk_grid_attach(GTK_GRID(left_grid), center_button, 1,1,1,1);
@@ -1047,11 +1055,25 @@ static void activate (GtkApplication* app, gpointer user_data)
     w.old = NULL;
     w.window = gtk_application_window_new (app);
 
-    initialize_palette(); // Set up the color definitions we'll be using
-
     // Use the dark theme
     g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", TRUE, NULL);
 
+    /* Clunky way to make the pane handle bigger, but seems to be the only option
+     otherwise the max is 5px with  gtk_paned_set_wide_handle() */
+
+    GtkCssProvider *provider = gtk_css_provider_new();
+    GFile *css_file =  g_file_new_for_commandline_arg("tg.css");
+    gtk_css_provider_load_from_file(provider, css_file, NULL); // No error handling
+    
+    GdkDisplay *display = gdk_display_get_default();
+    GdkScreen *screen = gdk_display_get_default_screen(display);
+    gtk_style_context_add_provider_for_screen( screen ,GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+    g_object_unref(provider);
+    g_object_unref(css_file);
+    
+    initialize_palette(w.window); // Set up the color definitions we'll be using
+    
     // Set up GDK+ widgets for the UI
     init_main_window(&w);
     
