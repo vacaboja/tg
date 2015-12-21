@@ -135,18 +135,19 @@ int guess_bph(double period)
     return preset_bph[ret];
 }
 
+/* Get data results and if it's current or old */
 struct processing_buffers *get_data(struct main_window *w, int *old)
 {
     struct processing_buffers *p = w->bfs;
     int i;
     for(i=0; i<NSTEPS && p[i].ready; i++);
     for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
-    if(i>=0) {
+    if(i >= 0) {
         if(w->old) pb_destroy_clone(w->old);
         w->old = pb_clone(&p[i]);
         *old = 0;
         return &p[i];
-    } else {
+    } else { // Mark as old
         *old = 1;
         return w->old;
     }
@@ -175,19 +176,19 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
     return FALSE;
 }
 
-/* Draw the actual waveform */
-void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
+/* Draw the audio waveform */
+void draw_graph(double a, double b, cairo_t *cr, struct processing_buffers *p, GtkWidget *da)
 {
     int width = gtk_widget_get_allocated_width(da);
     int height = gtk_widget_get_allocated_height(da);
     
     int n;
     
-    int first = 1;
+    int first = TRUE;
     for(n=0; n<2*width; n++) {
         int i = n < width ? n : 2*width - 1 - n;
         double x = fmod(a + i * (b-a) / width, p->period);
-        if(x < 0) x += p->period;
+        if (x < 0) x += p->period;
         int j = floor(x);
         double y;
         
@@ -195,13 +196,13 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
         else y = p->waveform[j] * 0.4 / p->waveform_max;
         
         int k = round(y*height);
-        if(n < width) k = -k;
+        if (n < width) k = -k;
         
-        if(first) {
-            cairo_move_to(c,i+.5,height/2+k+.5);
-            first = 0;
+        if (first) { // TODO: Same code in both cases?
+            cairo_move_to(cr, i+.5, height/2+k+.5);
+            first = FALSE;
         } else
-            cairo_line_to(c,i+.5,height/2+k+.5);
+            cairo_line_to(cr, i+.5, height/2+k+.5);
     }
 }
 
@@ -279,6 +280,7 @@ double get_rate(int bph, double sample_rate, struct processing_buffers *p)
     return (7200/(bph*p->period / sample_rate) - 1)*24*3600;
 }
 
+/* Calculate the amplitude from the lift angle and audio signal */
 double get_amplitude(double la, struct processing_buffers *p)
 {
     double ret = -1;
@@ -329,13 +331,15 @@ void draw_waveform(
     int width = gtk_widget_get_allocated_width(da);
     int height = gtk_widget_get_allocated_height(da);
     
-    int fontsize = gtk_widget_get_allocated_width(w->window) / 90;
+    // Calculate font size for the amplitude and timing text on the grid
+    int fontsize = gtk_widget_get_allocated_width(w->window) / 90; // TODO: Better sizing. Just keep it at 12?
     if(fontsize < 12)
         fontsize = 12;
-    int i;
-
     cairo_set_font_size(cr, fontsize);
     
+    int i;
+    
+    // Draw vertical time lines every ms
     for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
         int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
         cairo_move_to(cr, x + .5, height / 2 + .5);
@@ -346,41 +350,46 @@ void draw_waveform(
             cairo_set_source(cr, red);
         cairo_stroke(cr);
     }
+    
+    // Draw numbers for time scale, every 5 ms
     cairo_set_source(cr, white);
     for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
         if(!(i%5)) {
             int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
             char s[10];
-            sprintf(s,"%d",i);
-            cairo_move_to(cr,x+fontsize/4, height-fontsize/2);
-            cairo_show_text(cr,s);
+            sprintf(s, "%d", i);
+            cairo_move_to(cr, x+fontsize/4, height-fontsize/2);
+            cairo_show_text(cr, s);
         }
     }
     
     cairo_text_extents_t extents;
     
-    cairo_text_extents(cr,"ms", &extents);
-    cairo_move_to(cr,width - extents.x_advance - fontsize/4, height-fontsize/2);
+    // Draw "ms" label
+    cairo_text_extents(cr, "ms", &extents);
+    cairo_move_to(cr, width - extents.x_advance - fontsize/4, height-fontsize/2);
     cairo_show_text(cr, "ms");
     
     int old;
     struct processing_buffers *p = get_data(w, &old);
     double period = p ? p->period / w->sample_rate : 7200. / w->guessed_bph;
     
-    for(i = 10; i < 360; i+=10) {
-        if(2*i < w->la) continue;
+    // Draw vertical amplitude lines
+    for (i = 10; i < 360; i+=10) {
+        if (2*i < w->la) continue;
         double t = period*amplitude_to_time(w->la, i);
-        if(t > .001 * NEGATIVE_SPAN) continue;
+        if (t > .001 * NEGATIVE_SPAN) continue;
         int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
         cairo_move_to(cr, x+.5, .5);
         cairo_line_to(cr, x+.5, height / 2 + .5);
-        if(i % 50)
+        if (i % 50)
             cairo_set_source(cr,green);
         else
             cairo_set_source(cr,red);
         cairo_stroke(cr);
     }
     
+    // Draw numbers for amplitude scale
     double last_x = 0;
     cairo_set_source(cr, white);
     for(i = 50; i < 360; i+=50) {
@@ -398,11 +407,13 @@ void draw_waveform(
         }
     }
     
+    // Draw "deg" label
     cairo_text_extents(cr, "deg", &extents);
     cairo_move_to(cr,width - extents.x_advance - fontsize/4, fontsize * 3 / 2);
     cairo_show_text(cr,"deg");
     
-    if(p) {
+    // Draw audio waveform
+    if (p) {
         double span = 0.001 * w->sample_rate;
         int offset = get_offset(p);
         
@@ -411,12 +422,14 @@ void draw_waveform(
         
         draw_graph(a,b,cr,p,da);
         
+        // Make the audio waveform yellow if it's not current.
         cairo_set_source(cr, old?yellow:white);
         cairo_stroke_preserve(cr);
         cairo_fill(cr);
         
         double pulse = get_pulse(p);
-        if(pulse > 0) {
+        if (pulse > 0) {
+            // Draw vertical blue line at start of pulse
             int x = round((NEGATIVE_SPAN - pulse * 1000 / p->sample_rate) * width / (POSITIVE_SPAN + NEGATIVE_SPAN));
             cairo_move_to(cr, x, 1);
             cairo_line_to(cr, x, height - 1);
@@ -424,7 +437,7 @@ void draw_waveform(
             cairo_set_line_width(cr, 2);
             cairo_stroke(cr);
         }
-    } else {
+    } else { // If no data, just draw the center line in yellow
         cairo_move_to(cr, .5, height / 2 + .5);
         cairo_line_to(cr, width - .5, height / 2 + .5);
         cairo_set_source(cr, yellow);
@@ -433,21 +446,25 @@ void draw_waveform(
     
 }
 
+/* Used as a function parameter in draw_waveform() */
 int get_tic(struct processing_buffers *p)
 {
     return p->tic;
 }
 
+/* Used as a function parameter in draw_waveform() */
 int get_toc(struct processing_buffers *p)
 {
     return p->toc;
 }
 
+/* Used as a function parameter in draw_waveform() */
 double get_tic_pulse(struct processing_buffers *p)
 {
     return p->tic_pulse;
 }
 
+/* Used as a function parameter in draw_waveform() */
 double get_toc_pulse(struct processing_buffers *p)
 {
     return p->toc_pulse;
@@ -888,7 +905,7 @@ void init_main_window(struct main_window *w)
     w->debug_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->debug_drawing_area, 500, 100);
     g_signal_connect (w->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), w);
-    gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
+    // gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
     
     gtk_container_add (GTK_CONTAINER(settings_grid), w->debug_drawing_area);
     printf("DEBUG!\n");
@@ -898,7 +915,7 @@ void init_main_window(struct main_window *w)
     w->info_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->info_drawing_area, 720, OUTPUT_WINDOW_HEIGHT);
     g_signal_connect (w->info_drawing_area, "draw", G_CALLBACK(info_draw_event), w);
-    gtk_widget_set_events(w->info_drawing_area, GDK_EXPOSURE_MASK);
+    // gtk_widget_set_events(w->info_drawing_area, GDK_EXPOSURE_MASK);
     
     // Populate the panes
     GtkWidget *panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
@@ -942,7 +959,7 @@ void init_main_window(struct main_window *w)
     w->paperstrip_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->paperstrip_drawing_area, 100, 300); // Min width is actually limited by the buttons (~150px)
     g_signal_connect (w->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), w);
-    gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
+    // gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->paperstrip_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->paperstrip_drawing_area, TRUE);
     gtk_grid_attach(GTK_GRID(left_grid), w->paperstrip_drawing_area, 0,0,2,1);
@@ -963,7 +980,7 @@ void init_main_window(struct main_window *w)
     w->tic_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->tic_drawing_area, 400, 100);
     g_signal_connect (w->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), w);
-    gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
+    // gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->tic_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->tic_drawing_area, TRUE);
     gtk_container_add (GTK_CONTAINER(right_grid), w->tic_drawing_area);
@@ -972,7 +989,7 @@ void init_main_window(struct main_window *w)
     w->toc_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->toc_drawing_area, 400, 100);
     g_signal_connect (w->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), w);
-    gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
+    // gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->toc_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->toc_drawing_area, TRUE);
     gtk_container_add (GTK_CONTAINER(right_grid), w->toc_drawing_area);
@@ -981,7 +998,7 @@ void init_main_window(struct main_window *w)
     w->period_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->period_drawing_area, 400, 100);
     g_signal_connect (w->period_drawing_area, "draw", G_CALLBACK(period_draw_event), w);
-    gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
+    // gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->period_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->period_drawing_area, TRUE);
     gtk_container_add (GTK_CONTAINER(right_grid), w->period_drawing_area);
