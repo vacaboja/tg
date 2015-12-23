@@ -22,7 +22,7 @@
 
 int preset_bph[] = PRESET_BPH;
 
-cairo_pattern_t *bg_color,*waveform_color,*grid2_color,*grid_color,*pulse_color,*range_color,*stopped_color, *icon1, *icon2, *text;
+cairo_pattern_t *bg_color,*waveform_color,*grid2_color,*grid_color,*pulse_color,*range_color,*stopped_color,*icon1,*icon2,*text;
 
 void print_debug(char *format,...)
 {
@@ -58,6 +58,7 @@ void error(char *format,...)
     gtk_widget_destroy(dialog);
 }
 
+/* Convert a GTK color object into a Cairo object for drawing */
 void define_color(cairo_pattern_t **gc, GdkRGBA col)
 {
     *gc = cairo_pattern_create_rgb(col.red, col.green, col.blue);
@@ -70,26 +71,26 @@ void initialize_palette(GtkWidget *win)
     
     GdkRGBA color;
     
-    gtk_style_context_lookup_color (sc, "graph_background", &color);
+    gtk_style_context_lookup_color(sc, "graph_background", &color);
     define_color(&bg_color, color);
-    gtk_style_context_lookup_color (sc, "waveform_active", &color);
+    gtk_style_context_lookup_color(sc, "waveform_active", &color);
     define_color(&waveform_color, color);
-    gtk_style_context_lookup_color (sc, "waveform_stopped", &color);
+    gtk_style_context_lookup_color(sc, "waveform_stopped", &color);
     define_color(&stopped_color, color);
-    gtk_style_context_lookup_color (sc, "grid_line", &color);
+    gtk_style_context_lookup_color(sc, "grid_line", &color);
     define_color(&grid_color, color);
-    gtk_style_context_lookup_color (sc, "grid_line_alternate", &color);
+    gtk_style_context_lookup_color(sc, "grid_line_alternate", &color);
     define_color(&grid2_color, color);
-    gtk_style_context_lookup_color (sc, "pulse", &color);
+    gtk_style_context_lookup_color(sc, "pulse", &color);
     define_color(&pulse_color, color);
-    gtk_style_context_lookup_color (sc, "pulse_range", &color);
+    gtk_style_context_lookup_color(sc, "pulse_range", &color);
     define_color(&range_color, color);
     
-    gtk_style_context_lookup_color (sc, "text", &color);
+    gtk_style_context_lookup_color(sc, "text", &color);
     define_color(&text, color);
-    gtk_style_context_lookup_color (sc, "icon_on", &color);
+    gtk_style_context_lookup_color(sc, "icon_on", &color);
     define_color(&icon1, color);
-    gtk_style_context_lookup_color (sc, "icon_off", &color);
+    gtk_style_context_lookup_color(sc, "icon_off", &color);
     define_color(&icon2, color);
 }
 
@@ -154,7 +155,7 @@ int guess_bph(double period)
     return preset_bph[ret];
 }
 
-/* Get data results and if it's current or old */
+/* Get data results and a flag indicating if it's current or old */
 struct processing_buffers *get_data(struct main_window *w, int *old)
 {
     struct processing_buffers *p = w->bfs;
@@ -162,8 +163,9 @@ struct processing_buffers *get_data(struct main_window *w, int *old)
     for(i=0; i<NSTEPS && p[i].ready; i++);
     for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
     if(i >= 0) {
-        if(w->old) pb_destroy_clone(w->old);
-        w->old = pb_clone(&p[i]);
+        // TODO: Can't we have one object kept alive instead of destroying/creating new ones every time?
+        if(w->old) pb_destroy_clone(w->old); // Remove the previous old data
+        w->old = pb_clone(&p[i]); // Store the current data as old
         *old = 0;
         return &p[i];
     } else { // Mark as old
@@ -176,7 +178,7 @@ void recompute(struct main_window *w)
 {
     w->signal = analyze_pa_data(w->bfs, w->bph, w->events_from);
     int old;
-    struct processing_buffers *p = get_data(w,&old);
+    struct processing_buffers *p = get_data(w, &old);
     if(old) w->signal = -w->signal;
     if(p)
         w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / w->sample_rate);
@@ -192,6 +194,8 @@ guint refresh_window(struct main_window *w)
 
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
 {
+    // If you return FALSE in the "delete-event" signal handler
+    // GTK will emit the "destroy" signal.
     return FALSE;
 }
 
@@ -352,7 +356,7 @@ void draw_waveform(
     
     // Calculate font size for the amplitude and timing text on the grid
     int fontsize = gtk_widget_get_allocated_width(w->window) / 90; // TODO: Better sizing. Just keep it at 12?
-    if(fontsize < 12)
+    if (fontsize < 12)
         fontsize = 12;
     cairo_set_font_size(cr, fontsize);
     
@@ -389,7 +393,7 @@ void draw_waveform(
     cairo_move_to(cr, width - extents.x_advance - fontsize/4, height-fontsize/2);
     cairo_show_text(cr, "ms");
     
-    int old;
+    int old; // Flag set if the data isn't current
     struct processing_buffers *p = get_data(w, &old);
     double period = p ? p->period / w->sample_rate : 7200. / w->guessed_bph;
     
@@ -455,7 +459,7 @@ void draw_waveform(
             cairo_set_line_width(cr, 2);
             cairo_stroke(cr);
         }
-    } else { // If no data, just draw the center line in yellow
+    } else { // If no data, just draw the center line
         cairo_move_to(cr, .5, height / 2 + .5);
         cairo_line_to(cr, width - .5, height / 2 + .5);
         cairo_set_source(cr, stopped_color);
@@ -673,21 +677,22 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
     
     int strip_width = round(width / (1 + PAPERSTRIP_MARGIN));
     
+    // Draw the 4 directional lines in the paperstrip
     cairo_set_line_width(cr, 1.3);
     
-    if(p && w->events[w->events_wp]) {
+    if (p && w->events[w->events_wp]) {
         double rate = get_rate(w->guessed_bph, w->sample_rate, p);
         double slope = - rate * strip_width * PAPERSTRIP_ZOOM / (3600. * 24.);
-        if(slope <= 1 && slope >= -1) {
-            for(i=0; i<4; i++) {
+        if (slope <= 1 && slope >= -1) {
+            for (i=0; i<4; i++) {
                 double y = 0;
                 cairo_move_to(cr, (double)width * (i+.5) / 4, 0);
                 for(;;) {
                     double x = y * slope + (double)width * (i+.5) / 4;
                     x = fmod(x, width);
-                    if(x < 0) x += width;
+                    if (x < 0) x += width;
                     double nx = x + slope * (height - y);
-                    if(nx >= 0 && nx <= width) {
+                    if (nx >= 0 && nx <= width) {
                         cairo_line_to(cr, nx, height);
                         break;
                     } else {
@@ -695,7 +700,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
                         y += d / fabs(slope);
                         cairo_line_to(cr, slope > 0 ? width : 0, y);
                         y += 1;
-                        if(y > height) break;
+                        if (y > height) break;
                         cairo_move_to(cr, slope > 0 ? 0 : width, y);
                     }
                 }
@@ -705,10 +710,12 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
         }
     }
     
-    cairo_set_line_width(cr,1);
+    cairo_set_line_width(cr, 1);
     
     int left_margin = (width - strip_width) / 2;
     int right_margin = (width + strip_width) / 2;
+    
+    // Draw the 2 vertical lines at the margins of the paperstrip
     cairo_move_to(cr, left_margin + .5, .5);
     cairo_line_to(cr, left_margin + .5, height - .5);
     cairo_move_to(cr, right_margin + .5, .5);
@@ -716,6 +723,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
     cairo_set_source(cr, grid_color);
     cairo_stroke(cr);
     
+    // Draw the horizontal lines of the paperstrip
     double sweep = w->sample_rate * 3600. / w->guessed_bph;
     double now = sweep*ceil(time/sweep);
     double ten_s = w->sample_rate * 10 / sweep;
@@ -730,6 +738,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
         cairo_stroke(cr);
     }
     
+    // Plot the tick/tocks on the paperstrip
     cairo_set_source(cr, stopped ? stopped_color : waveform_color);
     for(i = w->events_wp;;) {
         if(!w->events[i]) break;
@@ -775,8 +784,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
     cairo_line_to(cr, right_margin + .5, height - 20.5);
     cairo_fill(cr);
     
-    // Write the ms scale at the bottom of the paperstrip
-    
+    // Draw the ms scale at the bottom of the paperstrip
     int fontsize = gtk_widget_get_allocated_width(w->window) / 90;
     if(fontsize < 12)
         fontsize = 12;
@@ -880,7 +888,7 @@ void init_main_window(struct main_window *w)
     w->la = DEFAULT_LA;
     
     gtk_container_set_border_width(GTK_CONTAINER(w->window), 5); // Border around the window
-    g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL);
+    g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL); // Signal emitted if a user requests that a toplevel window is closed.
     g_signal_connect(w->window, "destroy", G_CALLBACK(quit), w);
     
     gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
@@ -904,7 +912,7 @@ void init_main_window(struct main_window *w)
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), s);
     }
     gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), 0);
-    gtk_widget_set_can_default(w->bph_combo_box, FALSE); // Try to avoid getting the automatic focus
+    gtk_widget_set_can_default(w->bph_combo_box, FALSE); // Try to avoid getting the automatic focus. Not working....
     g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
     gtk_container_add (GTK_CONTAINER(settings_grid), w->bph_combo_box);
     
@@ -923,17 +931,14 @@ void init_main_window(struct main_window *w)
     w->debug_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->debug_drawing_area, 500, 100);
     g_signal_connect (w->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), w);
-    // gtk_widget_set_events(w->debug_drawing_area, GDK_EXPOSURE_MASK);
     
     gtk_container_add (GTK_CONTAINER(settings_grid), w->debug_drawing_area);
-    printf("DEBUG!\n");
 #endif
     
     // Info area
     w->info_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->info_drawing_area, 720, OUTPUT_WINDOW_HEIGHT);
     g_signal_connect (w->info_drawing_area, "draw", G_CALLBACK(info_draw_event), w);
-    // gtk_widget_set_events(w->info_drawing_area, GDK_EXPOSURE_MASK);
     
     // Populate the panes
     GtkWidget *panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
@@ -964,7 +969,6 @@ void init_main_window(struct main_window *w)
     w->paperstrip_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->paperstrip_drawing_area, 100, 300); // Min width is actually limited by the buttons (~150px)
     g_signal_connect (w->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), w);
-    // gtk_widget_set_events(w->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->paperstrip_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->paperstrip_drawing_area, TRUE);
     gtk_grid_attach(GTK_GRID(left_grid), w->paperstrip_drawing_area, 0,0,2,1);
@@ -987,7 +991,6 @@ void init_main_window(struct main_window *w)
     w->tic_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->tic_drawing_area, 400, 100);
     g_signal_connect (w->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), w);
-    // gtk_widget_set_events(w->tic_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->tic_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->tic_drawing_area, TRUE);
     gtk_container_add (GTK_CONTAINER(right_grid), w->tic_drawing_area);
@@ -996,7 +999,6 @@ void init_main_window(struct main_window *w)
     w->toc_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->toc_drawing_area, 400, 100);
     g_signal_connect (w->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), w);
-    // gtk_widget_set_events(w->toc_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->toc_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->toc_drawing_area, TRUE);
     gtk_container_add (GTK_CONTAINER(right_grid), w->toc_drawing_area);
@@ -1005,7 +1007,6 @@ void init_main_window(struct main_window *w)
     w->period_drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(w->period_drawing_area, 400, 100);
     g_signal_connect (w->period_drawing_area, "draw", G_CALLBACK(period_draw_event), w);
-    // gtk_widget_set_events(w->period_drawing_area, GDK_EXPOSURE_MASK);
     gtk_widget_set_hexpand(w->period_drawing_area, TRUE); // Make sure we expand when pane resizes
     gtk_widget_set_vexpand(w->period_drawing_area, TRUE);
     gtk_container_add (GTK_CONTAINER(right_grid), w->period_drawing_area);
@@ -1058,16 +1059,13 @@ static void activate (GtkApplication* app, gpointer user_data)
     // Use the dark theme
     g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", TRUE, NULL);
 
-    /* Clunky way to make the pane handle bigger, but seems to be the only option
-     otherwise the max is 5px with  gtk_paned_set_wide_handle() */
-
     GtkCssProvider *provider = gtk_css_provider_new();
     GFile *css_file =  g_file_new_for_commandline_arg("tg.css");
-    gtk_css_provider_load_from_file(provider, css_file, NULL); // No error handling
+    gtk_css_provider_load_from_file(provider, css_file, NULL); // No error handling yet!
     
     GdkDisplay *display = gdk_display_get_default();
     GdkScreen *screen = gdk_display_get_default_screen(display);
-    gtk_style_context_add_provider_for_screen( screen ,GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     g_object_unref(provider);
     g_object_unref(css_file);
@@ -1080,8 +1078,8 @@ static void activate (GtkApplication* app, gpointer user_data)
     // Call refresh_window() 10 times/second
     g_timeout_add_full(G_PRIORITY_LOW, 100, (GSourceFunc)refresh_window, &w, NULL);
     
+    // All GTK applications must have a gtk_main(). Control ends here and waits for an event to occur.
     gtk_main(); // Runs the main loop until gtk_main_quit() is called.
-    
 }
 
 /* PROGRAM START */

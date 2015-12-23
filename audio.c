@@ -54,7 +54,7 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	if(err!=paNoError)
 		goto error;
 
-    // Open audio stream with 2 input channels & 0 output channels with an unspecified buffer size
+    // Open an audio stream with 2 input channels & 0 output channels with an unspecified buffer size
 	err = Pa_OpenDefaultStream(&stream,2,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,x);
 	*x = stream;
 	if(err!=paNoError)

@@ -95,18 +95,20 @@ void setup_buffers(struct processing_buffers *b)
 #endif
 }
 
+/* Create a copy of a processing buffer */
 struct processing_buffers *pb_clone(struct processing_buffers *p)
 {
 	struct processing_buffers *new = malloc(sizeof(struct processing_buffers));
 	new->sample_rate = p->sample_rate;
 	new->waveform = malloc(new->sample_rate * sizeof(float));
-	memcpy(new->waveform, p->waveform, new->sample_rate * sizeof(float));
+    memcpy(new->waveform, p->waveform, new->sample_rate * sizeof(float)); // Copy over waveform data
 
 #ifdef DEBUG
 	new->debug = malloc(p->sample_count * sizeof(float));
 	memcpy(new->debug, p->debug, p->sample_count * sizeof(float));
 #endif
 
+    // Copy over the rest of the variables
 	new->sample_count = p->sample_count;
 	new->period = p->period;
 	new->sigma = p->sigma;
