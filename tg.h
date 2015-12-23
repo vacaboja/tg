@@ -20,9 +20,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <complex.h>
-#include <fftw3.h>
 #include <stdint.h>
+#include <complex.h>
+#include <omp.h>
+#include <fftw3.h>
 
 #define FILTER_CUTOFF 3000
 

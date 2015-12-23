@@ -1004,7 +1004,9 @@ int main(int argc, char **argv)
 		error("Error initializing fftw threads");
 		return 1;
 	}
-	fftwf_plan_with_nthreads(2);
+	fftwf_plan_with_nthreads(omp_get_max_threads());
+
+	debug("OpenMP threads count = %d\n",omp_get_max_threads());
 
 	return run_interface();
 }

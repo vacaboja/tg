@@ -170,6 +170,7 @@ void noise_suppressor(struct processing_buffers *p)
 	qsort(a, j, sizeof(float), fl_cmp);
 	float k = a[j/2];
 
+#pragma omp parallel for
 	for(i = 0; i < p->sample_count; i++) {
 		int j = i - window / 2;
 		j = j < 0 ? 0 : j > p->sample_count - window ? p->sample_count - window : j;
@@ -187,15 +188,18 @@ void prepare_data(struct processing_buffers *b)
 	noise_suppressor(b);
 #endif
 
+#pragma omp parallel for
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);
 
 	run_filter(b->lpf, b->samples, b->sample_count);
 
 	double average = 0;
+#pragma omp parallel for reduction(+:average)
 	for(i=0; i < b->sample_count; i++)
 		average += b->samples[i];
 	average /= b->sample_count;
+#pragma omp parallel for
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] -= average;
 
@@ -206,11 +210,13 @@ void prepare_data(struct processing_buffers *b)
 	}
 
 	fftwf_execute(b->plan_a);
+#pragma omp parallel for
 	for(i=0; i < b->sample_count+1; i++)
 			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
 
 #ifdef DEBUG
+#pragma omp parallel for
 	for(i=0; i < b->sample_count+1; i++)
 		b->debug[i] = b->samples_sc[i];
 #endif
@@ -392,8 +398,10 @@ void prepare_waveform(struct processing_buffers *p)
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
 
-	float bin[(int)ceil(1 + p->sample_count / p->period)];
-	for(i=0; i < p->period; i++) {
+	int wf_size = ceil(p->period);
+#pragma omp parallel for
+	for(i=0; i < wf_size; i++) {
+		float bin[(int)ceil(1 + p->sample_count / p->period)];
 		int j;
 		double k = fmod(i+p->phase,p->period);
 		for(j=0;;j++) {
@@ -413,6 +421,7 @@ void prepare_waveform(struct processing_buffers *p)
 		p->waveform[i] -= nl;
 
 	fftwf_execute(p->plan_c);
+#pragma omp parallel for
 	for(i=0; i < p->sample_rate+1; i++)
 			p->sc_fft[i] = p->sc_fft[i] * conj(p->sc_fft[i]);
 	fftwf_execute(p->plan_d);
@@ -500,6 +509,7 @@ void do_locate_events(int *events, struct processing_buffers *p, float *waveform
 		p->tic_wf[i] = waveform[i];
 
 	fftwf_execute(p->plan_e);
+#pragma omp parallel for
 	for(i=0; i < p->sample_count+1; i++)
 			p->sc_fft[i] = p->fft[i] * conj(p->tic_fft[i]);
 	fftwf_execute(p->plan_f);
@@ -509,8 +519,10 @@ void do_locate_events(int *events, struct processing_buffers *p, float *waveform
 		int b = round(last - offset - i*p->period + 0.02*p->sample_rate);
 		if(a < 0 || b >= p->sample_count)
 			events[i] = -1;
-		else
-			events[i] = offset + peak_detector(p->tic_c,a,b);
+		else {
+			int peak = peak_detector(p->tic_c,a,b);
+			events[i] = peak >= 0 ? offset + peak : -1;
+		}
 	}
 }
 
