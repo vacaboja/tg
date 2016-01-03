@@ -375,22 +375,6 @@ void cairo_init(cairo_t *c)
 	cairo_paint(c);
 }
 
-double print_number(cairo_t *c, double x, double y, char *s)
-{
-	cairo_text_extents_t extents;
-	cairo_text_extents(c,"0",&extents);
-	double z = extents.x_advance;
-	char t[2];
-	t[1] = 0;
-	while((t[0] = *s++)) {
-		cairo_text_extents(c,t,&extents);
-		cairo_move_to(c, x + (z - extents.x_advance) / 2, y);
-		cairo_show_text(c,t);
-		x += z;
-	}
-	return x;
-}
-
 /* Draws either the tic or toc waveform & grid in their respective widget */
 void draw_waveform(
 				   struct main_window *w,
@@ -976,6 +960,7 @@ void init_main_window(struct main_window *w)
 	
 	// Populate the panes
 	GtkWidget *panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+	// gtk_paned_set_wide_handle(GTK_PANED(panes), TRUE); // Requires GTK+ 3.16 but makes the gutter area transparent instead of darker.
 	
 	GtkWidget *left_grid = gtk_grid_new();
 	GtkWidget *right_grid = gtk_grid_new();
