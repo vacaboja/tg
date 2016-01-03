@@ -1,13 +1,15 @@
-@define-color graph_background      rgb(0, 0, 0);       /* black   */
-@define-color grid_line             rgb(0, 80%, 0);     /* green   */
-@define-color grid_line_alternate   rgb(100%, 0, 0);    /* red     */
-@define-color waveform_active       rgb(255, 255, 255); /* white   */
-@define-color waveform_stopped      rgb(255, 255, 0);   /* yellow  */
-@define-color pulse                 rgb(0, 0, 100%);    /* blue    */
-@define-color pulse_range           rgb(0, 0, 50%);     /* blueish */
-@define-color icon_on               rgb(0, 100%, 0);    /* green   */
-@define-color icon_off              rgb(100%, 0, 0);    /* red     */
-@define-color text                  rgb(255, 255, 255); /* white   */
+@define-color graph_background      rgb(0, 0, 0);       /* black       */
+@define-color grid_line             rgb(0, 80%, 0);     /* green       */
+@define-color grid_line_alternate   rgb(100%, 0, 0);    /* red         */
+@define-color waveform_active       rgb(255, 255, 255); /* white       */
+@define-color waveform_stopped      rgb(255, 255, 0);   /* yellow      */
+@define-color pulse                 rgb(0, 0, 100%);    /* blue        */
+@define-color pulse_range           rgb(0, 0, 50%);     /* blueish     */
+@define-color icon_on               rgb(0, 100%, 0);    /* green       */
+@define-color icon_off              rgb(100%, 0, 0);    /* red         */
+@define-color text                  rgb(255, 255, 255); /* white       */
+@define-color tick                  rgb(128, 180, 255); /* pale blue   */
+@define-color tock                  rgb(220, 220, 100); /* pale yellow */
 
 
 * {

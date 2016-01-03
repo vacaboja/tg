@@ -22,7 +22,7 @@
 
 int preset_bph[] = PRESET_BPH;
 
-cairo_pattern_t *bg_color,*waveform_color,*grid2_color,*grid_color,*pulse_color,*range_color,*stopped_color,*icon1,*icon2,*text;
+cairo_pattern_t *bg_color,*waveform_color,*grid2_color,*grid_color,*pulse_color,*range_color,*stopped_color,*icon1,*icon2,*text_color,*tick_color,*tock_color;
 
 void print_debug(char *format,...)
 {
@@ -87,11 +87,15 @@ void initialize_palette(GtkWidget *win)
 	define_color(&range_color, color);
 	
 	gtk_style_context_lookup_color(sc, "text", &color);
-	define_color(&text, color);
+	define_color(&text_color, color);
 	gtk_style_context_lookup_color(sc, "icon_on", &color);
 	define_color(&icon1, color);
 	gtk_style_context_lookup_color(sc, "icon_off", &color);
 	define_color(&icon2, color);
+	gtk_style_context_lookup_color(sc, "tick", &color);
+	define_color(&tick_color, color);
+	gtk_style_context_lookup_color(sc, "tock", &color);
+	define_color(&tock_color, color);
 }
 
 struct main_window {
@@ -409,7 +413,7 @@ void draw_waveform(
 	}
 	
 	// Draw numbers for time scale, every 5 ms
-	cairo_set_source(cr, text);
+	cairo_set_source(cr, text_color);
 	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
 		if(!(i%5)) {
 			int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
@@ -448,7 +452,7 @@ void draw_waveform(
 	
 	// Draw numbers for amplitude scale
 	double last_x = 0;
-	cairo_set_source(cr, text);
+	cairo_set_source(cr, text_color);
 	for(i = 50; i < 360; i+=50) {
 		double t = period*amplitude_to_time(w->la, i);
 		if(t > .001 * NEGATIVE_SPAN) continue;
@@ -723,9 +727,9 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	double ten_s = w->sample_rate * 10 / sweep;
 	double last_line = fmod(now/sweep, ten_s);
 	int last_tenth = floor(now/(sweep*ten_s));
-	for(i=0;;i++) {
+	for (i=0;;i++) {
 		double y = 0.5 + round(last_line + i*ten_s);
-		if(y > height) break;
+		if (y > height) break;
 		cairo_move_to(cr, .5, y);
 		cairo_line_to(cr, width-.5, y);
 		cairo_set_source(cr, (last_tenth-i)%6 ? grid_color : grid2_color);
@@ -733,20 +737,20 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	}
 	
 	// Plot the tick/tocks on the paperstrip
-	cairo_set_source(cr, stopped ? stopped_color : waveform_color);
-	for(i = w->events_wp;;) {
-		if(!w->events[i]) break;
+	for (i = w->events_wp;;) {
+		if (!w->events[i]) break;
 		double event = now - w->events[i] + w->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * PAPERSTRIP_ZOOM);
 		int column = floor(fmod(event, (sweep / PAPERSTRIP_ZOOM)) * strip_width / (sweep / PAPERSTRIP_ZOOM));
 		int row = floor(event / sweep);
-		if(row >= height) break;
+		if (row >= height) break;
+		cairo_set_source(cr, i%2 ? tick_color : tock_color); // Alternate colors
 		cairo_move_to(cr,column,row);
 		cairo_line_to(cr,column+1,row);
 		cairo_line_to(cr,column+1,row+1);
 		cairo_line_to(cr,column,row+1);
 		cairo_line_to(cr,column,row);
 		cairo_fill(cr);
-		if(column < width - strip_width && row > 0) {
+		if (column < width - strip_width && row > 0) {
 			column += strip_width;
 			row -= 1;
 			cairo_move_to(cr,column,row);
@@ -756,12 +760,12 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 			cairo_line_to(cr,column,row);
 			cairo_fill(cr);
 		}
-		if(--i < 0) i = EVENTS_COUNT - 1;
-		if(i == w->events_wp) break;
+		if (--i < 0) i = EVENTS_COUNT - 1;
+		if (i == w->events_wp) break;
 	}
 	
 	// Draw the arrowed line for the ms scale at the bottom
-	cairo_set_source(cr, text);
+	cairo_set_source(cr, text_color);
 	cairo_set_line_width(cr, 2);
 	cairo_move_to(cr, left_margin + 3, height - 20.5);
 	cairo_line_to(cr, right_margin - 3, height - 20.5);
@@ -780,7 +784,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	
 	// Draw the ms scale at the bottom of the paperstrip
 	int fontsize = gtk_widget_get_allocated_width(w->window) / 90;
-	if(fontsize < 12)
+	if (fontsize < 12)
 		fontsize = 12;
 	cairo_set_font_size(cr, fontsize);
 	
