@@ -126,3 +126,31 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 		debug("---\n");
 	return i;
 }
+
+/* Returns the number of input sources */
+int num_inputs() {
+	int inputs = 0;
+	// Gather list of hosts that have inputs.
+	int nDevices = Pa_GetDeviceCount();
+	for (int dev = 0; dev < nDevices; dev++) {
+		const PaDeviceInfo *info = Pa_GetDeviceInfo(dev);
+		if (info->maxInputChannels > 0) {
+			inputs++;
+		}
+	}
+	return inputs;
+}
+
+/* Get name of specified input */
+const char * input_name(int i) {
+	int num = 0;
+	int nDevices = Pa_GetDeviceCount();
+	for (int dev = 0; dev < nDevices; dev++) {
+		const PaDeviceInfo *info = Pa_GetDeviceInfo(dev);
+		if (info->maxInputChannels > 0) {
+			// Only count source that has input
+			if (++num == i) return info->name;
+		}
+	}
+	return NULL;
+}

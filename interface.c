@@ -129,6 +129,7 @@ struct main_window {
 	int events_wp;
 	uint64_t events_from;
 	double trace_centering;
+	int trace_zoom;
 	
 	int signal;
 };
@@ -371,12 +372,12 @@ double amplitude_to_time(double lift_angle, double amp)
 }
 
 /* Set up default line width and background color before each drawing operation */
-void cairo_init(cairo_t *c)
+void cairo_init(cairo_t *cr)
 {
-	cairo_set_line_width(c, 1);
+	cairo_set_line_width(cr, 1);
 	
-	cairo_set_source(c, bg_color);
-	cairo_paint(c);
+	cairo_set_source(cr, bg_color);
+	cairo_paint(cr);
 }
 
 /* Draws either the tic or toc waveform & grid in their respective widget */
@@ -680,7 +681,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	
 	if (p && w->events[w->events_wp]) {
 		double rate = get_rate(w->guessed_bph, w->sample_rate, p);
-		double slope = - rate * strip_width * PAPERSTRIP_ZOOM / (3600. * 24.);
+		double slope = - rate * strip_width * w->trace_zoom / (3600. * 24.);
 		if (slope <= 1 && slope >= -1) {
 			for (i=0; i<4; i++) {
 				double y = 0;
@@ -739,8 +740,9 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	// Plot the tick/tocks on the paperstrip
 	for (i = w->events_wp;;) {
 		if (!w->events[i]) break;
-		double event = now - w->events[i] + w->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * PAPERSTRIP_ZOOM);
-		int column = floor(fmod(event, (sweep / PAPERSTRIP_ZOOM)) * strip_width / (sweep / PAPERSTRIP_ZOOM));
+		double event = now - w->events[i] + w->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * w->trace_zoom);
+		int column = floor(fmod(event, (sweep / w->trace_zoom)) * strip_width / (sweep / w->trace_zoom));
+
 		int row = floor(event / sweep);
 		if (row >= height) break;
 		cairo_set_source(cr, i%2 ? tick_color : tock_color); // Alternate colors
@@ -749,8 +751,10 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 		cairo_line_to(cr,column+1,row+1);
 		cairo_line_to(cr,column,row+1);
 		cairo_line_to(cr,column,row);
+		// cairo_rectangle (cr, column, row, 1, 1);
 		cairo_fill(cr);
 		if (column < width - strip_width && row > 0) {
+			// Replicate the dot to the right if it's in the margin.
 			column += strip_width;
 			row -= 1;
 			cairo_move_to(cr,column,row);
@@ -791,7 +795,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	char s[50];
 	cairo_text_extents_t extents;
 	
-	snprintf(s, 50, "%.1f ms", 3600000. / (w->guessed_bph * PAPERSTRIP_ZOOM));
+	snprintf(s, 50, "%.1f ms", 3600000. / (w->guessed_bph * w->trace_zoom));
 	cairo_text_extents(cr,s,&extents);
 	cairo_move_to(cr, (width - extents.x_advance)/2, height - 30);
 	cairo_show_text(cr, s);
@@ -854,21 +858,115 @@ void handle_clear_trace(GtkButton *b, struct main_window *w)
 	redraw(w);
 }
 
-/* Called when the user clicks the Center button */
-void handle_center_trace(GtkButton *b, struct main_window *w)
-{
+void center_trace(struct main_window *w) {
 	uint64_t last_ev = w->events[w->events_wp];
 	if(last_ev) {
-		double sweep = w->sample_rate * 3600. / (PAPERSTRIP_ZOOM * w->guessed_bph);
+		double sweep = w->sample_rate * 3600. / (w->trace_zoom * w->guessed_bph);
 		w->trace_centering = fmod(last_ev + .5*sweep , sweep);
 	} else
 		w->trace_centering = 0;
-	redraw(w);
+}
+
+/* Called when the user clicks the Center button */
+void handle_center_trace(GtkButton *b, struct main_window *w)
+{
+	center_trace(w);
+	gtk_widget_queue_draw(w->paperstrip_drawing_area);
 }
 
 void quit()
 {
 	gtk_main_quit();
+}
+
+/* Called when the user scrolls the mouse wheel over the paperstrip */
+gboolean paperstrip_scroll_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
+{
+	if (event->scroll.direction == GDK_SCROLL_UP) {
+		w->trace_zoom++;
+		if (w->trace_zoom >20) w->trace_zoom = 20;
+	} else
+	if (event->scroll.direction == GDK_SCROLL_DOWN) {
+		w->trace_zoom--;
+		if (w->trace_zoom <1) w->trace_zoom = 1;
+	}
+	
+	center_trace(w);
+	
+	return TRUE; // Stop event propagation
+}
+
+void show_preferences(GtkButton *button, struct main_window *w) {
+	GtkWidget *dialog;
+	GtkDialogFlags flags = GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT;
+	dialog = gtk_dialog_new_with_buttons ("Settings",
+										  GTK_WINDOW(w->window),
+										  flags,
+										  "OK",
+										  GTK_RESPONSE_ACCEPT,
+										  NULL);
+	
+	// gtk_window_set_resizable(GTK_WINDOW(dialog), FALSE); // Non-resizable
+	// Ensure that the dialog box is destroyed when the user responds
+	g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
+	
+	GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+	gtk_container_set_border_width(GTK_CONTAINER(content_area), 5);
+	GtkWidget *prefs_grid = gtk_grid_new();
+	gtk_grid_set_column_spacing(GTK_GRID(prefs_grid), 6);
+	gtk_grid_set_row_spacing(GTK_GRID(prefs_grid), 4);
+	gtk_container_set_border_width(GTK_CONTAINER(prefs_grid), 10);
+	gtk_widget_set_halign(prefs_grid, GTK_ALIGN_CENTER); // Keep grid centered in case user resizes window
+	gtk_container_add(GTK_CONTAINER(content_area), prefs_grid); // Add the grid to the dialog
+	
+	GtkWidget *input_label = gtk_label_new("Audio input:");
+	gtk_widget_set_tooltip_text(input_label, "What audio input to listen to.");
+	gtk_widget_set_halign(input_label, GTK_ALIGN_END); // Right aligned
+	gtk_grid_attach(GTK_GRID(prefs_grid), input_label, 0,0,1,1);
+	
+	GtkWidget *adjust_label = gtk_label_new("Rate adjustment:");
+	gtk_widget_set_tooltip_text(adjust_label, "Sound card sampling rate correction.");
+	gtk_widget_set_halign(adjust_label, GTK_ALIGN_END); // Right aligned
+	gtk_grid_attach(GTK_GRID(prefs_grid), adjust_label, 0,1,1,1);
+	
+	GtkWidget *cpu_label = gtk_label_new("Precision mode:");
+	gtk_widget_set_tooltip_text(cpu_label, "Use more CPU to enhance calculations.");
+	gtk_widget_set_halign(cpu_label, GTK_ALIGN_END); // Right aligned
+	gtk_grid_attach(GTK_GRID(prefs_grid), cpu_label, 0,2,1,1);
+	
+	GtkWidget *audio_label = gtk_label_new("Audio:");
+	gtk_widget_set_tooltip_text(audio_label, "Audible clicks for each beat detected.");
+	gtk_widget_set_halign(audio_label, GTK_ALIGN_END); // Right aligned
+	gtk_grid_attach(GTK_GRID(prefs_grid), audio_label, 0,3,1,1);
+
+	
+	GtkWidget *input = gtk_combo_box_text_new();
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(input), "Default");
+	for (int n=1; n <= num_inputs(); n++) {
+		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(input), input_name(n));
+	}
+	gtk_combo_box_set_active(GTK_COMBO_BOX(input), 0);
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), input, input_label, GTK_POS_RIGHT,2,1);
+	
+	GtkWidget *adjustment = gtk_entry_new();
+	gtk_entry_set_input_purpose(GTK_ENTRY(adjustment), GTK_INPUT_PURPOSE_NUMBER);
+	gtk_entry_set_alignment(GTK_ENTRY(adjustment), 1); // Right aligned
+	gtk_entry_set_max_length(GTK_ENTRY(adjustment), 6);
+	gtk_entry_set_width_chars(GTK_ENTRY(adjustment), 6);
+	gtk_entry_set_max_width_chars(GTK_ENTRY(adjustment), 6);
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), adjustment, adjust_label, GTK_POS_RIGHT, 1, 1);
+	
+	GtkWidget *secs = gtk_label_new("seconds/day");
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), secs, adjustment, GTK_POS_RIGHT,1,1);
+	
+	GtkWidget *cpu = gtk_check_button_new();
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), cpu, cpu_label, GTK_POS_RIGHT, 2,1);
+	
+	GtkWidget *audio = gtk_check_button_new();
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), audio, audio_label, GTK_POS_RIGHT, 2, 1);
+	
+	gtk_widget_show_all(dialog);
+	gtk_dialog_run(GTK_DIALOG(dialog)); // Show the dialog
 }
 
 /* Set up the main window and populate with widgets */
@@ -881,6 +979,7 @@ void init_main_window(struct main_window *w)
 	w->events_wp = 0;
 	w->events_from = 0;
 	w->trace_centering = 0;
+	w->trace_zoom = 10;
 	
 	w->guessed_bph = w->last_bph = DEFAULT_BPH;
 	w->bph = 0;
@@ -926,6 +1025,13 @@ void init_main_window(struct main_window *w)
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), DEFAULT_LA); // Start at default value
 	g_signal_connect(w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 	gtk_container_add(GTK_CONTAINER(settings_grid), w->la_spin_button);
+	
+	// Prefs button
+	GtkWidget *prefs_button = gtk_button_new_with_label("Settings");
+	gtk_widget_set_halign(prefs_button, GTK_ALIGN_END); // Right aligned
+	gtk_widget_set_hexpand(prefs_button, TRUE); // Needed to make the grid expand and make room for the button at the far right
+	g_signal_connect(prefs_button, "clicked", G_CALLBACK(show_preferences), w);
+	gtk_container_add(GTK_CONTAINER(settings_grid), prefs_button);
 	
 	// Info grid
 	GtkWidget *info_grid = gtk_grid_new(); // The grid containing the info text, default to horizontal orientation
@@ -989,8 +1095,10 @@ void init_main_window(struct main_window *w)
 	
 	// Paperstrip
 	w->paperstrip_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(w->paperstrip_drawing_area, 100, 300); // Min width is actually limited by the buttons (~150px)
+	gtk_widget_set_size_request(w->paperstrip_drawing_area, 100, 300); // Min width is actually limited by the buttons below (~150px)
+	gtk_widget_add_events(w->paperstrip_drawing_area, GDK_SCROLL_MASK); // React to mouse wheel scroll events
 	g_signal_connect(w->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), w);
+	g_signal_connect(w->paperstrip_drawing_area, "scroll-event", G_CALLBACK(paperstrip_scroll_event), w);
 	gtk_widget_set_hexpand(w->paperstrip_drawing_area, TRUE); // Make sure we expand when pane resizes
 	gtk_widget_set_vexpand(w->paperstrip_drawing_area, TRUE);
 	gtk_grid_attach(GTK_GRID(left_grid), w->paperstrip_drawing_area, 0,0,2,1);
@@ -1061,7 +1169,6 @@ void init_main_window(struct main_window *w)
 	// gtk_window_maximize(GTK_WINDOW(w->window));
 }
 
-
 /* Called when the GTK application starts running */
 static void activate (GtkApplication* app, gpointer user_data)
 {
@@ -1105,7 +1212,7 @@ static void activate (GtkApplication* app, gpointer user_data)
 	
 	// Set up GDK+ widgets for the UI
 	init_main_window(&w);
-	
+
 	// Call refresh_window() 10 times/second
 	g_timeout_add_full(G_PRIORITY_LOW, 100,(GSourceFunc)refresh_window, &w, NULL);
 	

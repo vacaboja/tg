@@ -50,7 +50,6 @@
 
 #define EVENTS_COUNT 10000
 #define EVENTS_MAX 100
-#define PAPERSTRIP_ZOOM 10
 #define PAPERSTRIP_MARGIN .2
 
 #define MIN_BPH 12000
@@ -100,6 +99,8 @@ void process(struct processing_buffers *p, int bph);
 /* audio.c */
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
+int num_inputs();
+const char * input_name(int i);
 
 /* interface.c */
 void print_debug(char *format,...);
