@@ -23,6 +23,7 @@
 #include <complex.h>
 #include <fftw3.h>
 #include <stdint.h>
+#include "glib.h"
 
 #define FILTER_CUTOFF 3000
 
@@ -103,5 +104,20 @@ int num_inputs();
 const char * input_name(int i);
 
 /* interface.c */
+struct Settings
+{
+	gchar *audio_input;
+	gdouble rate_adjustment;
+	gboolean precision_mode;
+	gboolean ticks;
+	gboolean dark_theme;
+	int window_width, window_height, pane_pos;
+};
+
 void print_debug(char *format,...);
 void error(char *format,...);
+
+/* prefs.c */
+void load_settings();
+void save_settings();
+

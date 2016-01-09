@@ -107,6 +107,7 @@ struct main_window {
 	GtkWidget *beaterror_label;
 	GtkWidget *amplitude_label;
 	GtkWidget *bph_label;
+	GtkWidget *panes;
 	GtkWidget *tic_drawing_area;
 	GtkWidget *toc_drawing_area;
 	GtkWidget *period_drawing_area;
@@ -132,6 +133,7 @@ struct main_window {
 	int trace_zoom;
 	
 	int signal;
+	struct Settings conf;
 };
 
 /* Redraw the DrawingArea widgets (waveforms etc.) */
@@ -291,13 +293,6 @@ guint refresh_window(struct main_window *w)
 	redraw(w); // Redraw the DrawingArea widgets (waveforms etc.)
 	
 	return TRUE;
-}
-
-gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
-{
-	// If you return FALSE in the "delete-event" signal handler
-	// GTK will emit the "destroy" signal.
-	return FALSE;
 }
 
 /* Draw the audio waveform */
@@ -874,8 +869,23 @@ void handle_center_trace(GtkButton *b, struct main_window *w)
 	gtk_widget_queue_draw(w->paperstrip_drawing_area);
 }
 
-void quit()
+gboolean delete_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
+	// Save UI size/location settings
+	w->conf.window_width = gtk_widget_get_allocated_width(GTK_WIDGET(widget));
+	w->conf.window_height = gtk_widget_get_allocated_height(GTK_WIDGET(widget));
+	w->conf.pane_pos = gtk_paned_get_position(GTK_PANED(w->panes));
+	save_settings(&w->conf);
+	
+	// If you return FALSE in the "delete-event" signal handler
+	// GTK will emit the "destroy" signal.
+	return FALSE;
+}
+
+void quit(GtkWidget *widget, struct main_window *w)
+{
+	// (Can't save window sizes here because it's destroyed by now)
+	// We save that on the delete signal instead
 	gtk_main_quit();
 }
 
@@ -896,6 +906,7 @@ gboolean paperstrip_scroll_event(GtkWidget *widget, GdkEvent *event, struct main
 	return TRUE; // Stop event propagation
 }
 
+/* Display the Settings dialog */
 void show_preferences(GtkButton *button, struct main_window *w) {
 	GtkWidget *dialog;
 	GtkDialogFlags flags = GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT;
@@ -907,8 +918,6 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 										  NULL);
 	
 	// gtk_window_set_resizable(GTK_WINDOW(dialog), FALSE); // Non-resizable
-	// Ensure that the dialog box is destroyed when the user responds
-	g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
 	
 	GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
 	gtk_container_set_border_width(GTK_CONTAINER(content_area), 5);
@@ -934,18 +943,24 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 	gtk_widget_set_halign(cpu_label, GTK_ALIGN_END); // Right aligned
 	gtk_grid_attach(GTK_GRID(prefs_grid), cpu_label, 0,2,1,1);
 	
-	GtkWidget *audio_label = gtk_label_new("Audio:");
-	gtk_widget_set_tooltip_text(audio_label, "Audible clicks for each beat detected.");
-	gtk_widget_set_halign(audio_label, GTK_ALIGN_END); // Right aligned
-	gtk_grid_attach(GTK_GRID(prefs_grid), audio_label, 0,3,1,1);
+	GtkWidget *dark_label = gtk_label_new("Dark UI:");
+	gtk_widget_set_tooltip_text(dark_label, "Use a darker user interface with less light pollution.");
+	gtk_widget_set_halign(dark_label, GTK_ALIGN_END); // Right aligned
+	gtk_grid_attach(GTK_GRID(prefs_grid), dark_label, 0,3,1,1);
 
+	GtkWidget *ticks_label = gtk_label_new("Clicks:");
+	gtk_widget_set_tooltip_text(ticks_label, "Audible clicks for each beat detected.");
+	gtk_widget_set_halign(ticks_label, GTK_ALIGN_END); // Right aligned
+	gtk_grid_attach(GTK_GRID(prefs_grid), ticks_label, 0,4,1,1);
 	
 	GtkWidget *input = gtk_combo_box_text_new();
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(input), "Default");
+	int active = 0;
 	for (int n=1; n <= num_inputs(); n++) {
 		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(input), input_name(n));
+		if (strcmp(w->conf.audio_input, input_name(n)) == 0) active=n;
 	}
-	gtk_combo_box_set_active(GTK_COMBO_BOX(input), 0);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(input), active); // Fill in value from settings
 	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), input, input_label, GTK_POS_RIGHT,2,1);
 	
 	GtkWidget *adjustment = gtk_entry_new();
@@ -954,19 +969,41 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 	gtk_entry_set_max_length(GTK_ENTRY(adjustment), 6);
 	gtk_entry_set_width_chars(GTK_ENTRY(adjustment), 6);
 	gtk_entry_set_max_width_chars(GTK_ENTRY(adjustment), 6);
+	char ra[12];
+	snprintf(ra, 12, "%+.2f", w->conf.rate_adjustment);
+	gtk_entry_set_text(GTK_ENTRY(adjustment), ra); // Fill in value from settings
 	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), adjustment, adjust_label, GTK_POS_RIGHT, 1, 1);
 	
 	GtkWidget *secs = gtk_label_new("seconds/day");
 	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), secs, adjustment, GTK_POS_RIGHT,1,1);
 	
 	GtkWidget *cpu = gtk_check_button_new();
+	if (w->conf.precision_mode) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cpu), TRUE);
 	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), cpu, cpu_label, GTK_POS_RIGHT, 2,1);
 	
-	GtkWidget *audio = gtk_check_button_new();
-	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), audio, audio_label, GTK_POS_RIGHT, 2, 1);
+	GtkWidget *dark = gtk_check_button_new();
+	if (w->conf.dark_theme) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(dark), TRUE);
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), dark, dark_label, GTK_POS_RIGHT, 2, 1);
+	
+	GtkWidget *ticks = gtk_check_button_new();
+	if (w->conf.ticks) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ticks), TRUE);
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), ticks, ticks_label, GTK_POS_RIGHT, 2, 1);
 	
 	gtk_widget_show_all(dialog);
+	
 	gtk_dialog_run(GTK_DIALOG(dialog)); // Show the dialog
+	
+	// Save the dialog data in the settings variable and then save it out to disk
+	w->conf.audio_input = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(input));
+	w->conf.rate_adjustment = atof(gtk_entry_get_text(GTK_ENTRY(adjustment)));
+	w->conf.precision_mode = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(cpu));
+	w->conf.dark_theme = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(dark));
+	w->conf.ticks = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ticks));
+	
+	save_settings(&w->conf);
+	
+	// Get rid of the dialog
+	gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
 /* Set up the main window and populate with widgets */
@@ -986,7 +1023,7 @@ void init_main_window(struct main_window *w)
 	w->la = DEFAULT_LA;
 	
 	gtk_container_set_border_width(GTK_CONTAINER(w->window), 5); // Border around the window
-	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL); // Signal emitted if a user requests that a toplevel window is closed.
+	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), w); // Signal emitted if a user requests that a toplevel window is closed.
 	g_signal_connect(w->window, "destroy", G_CALLBACK(quit), w);
 	
 	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
@@ -1069,9 +1106,9 @@ void init_main_window(struct main_window *w)
 	gtk_container_add(GTK_CONTAINER(info_grid), w->bph_label); // Add to grid
 	
 	// Populate the panes
-	GtkWidget *panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+	w->panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
 	// gtk_paned_set_wide_handle(GTK_PANED(panes), TRUE); // Requires GTK+ 3.16 but makes the gutter area transparent instead of darker.
-	
+	gtk_paned_set_position(GTK_PANED(w->panes), w->conf.pane_pos); // Set the pane divider according to the settings
 	GtkWidget *left_grid = gtk_grid_new();
 	GtkWidget *right_grid = gtk_grid_new();
 	
@@ -1087,8 +1124,8 @@ void init_main_window(struct main_window *w)
 	gtk_grid_set_row_homogeneous(GTK_GRID(right_grid), TRUE);
 	
 	// Add the grids to the two panes
-	gtk_paned_pack1(GTK_PANED(panes), left_grid, TRUE, FALSE);
-	gtk_paned_pack2(GTK_PANED(panes), right_grid, TRUE, FALSE);
+	gtk_paned_pack1(GTK_PANED(w->panes), left_grid, TRUE, FALSE);
+	gtk_paned_pack2(GTK_PANED(w->panes), right_grid, TRUE, FALSE);
 	
 	gtk_widget_set_size_request(left_grid, 100, -1); // Minimum size of left pane
 	gtk_widget_set_size_request(right_grid, 200, 300); // Minimum size of right pane
@@ -1160,7 +1197,7 @@ void init_main_window(struct main_window *w)
 	
 	gtk_container_add(GTK_CONTAINER(root_grid), settings_grid);
 	gtk_container_add(GTK_CONTAINER(root_grid), info_grid);
-	gtk_container_add(GTK_CONTAINER(root_grid), panes);
+	gtk_container_add(GTK_CONTAINER(root_grid), w->panes);
 	
 	// All done. Show all the widgets.
 	gtk_widget_show_all(w->window);
@@ -1170,12 +1207,15 @@ void init_main_window(struct main_window *w)
 }
 
 /* Called when the GTK application starts running */
-static void activate (GtkApplication* app, gpointer user_data)
+void activate (GtkApplication* app, gpointer user_data)
 {
+	// Initialize the "global" w object
+	struct main_window w;
+	load_settings(&w.conf); // Load app settings
+
+	// Initialize audio
 	int nominal_sr;
 	double real_sr;
-	
-	// Initialize audio
 	if (start_portaudio(&nominal_sr, &real_sr)) return; // Bail out if we can't open audio.
 	
 	struct processing_buffers p[NSTEPS];
@@ -1187,15 +1227,14 @@ static void activate (GtkApplication* app, gpointer user_data)
 		p[i].period = -1;
 	}
 	
-	// Initialize the "global" w object
-	struct main_window w;
 	w.sample_rate = real_sr;
 	w.bfs = p;
 	w.old = NULL;
 	w.window = gtk_application_window_new(app);
-	
-	// Use the dark theme
-	g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", TRUE, NULL);
+	gtk_window_set_default_size(GTK_WINDOW(w.window), w.conf.window_width, w.conf.window_height);
+
+	if (w.conf.dark_theme) // Use the dark theme
+		g_object_set(gtk_settings_get_default(), "gtk-application-prefer-dark-theme", TRUE, NULL);
 	
 	GtkCssProvider *provider = gtk_css_provider_new();
 	GFile *css_file =  g_file_new_for_commandline_arg("tg.css");
