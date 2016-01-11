@@ -98,7 +98,7 @@ void pb_destroy_clone(struct processing_buffers *p);
 void process(struct processing_buffers *p, int bph);
 
 /* audio.c */
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, char *name);
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
 int num_inputs();
 const char * input_name(int i);

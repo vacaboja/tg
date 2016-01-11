@@ -230,6 +230,7 @@ void set_beaterror_label(struct main_window *w, double be)
 	char output[99];
 	snprintf(output, 99, "%4.1f <span size='xx-small'>ms</span>", be);
 	gtk_label_set_markup(GTK_LABEL(w->beaterror_label), output);
+	// gtk_widget_set_tooltip_text(w->beaterror_label, "12˚"); // Alternate display
 }
 
 void set_amplitude_label(struct main_window *w, double amp)
@@ -1216,7 +1217,7 @@ void activate (GtkApplication* app, gpointer user_data)
 	// Initialize audio
 	int nominal_sr;
 	double real_sr;
-	if (start_portaudio(&nominal_sr, &real_sr)) return; // Bail out if we can't open audio.
+	if (start_portaudio(&nominal_sr, &real_sr, w.conf.audio_input)) return; // Bail out if we can't open audio.
 	
 	struct processing_buffers p[NSTEPS];
 	int i;

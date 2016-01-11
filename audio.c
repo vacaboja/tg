@@ -44,7 +44,7 @@ int paudio_callback(const void *input_buffer,
 }
 
 /* Set up PA to continuously sample audio and store in buffers */
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, char* name)
 {
 	PaStream *stream;
 
@@ -54,8 +54,36 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	if(err!=paNoError)
 		goto error;
 
-    // Open an audio stream with 2 input channels & 0 output channels with an unspecified buffer size
-	err = Pa_OpenDefaultStream(&stream,2,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,x);
+	PaStreamParameters inputParameters;
+	inputParameters.channelCount = 2; // Stereo
+	inputParameters.sampleFormat = paFloat32;
+	// inputParameters.suggestedLatency = ;
+	inputParameters.hostApiSpecificStreamInfo = NULL;
+	inputParameters.device = Pa_GetDefaultInputDevice(); // Default input device
+	
+	// Try to locate the device selected in settings
+	int nDevices = Pa_GetDeviceCount();
+	for (int dev = 0; dev < nDevices; dev++) {
+		const PaDeviceInfo *info = Pa_GetDeviceInfo(dev);
+		if (info->maxInputChannels > 0) {
+			// Only check sources that has inputs
+			if (strcmp(info->name, name) == 0) {
+				inputParameters.device = dev;
+				break;
+			}
+		}
+	}
+
+	// Open the audio stream
+	err = Pa_OpenStream(&stream,
+						&inputParameters,
+						NULL,							// outputParameters
+						PA_SAMPLE_RATE,
+						paFramesPerBufferUnspecified,	// Frames per buffer
+						paNoFlag,
+						paudio_callback,
+						x);
+
 	*x = stream;
 	if(err!=paNoError)
 		goto error;
