@@ -807,7 +807,7 @@ gboolean debug_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
 	int old = 0;
 	struct processing_buffers *p = get_data(w, &old);
 	
-	if(p) {
+	if (p) {
 		double a = p->period / 10;
 		double b = p->period * 2;
 		
@@ -825,11 +825,11 @@ gboolean debug_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
 {
 	char *s = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(b));
-	if(s) {
+	if (s) {
 		int n;
 		char *t;
 		n = (int)strtol(s, &t, 10);
-		if(*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
+		if (*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
 		else w->bph = w->guessed_bph = n;
 		g_free(s);
 		recompute(w);
@@ -842,7 +842,7 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 void handle_la_change(GtkSpinButton *b, struct main_window *w)
 {
 	double la = gtk_spin_button_get_value(b);
-	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
+	if (la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
 	w->la = la;
 	redraw(w);
 }
@@ -856,7 +856,7 @@ void handle_clear_trace(GtkButton *b, struct main_window *w)
 
 void center_trace(struct main_window *w) {
 	uint64_t last_ev = w->events[w->events_wp];
-	if(last_ev) {
+	if (last_ev) {
 		double sweep = w->sample_rate * 3600. / (w->trace_zoom * w->guessed_bph);
 		w->trace_centering = fmod(last_ev + .5*sweep , sweep);
 	} else
@@ -877,6 +877,9 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 	w->conf.window_height = gtk_widget_get_allocated_height(GTK_WIDGET(widget));
 	w->conf.pane_pos = gtk_paned_get_position(GTK_PANED(w->panes));
 	save_settings(&w->conf);
+	
+	// Stop timeout
+	g_source_remove_by_user_data((gpointer)w);
 	
 	// If you return FALSE in the "delete-event" signal handler
 	// GTK will emit the "destroy" signal.
