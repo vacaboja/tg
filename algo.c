@@ -75,15 +75,18 @@ void setup_buffers(struct processing_buffers *b)
 	b->waveform_sc = malloc(2 * b->sample_rate * sizeof(float));
 	b->fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
 	b->sc_fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
-	b->tic_wf = fftwf_malloc(2 * b->sample_count * sizeof(float));
-	b->tic_c = fftwf_malloc(2 * b->sample_count * sizeof(float));
-	b->tic_fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
+	b->tic_wf = fftwf_malloc(b->sample_rate * sizeof(float));
+	b->slice_wf = fftwf_malloc(b->sample_rate * sizeof(float));
+	b->tic_fft = fftwf_malloc((b->sample_rate/2 + 1) * sizeof(fftwf_complex));
+	b->slice_fft = fftwf_malloc((b->sample_rate/2 + 1) * sizeof(fftwf_complex));
+	b->tic_c = malloc(2 * b->sample_count * sizeof(float));
 	b->plan_a = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
 	b->plan_b = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->sc_fft, b->samples_sc, FFTW_ESTIMATE);
 	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_rate, b->waveform, b->sc_fft, FFTW_ESTIMATE);
 	b->plan_d = fftwf_plan_dft_c2r_1d(2 * b->sample_rate, b->sc_fft, b->waveform_sc, FFTW_ESTIMATE);
-	b->plan_e = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->tic_wf, b->tic_fft, FFTW_ESTIMATE);
-	b->plan_f = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->sc_fft, b->tic_c, FFTW_ESTIMATE);
+	b->plan_e = fftwf_plan_dft_r2c_1d(b->sample_rate, b->tic_wf, b->tic_fft, FFTW_ESTIMATE);
+	b->plan_f = fftwf_plan_dft_r2c_1d(b->sample_rate, b->slice_wf, b->slice_fft, FFTW_ESTIMATE);
+	b->plan_g = fftwf_plan_dft_c2r_1d(b->sample_rate, b->slice_fft, b->slice_wf, FFTW_ESTIMATE);
 	b->hpf = malloc(sizeof(struct filter));
 	make_hp(b->hpf,(double)FILTER_CUTOFF/b->sample_rate);
 	b->lpf = malloc(sizeof(struct filter));
@@ -218,12 +221,6 @@ void prepare_data(struct processing_buffers *b)
 	for(i=0; i < b->sample_count+1; i++)
 			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
-
-#ifdef DEBUG
-#pragma omp parallel for
-	for(i=0; i < b->sample_count+1; i++)
-		b->debug[i] = b->samples_sc[i];
-#endif
 }
 
 int peak_detector(float *buff, int a, int b)
@@ -425,9 +422,8 @@ void prepare_waveform(struct processing_buffers *p)
 		p->waveform[i] -= nl;
 
 	fftwf_execute(p->plan_c);
-#pragma omp parallel for
 	for(i=0; i < p->sample_rate+1; i++)
-			p->sc_fft[i] = p->sc_fft[i] * conj(p->sc_fft[i]);
+			p->sc_fft[i] *= conj(p->sc_fft[i]);
 	fftwf_execute(p->plan_d);
 }
 
@@ -505,24 +501,32 @@ int compute_parameters(struct processing_buffers *p)
 	return 0;
 }
 
-// TODO: this can be done MUCH faster
 void do_locate_events(int *events, struct processing_buffers *p, float *waveform, int last, int offset, int count)
 {
 	int i;
-	memset(p->tic_wf, 0, 2 * p->sample_count * sizeof(float));
+	memset(p->tic_wf, 0, p->sample_rate * sizeof(float));
 	for(i=0; i<floor(p->period)/2; i++)
 		p->tic_wf[i] = waveform[i];
-
 	fftwf_execute(p->plan_e);
-#pragma omp parallel for
-	for(i=0; i < p->sample_count+1; i++)
-			p->sc_fft[i] = p->fft[i] * conj(p->tic_fft[i]);
-	fftwf_execute(p->plan_f);
+
+	int s;
+	memset(p->tic_c, 0, 2 * p->sample_count * sizeof(float));
+	for(s = p->sample_count - p->sample_rate/2; s >= 0; s -= p->sample_rate/2) {
+		for(i=0; i < p->sample_rate; i++)
+			p->slice_wf[i] = p->samples[i+s];
+		fftwf_execute(p->plan_f);
+		for(i=0; i < p->sample_rate/2+1; i++)
+			p->slice_fft[i] *= conj(p->tic_fft[i]);
+		fftwf_execute(p->plan_g);
+		for(i=0; i < p->sample_rate/2; i++)
+			p->tic_c[i+s] = p->slice_wf[i];
+		if(s < last - offset - (count-1)*p->period - 0.02*p->sample_rate) break;
+	}
 
 	for(i=0; i<count; i++) {
 		int a = round(last - offset - i*p->period - 0.02*p->sample_rate);
 		int b = round(last - offset - i*p->period + 0.02*p->sample_rate);
-		if(a < 0 || b >= p->sample_count)
+		if(a < 0 || b >= p->sample_count - p->period/2)
 			events[i] = -1;
 		else {
 			int peak = peak_detector(p->tic_c,a,b);

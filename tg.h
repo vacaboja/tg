@@ -79,9 +79,9 @@ struct filter {
 struct processing_buffers {
 	int sample_rate;
 	int sample_count;
-	float *samples, *samples_sc, *waveform, *waveform_sc, *tic_wf, *tic_c;
-	fftwf_complex *fft, *sc_fft, *tic_fft;
-	fftwf_plan plan_a, plan_b, plan_c, plan_d, plan_e, plan_f;
+	float *samples, *samples_sc, *waveform, *waveform_sc, *tic_wf, *slice_wf, *tic_c;
+	fftwf_complex *fft, *sc_fft, *tic_fft, *slice_fft;
+	fftwf_plan plan_a, plan_b, plan_c, plan_d, plan_e, plan_f, plan_g;
 	struct filter *hpf, *lpf;
 	double period,sigma,be,waveform_max,phase,tic_pulse,toc_pulse;
 	int tic,toc;
