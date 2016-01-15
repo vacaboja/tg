@@ -19,6 +19,7 @@
 #include "tg.h"
 #include <stdarg.h>
 #include <gtk/gtk.h>
+#include <pthread.h>
 
 int preset_bph[] = PRESET_BPH;
 
@@ -87,8 +88,14 @@ struct main_window {
 	GtkWidget *debug_drawing_area;
 #endif
 
+	pthread_t computing_thread;
+	pthread_mutex_t recompute_mutex;
+	pthread_cond_t recompute_cond;
+	int recompute;
+
 	struct processing_buffers *bfs;
 	struct processing_buffers *old;
+	int is_old;
 
 	int bph;
 	int guessed_bph;
@@ -136,36 +143,10 @@ int guess_bph(double period)
 
 struct processing_buffers *get_data(struct main_window *w, int *old)
 {
-	struct processing_buffers *p = w->bfs;
-	int i;
-	for(i=0; i<NSTEPS && p[i].ready; i++);
-	for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
-	if(i>=0) {
-		if(w->old) pb_destroy_clone(w->old);
-		w->old = pb_clone(&p[i]);
-		*old = 0;
-		return &p[i];
-	} else {
-		*old = 1;
-		return w->old;
-	}
-}
-
-void recompute(struct main_window *w)
-{
-	w->signal = analyze_pa_data(w->bfs, w->bph, w->events_from);
-	int old;
-	struct processing_buffers *p = get_data(w,&old);
-	if(old) w->signal = -w->signal;
-	if(p)
-		w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / w->sample_rate);
-}
-
-guint refresh(struct main_window *w)
-{
-	recompute(w);
-	redraw(w);
-	return TRUE;
+	*old = w->is_old;
+	if(w->old)
+		w->guessed_bph = w->bph ? w->bph : guess_bph(w->old->period / w->sample_rate);
+	return w->old;
 }
 
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
@@ -781,6 +762,7 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 }
 #endif
 
+guint kick_computer(struct main_window *);
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
 {
 	char *s = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(b));
@@ -791,9 +773,8 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 		if(*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
 		else w->bph = w->guessed_bph = n;
 		g_free(s);
-		recompute(w);
-		redraw(w);
 	}
+	kick_computer(w);
 }
 
 void handle_la_change(GtkSpinButton *b, struct main_window *w)
@@ -965,6 +946,62 @@ void init_main_window(struct main_window *w)
 	gtk_window_set_focus(GTK_WINDOW(w->window), NULL);
 }
 
+guint refresh(struct main_window *w)
+{
+	redraw(w);
+	return FALSE;
+}
+
+void *computing_thread(void *void_w)
+{
+	struct main_window *w = void_w;
+	for(;;) {
+		pthread_mutex_lock(&w->recompute_mutex);
+		while(!w->recompute)
+			pthread_cond_wait(&w->recompute_cond, &w->recompute_mutex);
+		w->recompute = 0;
+		pthread_mutex_unlock(&w->recompute_mutex);
+
+		gdk_threads_enter();
+		int bph = w->bph;
+		uint64_t events_from = w->events_from;
+		gdk_threads_leave();
+
+		int signal = analyze_pa_data(w->bfs, bph, events_from);
+
+		gdk_threads_enter();
+
+		int i;
+		struct processing_buffers *p = w->bfs;
+
+		for(i=0; i<NSTEPS && p[i].ready; i++);
+		for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
+		if(i>=0) {
+			if(w->old) pb_destroy_clone(w->old);
+			w->old = pb_clone(&p[i]);
+			w->is_old = 0;
+			w->signal = signal;
+		} else {
+			w->is_old = 1;
+			w->signal = -signal;
+		}
+
+		gdk_threads_leave();
+
+		gdk_threads_add_idle((GSourceFunc)refresh,w);
+	}
+}
+
+guint kick_computer(struct main_window *w)
+{
+	pthread_mutex_lock(&w->recompute_mutex);
+	w->recompute = 1;
+	pthread_cond_signal(&w->recompute_cond);
+	pthread_mutex_unlock(&w->recompute_mutex);
+
+	return TRUE;
+}
+
 int run_interface()
 {
 	int nominal_sr;
@@ -985,10 +1022,19 @@ int run_interface()
 	w.sample_rate = real_sr;
 	w.bfs = p;
 	w.old = NULL;
+	w.is_old = 1;
+	w.recompute = 0;
 
 	init_main_window(&w);
 
-	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)refresh,&w,NULL);
+	if(    pthread_mutex_init(&w.recompute_mutex, NULL)
+	    || pthread_cond_init(&w.recompute_cond, NULL)
+	    || pthread_create(&w.computing_thread, NULL, computing_thread, &w)) {
+		error("Unable to initialize computational thread");
+		return 1;
+	}
+
+	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,&w,NULL);
 
 	gtk_main();
 
@@ -997,6 +1043,9 @@ int run_interface()
 
 int main(int argc, char **argv)
 {
+	gdk_threads_init();
+	gdk_threads_enter();
+
 	gtk_init(&argc, &argv);
 	initialize_palette();
 
@@ -1008,5 +1057,9 @@ int main(int argc, char **argv)
 
 	debug("OpenMP threads count = %d\n",omp_get_max_threads());
 
-	return run_interface();
+	int ret = run_interface();
+
+	gdk_threads_leave();
+
+	return ret;
 }

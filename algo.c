@@ -101,6 +101,8 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->sample_rate = p->sample_rate;
 	new->waveform = malloc(new->sample_rate * sizeof(float));
 	memcpy(new->waveform, p->waveform, new->sample_rate * sizeof(float));
+	new->events = malloc(EVENTS_MAX * sizeof(uint64_t));
+	memcpy(new->events, p->events, EVENTS_MAX * sizeof(uint64_t));
 
 #ifdef DEBUG
 	new->debug = malloc(p->sample_count * sizeof(float));
@@ -117,12 +119,14 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->tic = p->tic;
 	new->toc = p->toc;
 	new->ready = p->ready;
+	new->timestamp = p->timestamp;
 	return new;
 }
 
 void pb_destroy_clone(struct processing_buffers *p)
 {
 	free(p->waveform);
+	free(p->events);
 #ifdef DEBUG
 	free(p->debug);
 #endif
@@ -501,6 +505,7 @@ int compute_parameters(struct processing_buffers *p)
 	return 0;
 }
 
+// TODO: this can be done MUCH faster
 void do_locate_events(int *events, struct processing_buffers *p, float *waveform, int last, int offset, int count)
 {
 	int i;
