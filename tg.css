@@ -18,18 +18,34 @@
 
 #rate {
     font-size: 40px;
+	font-weight: bold;
+}
+
+#rate_units {
+	font-size: 24px;
 }
 
 #beaterror {
     font-size: 40px;
+	font-weight: bold;
+}
+
+#beaterror_units {
+	font-size: 24px;
 }
 
 #amplitude {
     font-size: 40px;
+	font-weight: bold;
 }
 
 #bph {
     font-size: 40px;
+	font-weight: bold;
+}
+
+#bph_units {
+	font-size: 24px;
 }
 
 #clear_button {

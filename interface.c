@@ -218,41 +218,39 @@ double get_amplitude(double la, struct processing_buffers *p)
 
 void set_rate_label(struct main_window *w, int rate)
 {
-	char rate_str[20];
-	char output[99];
-	snprintf(rate_str, 20, "%s%d", rate > 0 ? "+" : rate < 0 ? "-" : "", abs(rate));
-	snprintf(output, 99, "%4s <span size='xx-small'>s/d</span>", rate_str);
-	gtk_label_set_markup(GTK_LABEL(w->rate_label), output);
+	char output[6];
+	snprintf(output, 6, "%+4d", rate);
+	gtk_label_set_text(GTK_LABEL(w->rate_label), output);
 }
 
 void set_beaterror_label(struct main_window *w, double be)
 {
-	char output[99];
-	snprintf(output, 99, "%4.1f <span size='xx-small'>ms</span>", be);
-	gtk_label_set_markup(GTK_LABEL(w->beaterror_label), output);
-	// gtk_widget_set_tooltip_text(w->beaterror_label, "12˚"); // Alternate display
+	char output[8];
+	snprintf(output, 8, "%4.1f", be);
+	gtk_label_set_text(GTK_LABEL(w->beaterror_label), output);
+	// gtk_widget_set_tooltip_text(w->beaterror_label, "12˚"); // Alternate unit display
 }
 
 void set_amplitude_label(struct main_window *w, double amp)
 {
-	char output[99];
-	snprintf(output, 99, "%3.0f˚", amp);
-	gtk_label_set_markup(GTK_LABEL(w->amplitude_label), output);
+	char output[8];
+	snprintf(output, 8, "%3.0f˚", amp);
+	gtk_label_set_text(GTK_LABEL(w->amplitude_label), output);
 }
 
 void set_bph_label(struct main_window *w, int bph)
 {
-	char output[99];
-	snprintf(output, 99, "%d <span size='xx-small'>bph</span>", bph);
-	gtk_label_set_markup(GTK_LABEL(w->bph_label), output);
+	char output[8];
+	snprintf(output, 8, "%d", bph);
+	gtk_label_set_text(GTK_LABEL(w->bph_label), output);
 }
 
 #ifdef DEBUG
 void set_fps_label(struct main_window *w, double fps)
 {
-	char output[99];
-	snprintf(output, 99, "<span size='xx-large'>%.2f fps</span>", fps);
-	gtk_label_set_markup(GTK_LABEL(w->fps_label), output);
+	char output[12];
+	snprintf(output, 12, "%.2f fps", fps);
+	gtk_label_set_text(GTK_LABEL(w->fps_label), output);
 }
 #endif
 
@@ -1080,7 +1078,7 @@ void init_main_window(struct main_window *w)
 	
 	// Info grid
 	GtkWidget *info_grid = gtk_grid_new(); // The grid containing the info text, default to horizontal orientation
-	gtk_grid_set_column_spacing(GTK_GRID(info_grid), 10);
+	gtk_grid_set_column_spacing(GTK_GRID(info_grid), 0);
 	
 	// Watch icon
 	w->icon_drawing_area = gtk_drawing_area_new();
@@ -1090,36 +1088,61 @@ void init_main_window(struct main_window *w)
 	gtk_container_add(GTK_CONTAINER(info_grid), w->icon_drawing_area); // Add to grid
 	
 	// Rate Label
-	w->rate_label = gtk_label_new(NULL);
-	gtk_label_set_width_chars(GTK_LABEL(w->rate_label), 6);
+	w->rate_label = gtk_label_new("----");
+	gtk_widget_set_valign(w->rate_label, GTK_ALIGN_BASELINE);
+	gtk_widget_set_margin_end(w->rate_label, 4);
+	gtk_label_set_width_chars(GTK_LABEL(w->rate_label), 4);
 	gtk_label_set_xalign(GTK_LABEL(w->rate_label), 1); // Right align
-	gtk_label_set_markup(GTK_LABEL(w->rate_label), "---- <span size='xx-small'>s/d</span>");
 	gtk_widget_set_name(w->rate_label, "rate");
-	gtk_container_add(GTK_CONTAINER(info_grid), w->rate_label); // Add to grid
+	gtk_container_add(GTK_CONTAINER(info_grid), w->rate_label);
+	
+	GtkWidget *rate_unit_label = gtk_label_new("s/d");
+	gtk_widget_set_valign(rate_unit_label, GTK_ALIGN_BASELINE);
+	gtk_widget_set_margin_end(rate_unit_label, 10);
+	gtk_label_set_xalign(GTK_LABEL(rate_unit_label), 0); // Left align
+	gtk_widget_set_name(rate_unit_label, "rate_units");
+	gtk_container_add(GTK_CONTAINER(info_grid), rate_unit_label);
 	
 	// Beat Error Label
-	w->beaterror_label = gtk_label_new(NULL);
-	gtk_label_set_width_chars(GTK_LABEL(w->beaterror_label), 6);
+	w->beaterror_label = gtk_label_new("----");
+	gtk_widget_set_valign(w->beaterror_label, GTK_ALIGN_BASELINE);
+	gtk_widget_set_margin_end(w->beaterror_label, 4);
+	gtk_label_set_width_chars(GTK_LABEL(w->beaterror_label), 3);
 	gtk_label_set_xalign(GTK_LABEL(w->beaterror_label), 1); // Right align
-	gtk_label_set_markup(GTK_LABEL(w->beaterror_label), "---- <span size='xx-small'>ms</span>");
 	gtk_widget_set_name(w->beaterror_label, "beaterror");
-	gtk_container_add(GTK_CONTAINER(info_grid), w->beaterror_label); // Add to grid
+	gtk_container_add(GTK_CONTAINER(info_grid), w->beaterror_label);
+	
+	GtkWidget *beaterror_unit_label = gtk_label_new("ms");
+	gtk_widget_set_valign(beaterror_unit_label, GTK_ALIGN_BASELINE);
+	gtk_widget_set_margin_end(beaterror_unit_label, 10);
+	gtk_label_set_xalign(GTK_LABEL(beaterror_unit_label), 0); // Left align
+	gtk_widget_set_name(beaterror_unit_label, "beaterror_units");
+	gtk_container_add(GTK_CONTAINER(info_grid), beaterror_unit_label);
 	
 	// Amplitude Label
-	w->amplitude_label = gtk_label_new(NULL);
+	w->amplitude_label = gtk_label_new("---˚");
+	gtk_widget_set_valign(w->amplitude_label, GTK_ALIGN_BASELINE);
+	gtk_widget_set_margin_end(w->amplitude_label, 10);
 	gtk_label_set_width_chars(GTK_LABEL(w->amplitude_label), 4);
 	gtk_label_set_xalign(GTK_LABEL(w->amplitude_label), 1); // Right align
-	gtk_label_set_markup(GTK_LABEL(w->amplitude_label), "---˚");
 	gtk_widget_set_name(w->amplitude_label, "amplitude");
-	gtk_container_add(GTK_CONTAINER(info_grid), w->amplitude_label); // Add to grid
+	gtk_container_add(GTK_CONTAINER(info_grid), w->amplitude_label);
 	
 	// BPH Label
-	w->bph_label = gtk_label_new(NULL);
-	gtk_label_set_width_chars(GTK_LABEL(w->bph_label), 8);
+	w->bph_label = gtk_label_new("21600");
+	gtk_widget_set_valign(w->bph_label, GTK_ALIGN_BASELINE);
+	gtk_widget_set_margin_end(w->bph_label, 4);
+	gtk_label_set_width_chars(GTK_LABEL(w->bph_label), 5);
 	gtk_label_set_xalign(GTK_LABEL(w->bph_label), 1); // Right align
-	gtk_label_set_markup(GTK_LABEL(w->bph_label), "21600 <span size='xx-small'>bph</span>");
 	gtk_widget_set_name(w->bph_label, "bph");
-	gtk_container_add(GTK_CONTAINER(info_grid), w->bph_label); // Add to grid
+	gtk_container_add(GTK_CONTAINER(info_grid), w->bph_label);
+	
+	GtkWidget *bph_unit_label = gtk_label_new("bph");
+	gtk_widget_set_valign(bph_unit_label, GTK_ALIGN_BASELINE);
+	gtk_widget_set_margin_end(bph_unit_label, 10);
+	gtk_label_set_xalign(GTK_LABEL(bph_unit_label), 0); // Left align
+	gtk_widget_set_name(bph_unit_label, "bph_units");
+	gtk_container_add(GTK_CONTAINER(info_grid), bph_unit_label);
 	
 	// Populate the panes
 	w->panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
@@ -1217,7 +1240,7 @@ void init_main_window(struct main_window *w)
 	// All done. Show all the widgets.
 	gtk_widget_show_all(w->window);
 	
-	gtk_window_set_interactive_debugging(TRUE);
+	// gtk_window_set_interactive_debugging(TRUE);
 }
 
 /* Called when the GTK application starts running */
