@@ -13,11 +13,11 @@
 
 
 * {
-    -GtkPaned-handle-size: 10;
+	-GtkPaned-handle-size: 10;
 }
 
 #rate {
-    font-size: 40px;
+	font-size: 40px;
 	font-weight: bold;
 }
 
@@ -26,7 +26,7 @@
 }
 
 #beaterror {
-    font-size: 40px;
+	font-size: 40px;
 	font-weight: bold;
 }
 
@@ -35,12 +35,12 @@
 }
 
 #amplitude {
-    font-size: 40px;
+	font-size: 40px;
 	font-weight: bold;
 }
 
 #bph {
-    font-size: 40px;
+	font-size: 40px;
 	font-weight: bold;
 }
 
@@ -49,9 +49,9 @@
 }
 
 #clear_button {
-   /* font-size: 16px; */
+	/* font-size: 16px; */
 }
 
 #center_button {
-    /* font-size: 16px; */
+	/* font-size: 16px; */
 }
