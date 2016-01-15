@@ -42,7 +42,7 @@ void error(char *format,...)
 	va_end(args);
 	
 	char *t;
-	if(size < 100) {
+	if (size < 100) {
 		t = s;
 	} else {
 		t = alloca(size+1);
@@ -126,7 +126,7 @@ struct main_window {
 	double la;
 	double sample_rate;
 	
-	uint64_t *events;
+	uint64_t *events; // List of ticks and tocks
 	int events_wp;
 	uint64_t events_from;
 	double trace_centering;
@@ -157,9 +157,9 @@ int guess_bph(double period)
 	int i,ret;
 	
 	ret = 0;
-	for(i=0; preset_bph[i]; i++) {
+	for (i=0; preset_bph[i]; i++) {
 		double diff = fabs(bph - preset_bph[i]);
-		if(diff < min) {
+		if (diff < min) {
 			min = diff;
 			ret = i;
 		}
@@ -173,11 +173,11 @@ struct processing_buffers *get_data(struct main_window *w, int *old)
 {
 	struct processing_buffers *p = w->bfs;
 	int i;
-	for(i=0; i<NSTEPS && p[i].ready; i++);
-	for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
-	if(i >= 0) {
+	for (i=0; i<NSTEPS && p[i].ready; i++);
+	for (i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
+	if (i >= 0) {
 		// TODO: Can't we have one object kept alive instead of destroying/creating new ones every time?
-		if(w->old) pb_destroy_clone(w->old); // Remove the previous old data
+		if (w->old) pb_destroy_clone(w->old); // Remove the previous old data
 		w->old = pb_clone(&p[i]); // Store the current data as old
 		*old = 0;
 		return &p[i];
@@ -192,8 +192,8 @@ void recompute(struct main_window *w)
 	w->signal = analyze_pa_data(w->bfs, w->bph, w->events_from);
 	int old;
 	struct processing_buffers *p = get_data(w, &old);
-	if(old) w->signal = -w->signal;
-	if(p)
+	if (old) w->signal = -w->signal;
+	if (p)
 		// If we have a bph set, use that for the "guess". Otherwise, calculate a guess.
 		w->guessed_bph = w->bph ? w->bph : guess_bph(p->period / w->sample_rate);
 }
@@ -207,10 +207,10 @@ double get_rate(int bph, double sample_rate, struct processing_buffers *p)
 double get_amplitude(double la, struct processing_buffers *p)
 {
 	double ret = -1;
-	if(p->tic_pulse > 0 && p->toc_pulse > 0) {
+	if (p->tic_pulse > 0 && p->toc_pulse > 0) {
 		double tic_amp = la * .5 / sin(M_PI * p->tic_pulse / p->period);
 		double toc_amp = la * .5 / sin(M_PI * p->toc_pulse / p->period);
-		if(la < tic_amp && tic_amp < 360 && la < toc_amp && toc_amp < 360 && fabs(tic_amp - toc_amp) < 60)
+		if (la < tic_amp && tic_amp < 360 && la < toc_amp && toc_amp < 360 && fabs(tic_amp - toc_amp) < 60)
 			ret = (tic_amp + toc_amp) / 2;
 	}
 	return ret;
@@ -305,14 +305,14 @@ void draw_graph(double a, double b, cairo_t *cr, struct processing_buffers *p, G
 	int n;
 	
 	int first = TRUE;
-	for(n=0; n<2*width; n++) {
+	for (n=0; n<2*width; n++) {
 		int i = n < width ? n : 2*width - 1 - n;
 		double x = fmod(a + i * (b-a) / width, p->period);
 		if (x < 0) x += p->period;
 		int j = floor(x);
 		double y;
 		
-		if(p->waveform[j] <= 0) y = 0;
+		if (p->waveform[j] <= 0) y = 0;
 		else y = p->waveform[j] * 0.4 / p->waveform_max;
 		
 		int k = round(y*height);
@@ -337,22 +337,22 @@ void draw_debug_graph(double a, double b, cairo_t *c, struct processing_buffers 
 	
 	int ai = round(a);
 	int bi = 1+round(b);
-	if(ai < 0) ai = 0;
-	if(bi > p->sample_count) bi = p->sample_count;
-	for(i=ai; i<bi; i++)
-		if(p->debug[i] > max)
+	if (ai < 0) ai = 0;
+	if (bi > p->sample_count) bi = p->sample_count;
+	for (i=ai; i<bi; i++)
+		if (p->debug[i] > max)
 			max = p->debug[i];
 	
 	int first = 1;
-	for(i=0; i<width; i++) {
-		if( round(a + i*(b-a)/width) != round(a + (i+1)*(b-a)/width) ) {
+	for (i=0; i<width; i++) {
+		if ( round(a + i*(b-a)/width) != round(a + (i+1)*(b-a)/width) ) {
 			int j = round(a + i*(b-a)/width);
-			if(j < 0) j = 0;
-			if(j >= p->sample_count) j = p->sample_count-1;
+			if (j < 0) j = 0;
+			if (j >= p->sample_count) j = p->sample_count-1;
 			
 			int k = round((0.1+p->debug[j]/max)*0.8*height);
 			
-			if(first) {
+			if (first) {
 				cairo_move_to(c,i+.5,height-k-.5);
 				first = 0;
 			} else
@@ -398,11 +398,11 @@ void draw_waveform(
 	int i;
 	
 	// Draw vertical time lines every ms
-	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
+	for (i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
 		int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 		cairo_move_to(cr, x + .5, height / 2 + .5);
 		cairo_line_to(cr, x + .5, height - .5);
-		if(i%5)
+		if (i%5)
 			cairo_set_source(cr, grid_color);
 		else
 			cairo_set_source(cr, grid2_color);
@@ -411,8 +411,8 @@ void draw_waveform(
 	
 	// Draw numbers for time scale, every 5 ms
 	cairo_set_source(cr, text_color);
-	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
-		if(!(i%5)) {
+	for (i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
+		if (!(i%5)) {
 			int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 			char s[10];
 			snprintf(s, 10, "%d", i);
@@ -450,11 +450,11 @@ void draw_waveform(
 	// Draw numbers for amplitude scale
 	double last_x = 0;
 	cairo_set_source(cr, text_color);
-	for(i = 50; i < 360; i+=50) {
+	for (i = 50; i < 360; i+=50) {
 		double t = period*amplitude_to_time(w->la, i);
-		if(t > .001 * NEGATIVE_SPAN) continue;
+		if (t > .001 * NEGATIVE_SPAN) continue;
 		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
-		if(x > last_x) {
+		if (x > last_x) {
 			char s[10];
 			snprintf(s, 10, "%d", abs(i));
 			cairo_move_to(cr, x + fontsize/4, fontsize * 3 / 2);
@@ -530,32 +530,35 @@ double get_toc_pulse(struct processing_buffers *p)
 /* Draw the watch icon in the info area */
 gboolean icon_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w)
 {
+	// int width = gtk_widget_get_allocated_width(widget);
+	int height = gtk_widget_get_allocated_height(widget);
+	
 	int happy = !!w->signal;
 	
 	// Watch hands
 	cairo_set_line_width(cr, 5);
-	cairo_set_line_cap (cr, CAIRO_LINE_CAP_ROUND); // Rounded hands
+	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND); // Rounded hands
 	cairo_set_source(cr, happy ? icon1 : icon2);
-	cairo_move_to(cr, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
-	cairo_line_to(cr, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
-	cairo_move_to(cr, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
-	cairo_line_to(cr, OUTPUT_WINDOW_HEIGHT * 0.35, OUTPUT_WINDOW_HEIGHT * (0.65 - 0.3*happy));
+	cairo_move_to(cr, height * 0.5, height * 0.5);
+	cairo_line_to(cr, height * 0.75, height * (0.75 - 0.5*happy));
+	cairo_move_to(cr, height * 0.5, height * 0.5);
+	cairo_line_to(cr, height * 0.35, height * (0.65 - 0.3*happy));
 	cairo_stroke(cr);
 	
 	// Watch outline
 	cairo_set_line_width(cr, 6);
-	cairo_arc(cr, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
+	cairo_arc(cr, height * 0.5, height * 0.5, height * 0.4, 0, 2*M_PI);
 	cairo_stroke(cr);
 	
-	const int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
+	const int l = height * 0.8 / (2*NSTEPS - 1);
 	int i;
 	cairo_set_line_width(cr, 1);
-	for(i = 0; i < w->signal; i++) {
-		cairo_move_to(cr, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-		cairo_line_to(cr, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
-		cairo_line_to(cr, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
-		cairo_line_to(cr, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
-		cairo_line_to(cr, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
+	for (i = 0; i < w->signal; i++) {
+		cairo_move_to(cr, height + 0.5*l, height * 0.9 - 2*i*l);
+		cairo_line_to(cr, height + 1.5*l, height * 0.9 - 2*i*l);
+		cairo_line_to(cr, height + 1.5*l, height * 0.9 - (2*i+1)*l);
+		cairo_line_to(cr, height + 0.5*l, height * 0.9 - (2*i+1)*l);
+		cairo_line_to(cr, height + 0.5*l, height * 0.9 - 2*i*l);
 		cairo_stroke_preserve(cr);
 		cairo_fill(cr);
 	}
@@ -587,7 +590,7 @@ gboolean period_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w
 	
 	double toc, a=0, b=0;
 	
-	if(p) {
+	if (p) {
 		toc = p->tic < p->toc ? p->toc : p->toc + p->period;
 		a = ((double)p->tic + toc)/2 - p->period/2;
 		b = ((double)p->tic + toc)/2 + p->period/2;
@@ -608,18 +611,18 @@ gboolean period_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w
 	}
 	
 	int i;
-	for(i = 1; i < 16; i++) {
+	for (i = 1; i < 16; i++) {
 		int x = i * width / 16;
 		cairo_move_to(cr, x+.5, .5);
 		cairo_line_to(cr, x+.5, height - .5);
-		if(i % 4)
+		if (i % 4)
 			cairo_set_source(cr, grid_color);
 		else
 			cairo_set_source(cr, grid2_color);
 		cairo_stroke(cr);
 	}
 	
-	if(p) {
+	if (p) {
 		draw_graph(a,b,cr,p,w->period_drawing_area);
 		
 		cairo_set_source(cr, old ? stopped_color : waveform_color);
@@ -646,11 +649,11 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 #else
 	uint64_t time = timestamp;
 #endif
-	if(p && !old) {
+	if (p && !old) {
 		uint64_t last = w->events[w->events_wp];
-		for(i=0; i<EVENTS_MAX && p->events[i]; i++)
-			if(p->events[i] > last + floor(p->period / 4)) {
-				if(++w->events_wp == EVENTS_COUNT) w->events_wp = 0;
+		for (i=0; i<EVENTS_MAX && p->events[i]; i++)
+			if (p->events[i] > last + floor(p->period / 4)) {
+				if (++w->events_wp == EVENTS_COUNT) w->events_wp = 0;
 				w->events[w->events_wp] = p->events[i];
 				debug("event at %llu\n", w->events[w->events_wp]);
 			}
@@ -665,7 +668,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	int height = gtk_widget_get_allocated_height(w->paperstrip_drawing_area);
 	
 	int stopped = 0;
-	if(w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
+	if (w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
 		time = 5 * w->sample_rate + w->events[w->events_wp];
 		stopped = 1;
 	}
@@ -682,7 +685,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 			for (i=0; i<4; i++) {
 				double y = 0;
 				cairo_move_to(cr, (double)width * (i+.5) / 4, 0);
-				for(;;) {
+				for (;;) {
 					double x = y * slope + (double)width * (i+.5) / 4;
 					x = fmod(x, width);
 					if (x < 0) x += width;
@@ -1046,7 +1049,7 @@ void init_main_window(struct main_window *w)
 	// Fill in pre-defined values
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), "Automatic");
 	int *bph;
-	for(bph = preset_bph; *bph; bph++) {
+	for (bph = preset_bph; *bph; bph++) {
 		char s[50];
 		snprintf(s, 50, "%d", *bph);
 		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), s);
@@ -1069,6 +1072,7 @@ void init_main_window(struct main_window *w)
 	
 	// Prefs button
 	GtkWidget *prefs_button = gtk_button_new_with_label("Settings");
+	gtk_widget_set_name(prefs_button, "settings_button"); // To allow for CSS styling
 	gtk_widget_set_halign(prefs_button, GTK_ALIGN_END); // Right aligned
 	gtk_widget_set_hexpand(prefs_button, TRUE); // Needed to make the grid expand and make room for the button at the far right
 	g_signal_connect(prefs_button, "clicked", G_CALLBACK(show_preferences), w);
@@ -1076,7 +1080,7 @@ void init_main_window(struct main_window *w)
 	
 	// Info grid
 	GtkWidget *info_grid = gtk_grid_new(); // The grid containing the info text, default to horizontal orientation
-	gtk_grid_set_column_spacing(GTK_GRID(info_grid), 20);
+	gtk_grid_set_column_spacing(GTK_GRID(info_grid), 10);
 	
 	// Watch icon
 	w->icon_drawing_area = gtk_drawing_area_new();
@@ -1087,24 +1091,32 @@ void init_main_window(struct main_window *w)
 	
 	// Rate Label
 	w->rate_label = gtk_label_new(NULL);
+	gtk_label_set_width_chars(GTK_LABEL(w->rate_label), 6);
+	gtk_label_set_xalign(GTK_LABEL(w->rate_label), 1); // Right align
 	gtk_label_set_markup(GTK_LABEL(w->rate_label), "---- <span size='xx-small'>s/d</span>");
 	gtk_widget_set_name(w->rate_label, "rate");
 	gtk_container_add(GTK_CONTAINER(info_grid), w->rate_label); // Add to grid
 	
 	// Beat Error Label
 	w->beaterror_label = gtk_label_new(NULL);
+	gtk_label_set_width_chars(GTK_LABEL(w->beaterror_label), 6);
+	gtk_label_set_xalign(GTK_LABEL(w->beaterror_label), 1); // Right align
 	gtk_label_set_markup(GTK_LABEL(w->beaterror_label), "---- <span size='xx-small'>ms</span>");
 	gtk_widget_set_name(w->beaterror_label, "beaterror");
 	gtk_container_add(GTK_CONTAINER(info_grid), w->beaterror_label); // Add to grid
 	
 	// Amplitude Label
 	w->amplitude_label = gtk_label_new(NULL);
+	gtk_label_set_width_chars(GTK_LABEL(w->amplitude_label), 4);
+	gtk_label_set_xalign(GTK_LABEL(w->amplitude_label), 1); // Right align
 	gtk_label_set_markup(GTK_LABEL(w->amplitude_label), "---˚");
 	gtk_widget_set_name(w->amplitude_label, "amplitude");
 	gtk_container_add(GTK_CONTAINER(info_grid), w->amplitude_label); // Add to grid
 	
 	// BPH Label
 	w->bph_label = gtk_label_new(NULL);
+	gtk_label_set_width_chars(GTK_LABEL(w->bph_label), 8);
+	gtk_label_set_xalign(GTK_LABEL(w->bph_label), 1); // Right align
 	gtk_label_set_markup(GTK_LABEL(w->bph_label), "21600 <span size='xx-small'>bph</span>");
 	gtk_widget_set_name(w->bph_label, "bph");
 	gtk_container_add(GTK_CONTAINER(info_grid), w->bph_label); // Add to grid
@@ -1192,13 +1204,12 @@ void init_main_window(struct main_window *w)
 	gtk_container_add(GTK_CONTAINER(right_grid), w->debug_drawing_area);
 #endif
 	
-	// Populate the root grid with the grids we created above
+	// Populate the root grid with the children grids we created above
 	GtkWidget *root_grid = gtk_grid_new(); // The grid containing all of the UI
 	gtk_orientable_set_orientation(GTK_ORIENTABLE(root_grid), GTK_ORIENTATION_VERTICAL);
 	gtk_grid_set_row_spacing(GTK_GRID(root_grid), 5);
-	gtk_grid_set_column_spacing(GTK_GRID(root_grid), 10);
 	gtk_container_add(GTK_CONTAINER(w->window), root_grid); // Add the root grid to the window
-	
+	// Add the child grids inside the root grid
 	gtk_container_add(GTK_CONTAINER(root_grid), settings_grid);
 	gtk_container_add(GTK_CONTAINER(root_grid), info_grid);
 	gtk_container_add(GTK_CONTAINER(root_grid), w->panes);
@@ -1206,8 +1217,7 @@ void init_main_window(struct main_window *w)
 	// All done. Show all the widgets.
 	gtk_widget_show_all(w->window);
 	
-	// gtk_window_set_interactive_debugging(TRUE);
-	// gtk_window_maximize(GTK_WINDOW(w->window));
+	gtk_window_set_interactive_debugging(TRUE);
 }
 
 /* Called when the GTK application starts running */
@@ -1224,7 +1234,7 @@ void activate (GtkApplication* app, gpointer user_data)
 	
 	struct processing_buffers p[NSTEPS];
 	int i;
-	for(i=0; i < NSTEPS; i++) {
+	for (i=0; i < NSTEPS; i++) {
 		p[i].sample_rate = nominal_sr;
 		p[i].sample_count = nominal_sr * (1<<(i+FIRST_STEP));
 		setup_buffers(&p[i]);
