@@ -109,7 +109,6 @@ struct Settings
 	gchar *audio_input;
 	gdouble rate_adjustment;
 	gboolean precision_mode;
-	gboolean ticks;
 	gboolean dark_theme;
 	int window_width, window_height, pane_pos;
 };
