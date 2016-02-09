@@ -918,6 +918,8 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 	dialog = gtk_dialog_new_with_buttons ("Settings",
 										  GTK_WINDOW(w->window),
 										  flags,
+										  ("Cancel"),
+										  GTK_RESPONSE_CANCEL,
 										  "OK",
 										  GTK_RESPONSE_ACCEPT,
 										  NULL);
@@ -952,11 +954,6 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 	gtk_widget_set_tooltip_text(dark_label, "Use a darker user interface with less light pollution.");
 	gtk_widget_set_halign(dark_label, GTK_ALIGN_END); // Right aligned
 	gtk_grid_attach(GTK_GRID(prefs_grid), dark_label, 0,3,1,1);
-
-	GtkWidget *ticks_label = gtk_label_new("Clicks:");
-	gtk_widget_set_tooltip_text(ticks_label, "Audible clicks for each beat detected.");
-	gtk_widget_set_halign(ticks_label, GTK_ALIGN_END); // Right aligned
-	gtk_grid_attach(GTK_GRID(prefs_grid), ticks_label, 0,4,1,1);
 	
 	GtkWidget *input = gtk_combo_box_text_new();
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(input), "Default");
@@ -966,7 +963,7 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 		if (strcmp(w->conf.audio_input, input_name(n)) == 0) active=n;
 	}
 	gtk_combo_box_set_active(GTK_COMBO_BOX(input), active); // Fill in value from settings
-	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), input, input_label, GTK_POS_RIGHT,2,1);
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), input, input_label, GTK_POS_RIGHT, 2, 1);
 	
 	GtkWidget *adjustment = gtk_entry_new();
 	gtk_entry_set_input_purpose(GTK_ENTRY(adjustment), GTK_INPUT_PURPOSE_NUMBER);
@@ -980,32 +977,29 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), adjustment, adjust_label, GTK_POS_RIGHT, 1, 1);
 	
 	GtkWidget *secs = gtk_label_new("seconds/day");
-	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), secs, adjustment, GTK_POS_RIGHT,1,1);
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), secs, adjustment, GTK_POS_RIGHT, 1, 1);
 	
 	GtkWidget *cpu = gtk_check_button_new();
 	if (w->conf.precision_mode) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cpu), TRUE);
-	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), cpu, cpu_label, GTK_POS_RIGHT, 2,1);
+	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), cpu, cpu_label, GTK_POS_RIGHT, 2, 1);
 	
 	GtkWidget *dark = gtk_check_button_new();
 	if (w->conf.dark_theme) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(dark), TRUE);
 	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), dark, dark_label, GTK_POS_RIGHT, 2, 1);
 	
-	GtkWidget *ticks = gtk_check_button_new();
-	if (w->conf.ticks) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ticks), TRUE);
-	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), ticks, ticks_label, GTK_POS_RIGHT, 2, 1);
-	
 	gtk_widget_show_all(dialog);
 	
-	gtk_dialog_run(GTK_DIALOG(dialog)); // Show the dialog
+	int res = gtk_dialog_run(GTK_DIALOG(dialog)); // Show the dialog
 	
-	// Save the dialog data in the settings variable and then save it out to disk
-	w->conf.audio_input = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(input));
-	w->conf.rate_adjustment = atof(gtk_entry_get_text(GTK_ENTRY(adjustment)));
-	w->conf.precision_mode = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(cpu));
-	w->conf.dark_theme = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(dark));
-	w->conf.ticks = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ticks));
-	
-	save_settings(&w->conf);
+	if (res == GTK_RESPONSE_ACCEPT) {
+		// Save the dialog data in the settings variable and then save it out to disk
+		w->conf.audio_input = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(input));
+		w->conf.rate_adjustment = atof(gtk_entry_get_text(GTK_ENTRY(adjustment)));
+		w->conf.precision_mode = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(cpu));
+		w->conf.dark_theme = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(dark));
+		
+		save_settings(&w->conf);
+	}
 	
 	// Get rid of the dialog
 	gtk_widget_destroy(GTK_WIDGET(dialog));

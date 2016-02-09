@@ -5,7 +5,7 @@
 @define-color waveform_stopped      rgb(255, 255, 0);   /* yellow      */
 @define-color pulse                 rgb(0, 0, 100%);    /* blue        */
 @define-color pulse_range           rgb(0, 0, 50%);     /* blueish     */
-@define-color icon_on               rgb(0, 100%, 0);    /* green       */
+@define-color icon_on               rgb(105, 200, 61);  /* green       */
 @define-color icon_off              rgb(100%, 0, 0);    /* red         */
 @define-color text                  rgb(255, 255, 255); /* white       */
 @define-color tick                  rgb(128, 180, 255); /* pale blue   */
