@@ -845,6 +845,11 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	double la = gtk_spin_button_get_value(b);
 	if (la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
 	w->la = la;
+	if (rintf(la) == la) { // Don't display unnecessary decimals
+		char str[8];
+		snprintf(str, 8, "%d", (int)la);
+		gtk_entry_set_text(GTK_ENTRY(b), str);
+	}
 	redraw(w);
 }
 
@@ -1058,7 +1063,7 @@ void init_main_window(struct main_window *w)
 	
 	// Lift angle spin button
 	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), DEFAULT_LA); // Start at default value
+	gtk_spin_button_set_digits(GTK_SPIN_BUTTON(w->la_spin_button), 2); // Allow for decimal lift angles to be manually entered
 	g_signal_connect(w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 	gtk_container_add(GTK_CONTAINER(settings_grid), w->la_spin_button);
 	
@@ -1233,6 +1238,9 @@ void init_main_window(struct main_window *w)
 	
 	// All done. Show all the widgets.
 	gtk_widget_show_all(w->window);
+	
+	// Set the lift angle spinner to the default value
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), DEFAULT_LA);
 	
 	// gtk_window_set_interactive_debugging(TRUE);
 }
