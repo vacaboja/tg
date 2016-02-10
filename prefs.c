@@ -39,7 +39,6 @@ void load_settings(struct Settings *conf) {
 		conf->audio_input = g_key_file_get_string(key_file, "main", "audio_input", &err);
 		conf->rate_adjustment = g_key_file_get_double(key_file, "main", "rate_adjustment", &err);
 		conf->precision_mode = g_key_file_get_boolean(key_file, "main", "precision_mode", &err);
-		conf->ticks = g_key_file_get_boolean(key_file, "main", "ticks", &err);
 		conf->dark_theme = g_key_file_get_boolean(key_file, "ui", "dark_theme", &err);
 		conf->window_width = g_key_file_get_integer(key_file, "ui", "window_width", &err);
 		conf->window_height = g_key_file_get_integer(key_file, "ui", "window_height", &err);
@@ -51,7 +50,6 @@ void save_settings(struct Settings *conf) {
 	g_key_file_set_string(key_file, "main", "audio_input", conf->audio_input);
 	g_key_file_set_double(key_file, "main", "rate_adjustment", conf->rate_adjustment);
 	g_key_file_set_boolean(key_file, "main", "precision_mode", conf->precision_mode);
-	g_key_file_set_boolean(key_file, "main", "ticks", conf->ticks);
 	g_key_file_set_boolean(key_file, "ui", "dark_theme", conf->dark_theme);
 	g_key_file_set_integer(key_file, "ui", "window_width", conf->window_width);
 	g_key_file_set_integer(key_file, "ui", "window_height", conf->window_height);
