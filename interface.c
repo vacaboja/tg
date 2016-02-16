@@ -20,6 +20,10 @@
 #include <stdarg.h>
 #include <gtk/gtk.h>
 
+#include <cairo-pdf.h>
+#include <libgen.h>
+#include <string.h>
+
 int preset_bph[] = PRESET_BPH;
 
 cairo_pattern_t *bg_color,*waveform_color,*grid2_color,*grid_color,*pulse_color,*range_color,*stopped_color,*icon1,*icon2,*text_color,*tick_color,*tock_color;
@@ -100,6 +104,7 @@ void initialize_palette(GtkWidget *win)
 
 struct main_window {
 	GtkWidget *window;
+	GtkWidget *settings_grid;
 	GtkWidget *bph_combo_box;
 	GtkWidget *la_spin_button;
 	GtkWidget *icon_drawing_area;
@@ -916,6 +921,106 @@ gboolean paperstrip_scroll_event(GtkWidget *widget, GdkEvent *event, struct main
 	return TRUE; // Stop event propagation
 }
 
+/* Called when file type is changed in the save screenshot dialog */
+void handle_filetype_change(GtkComboBox *format_combo, GtkFileChooser *chooser) {
+	// The id is known to be the file extension.
+	const char *the_id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(format_combo));
+	
+	// Update filter, to only display appropriate files.
+	GtkFileFilter *filter = gtk_file_filter_new();
+	char *pattern = g_strdup_printf("*.%s", the_id);
+	gtk_file_filter_add_pattern(filter, pattern);
+	gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(chooser), filter);
+	
+	// Update filename extension in the chooser
+	gchar *filename = gtk_file_chooser_get_filename(chooser);
+	if (filename != NULL) {
+		// strdup result from basename as we are going to modify it.
+		char *base = g_strdup(basename(filename));
+		// Remove extension from string, if there is one.
+		if (strrchr(base, '.')) *(strrchr(base, '.')) = '\0';
+		// Assemble and set new suggested filename
+		char *new_filename = g_strdup_printf("%s.%s", base, the_id);
+		gtk_file_chooser_set_current_name(chooser, new_filename);
+		
+		g_free(filename);
+		g_free(base);
+		g_free(new_filename);
+	}
+}
+
+/* Display the save screenshot dialog */
+void save_screenshot(GtkButton *button, struct main_window *w) {
+	
+	// Set up the file chooser
+	GtkWidget *chooser = gtk_file_chooser_dialog_new("Save screenshot",
+													 GTK_WINDOW(w->window),
+													 GTK_FILE_CHOOSER_ACTION_SAVE,
+													 "Cancel", GTK_RESPONSE_CANCEL,
+													 "Save", GTK_RESPONSE_ACCEPT,
+													 NULL);
+	
+	// Generate file name.
+	GDateTime *now = g_date_time_new_now_local();
+	gchar *d = g_date_time_format(now, "%F at %k.%M.%S");
+	g_date_time_unref(now);
+	char *filename = g_strdup_printf("%s %s.pdf", g_get_application_name(), d);
+	gtk_file_chooser_set_current_name (GTK_FILE_CHOOSER (chooser), filename);
+	g_free(filename);
+	
+	gtk_window_set_transient_for(GTK_WINDOW(chooser), GTK_WINDOW(w->window));
+	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER (chooser), TRUE);
+	
+	// File type selection combo box
+	GtkWidget *format_combo = gtk_combo_box_text_new();
+	gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(format_combo), "pdf", "Save as PDF (*.pdf)");
+	gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(format_combo), "png", "Save as PNG (*.png)");
+	g_signal_connect(GTK_COMBO_BOX(format_combo),"changed", G_CALLBACK(handle_filetype_change), chooser);
+	
+	// Default to PDF
+	gtk_combo_box_set_active_id(GTK_COMBO_BOX(format_combo), "pdf");
+	
+	// Add file type selector in a box as the "extra" of the file chooser dialog
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+	gtk_widget_set_hexpand(box, TRUE);
+	gtk_widget_set_halign(format_combo, GTK_ALIGN_END);
+	gtk_box_pack_start(GTK_BOX(box), format_combo, FALSE, FALSE, 0);
+	gtk_widget_show_all(box);
+	gtk_file_chooser_set_extra_widget(GTK_FILE_CHOOSER(chooser), box);
+	
+	// Run the dialog and act if OK was pressed
+	int res = gtk_dialog_run(GTK_DIALOG(chooser));
+	
+	if (res == GTK_RESPONSE_ACCEPT) {
+		gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
+		
+		GtkWidget *widget = w->window; // The source of the image we want to save
+		cairo_surface_t *surface;
+		
+		// Required height to crop the settings area + the borders
+		int cropping = gtk_widget_get_allocated_height(w->settings_grid) + gtk_container_get_border_width(GTK_CONTAINER(w->window)) + 3;
+		
+		int width = gtk_widget_get_allocated_width(widget);
+		int height = gtk_widget_get_allocated_height(widget) - cropping;
+		
+		int type = gtk_combo_box_get_active(GTK_COMBO_BOX(format_combo));
+		if (type == 1) { // PNG
+			surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+		} else { // PDF
+			surface = cairo_pdf_surface_create(filename, 1.0*width, 1.0*height);
+		}
+		
+		cairo_t *cr  = cairo_create(surface);
+		cairo_translate(cr, 0.0, cropping*-1.0); // Crop top (settings area)
+		gtk_widget_draw(widget, cr);
+		cairo_destroy(cr);
+		if (type == 1) cairo_surface_write_to_png(surface, filename);
+		cairo_surface_destroy(surface);
+	}
+	
+	gtk_widget_destroy(chooser);
+}
+
 /* Display the Settings dialog */
 void show_preferences(GtkButton *button, struct main_window *w) {
 	GtkWidget *dialog;
@@ -1007,7 +1112,7 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 	}
 	
 	// Get rid of the dialog
-	gtk_widget_destroy(GTK_WIDGET(dialog));
+	gtk_widget_destroy(dialog);
 }
 
 /* Set up the main window and populate with widgets */
@@ -1033,12 +1138,12 @@ void init_main_window(struct main_window *w)
 	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
 	
 	// Populate the settings grid
-	GtkWidget *settings_grid = gtk_grid_new(); // The grid containing the settings, default to horizontal orientation
-	gtk_grid_set_column_spacing(GTK_GRID(settings_grid), 2);
+	w->settings_grid = gtk_grid_new(); // The grid containing the settings, default to horizontal orientation
+	gtk_grid_set_column_spacing(GTK_GRID(w->settings_grid), 2);
 	
 	// Beat mode Label
 	GtkWidget *bphmode_label = gtk_label_new("Beat mode");
-	gtk_container_add(GTK_CONTAINER(settings_grid), bphmode_label); // Add to grid
+	gtk_container_add(GTK_CONTAINER(w->settings_grid), bphmode_label); // Add to grid
 	
 	// BPH combo box
 	w->bph_combo_box = gtk_combo_box_text_new_with_entry();
@@ -1054,26 +1159,34 @@ void init_main_window(struct main_window *w)
 	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), 0);
 	gtk_widget_set_can_default(w->bph_combo_box, FALSE); // Try to avoid getting the automatic focus. Not working....
 	g_signal_connect(w->bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
-	gtk_container_add(GTK_CONTAINER(settings_grid), w->bph_combo_box);
+	gtk_container_add(GTK_CONTAINER(w->settings_grid), w->bph_combo_box);
 	
 	// Lift angle label
 	GtkWidget *la_label = gtk_label_new("Lift angle");
 	gtk_widget_set_margin_start(la_label, 10); // Make space from the widget in front
-	gtk_container_add(GTK_CONTAINER(settings_grid), la_label);
+	gtk_container_add(GTK_CONTAINER(w->settings_grid), la_label);
 	
 	// Lift angle spin button
 	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
 	gtk_spin_button_set_digits(GTK_SPIN_BUTTON(w->la_spin_button), 2); // Allow for decimal lift angles to be manually entered
 	g_signal_connect(w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
-	gtk_container_add(GTK_CONTAINER(settings_grid), w->la_spin_button);
+	gtk_container_add(GTK_CONTAINER(w->settings_grid), w->la_spin_button);
+	
+	// Screenshot button
+	GtkWidget *screenshot_button = gtk_button_new_with_label("Screenshot");
+	gtk_widget_set_name(screenshot_button, "screenshot_button"); // To allow for CSS styling
+	gtk_widget_set_halign(screenshot_button, GTK_ALIGN_END); // Right aligned
+	gtk_widget_set_hexpand(screenshot_button, TRUE); // Needed to make the grid expand and make room for the button at the far right
+	g_signal_connect(screenshot_button, "clicked", G_CALLBACK(save_screenshot), w);
+	gtk_container_add(GTK_CONTAINER(w->settings_grid), screenshot_button);
 	
 	// Prefs button
 	GtkWidget *prefs_button = gtk_button_new_with_label("Settings");
 	gtk_widget_set_name(prefs_button, "settings_button"); // To allow for CSS styling
 	gtk_widget_set_halign(prefs_button, GTK_ALIGN_END); // Right aligned
-	gtk_widget_set_hexpand(prefs_button, TRUE); // Needed to make the grid expand and make room for the button at the far right
+	gtk_widget_set_hexpand(prefs_button, FALSE);
 	g_signal_connect(prefs_button, "clicked", G_CALLBACK(show_preferences), w);
-	gtk_container_add(GTK_CONTAINER(settings_grid), prefs_button);
+	gtk_container_add(GTK_CONTAINER(w->settings_grid), prefs_button);
 	
 	// Info grid
 	GtkWidget *info_grid = gtk_grid_new(); // The grid containing the info text, default to horizontal orientation
@@ -1232,7 +1345,7 @@ void init_main_window(struct main_window *w)
 	gtk_grid_set_row_spacing(GTK_GRID(root_grid), 5);
 	gtk_container_add(GTK_CONTAINER(w->window), root_grid); // Add the root grid to the window
 	// Add the child grids inside the root grid
-	gtk_container_add(GTK_CONTAINER(root_grid), settings_grid);
+	gtk_container_add(GTK_CONTAINER(root_grid), w->settings_grid);
 	gtk_container_add(GTK_CONTAINER(root_grid), info_grid);
 	gtk_container_add(GTK_CONTAINER(root_grid), w->panes);
 	
@@ -1270,6 +1383,7 @@ void activate (GtkApplication* app, gpointer user_data)
 	w.bfs = p;
 	w.old = NULL;
 	w.window = gtk_application_window_new(app);
+	
 	gtk_window_set_default_size(GTK_WINDOW(w.window), w.conf.window_width, w.conf.window_height);
 
 	if (w.conf.dark_theme) // Use the dark theme
