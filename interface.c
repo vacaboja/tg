@@ -962,7 +962,7 @@ void save_screenshot(GtkButton *button, struct main_window *w) {
 	
 	// Generate file name.
 	GDateTime *now = g_date_time_new_now_local();
-	gchar *d = g_date_time_format(now, "%F at %k.%M.%S");
+	gchar *d = g_date_time_format(now, "%F at %H.%M.%S");
 	g_date_time_unref(now);
 	char *filename = g_strdup_printf("%s %s.pdf", g_get_application_name(), d);
 	gtk_file_chooser_set_current_name (GTK_FILE_CHOOSER (chooser), filename);
