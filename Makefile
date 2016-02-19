@@ -1,11 +1,11 @@
-VERSION = 0.2.3
+VERSION = 0.3
 
 CC = gcc
 
-CFLAGS = -Wall -O3 -DVERSION='"$(VERSION)"' `pkg-config --cflags gtk+-2.0 portaudio-2.0 fftw3f`
-LDFLAGS = -lm `pkg-config --libs gtk+-2.0 portaudio-2.0 fftw3f`
+CFLAGS = -Wall -O3 -DVERSION='"$(VERSION)"' `pkg-config --cflags gtk+-3.0 portaudio-2.0 fftw3f`
+LDFLAGS = -lm `pkg-config --libs gtk+-3.0 portaudio-2.0 fftw3f`
 
-CFILES = interface.c algo.c audio.c
+CFILES = interface.c algo.c audio.c prefs.c
 HFILES = tg.h
 ALLFILES = $(CFILES) $(HFILES) Makefile
 

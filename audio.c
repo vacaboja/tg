@@ -19,10 +19,11 @@
 #include "tg.h"
 #include <portaudio.h>
 
-volatile float pa_buffers[2][PA_BUFF_SIZE];
-volatile int write_pointer = 0;
-volatile uint64_t timestamp = 0;
+volatile float pa_buffers[2][PA_BUFF_SIZE]; // Buffers to store the audio sample data
+volatile int write_pointer = 0; // Current write position in the buffers
+volatile uint64_t timestamp = 0; // Running timestamp
 
+/* Callback function that consume audio in response to requests from an active PortAudio stream */
 int paudio_callback(const void *input_buffer,
 			void *output_buffer,
 			unsigned long frame_count,
@@ -31,17 +32,19 @@ int paudio_callback(const void *input_buffer,
 			void *data)
 {
 	unsigned long i;
+    // Copy the sample data to pa_buffers[] (Mac mini gets 512 samples on each callback)
 	for(i=0; i < frame_count; i++) {
 		pa_buffers[0][write_pointer] = ((float *)input_buffer)[2*i];
 		pa_buffers[1][write_pointer] = ((float *)input_buffer)[2*i + 1];
 		if(write_pointer < PA_BUFF_SIZE - 1) write_pointer++;
-		else write_pointer = 0;
-		timestamp++;
+        else write_pointer = 0; // Wrap over when reaching the buffer end
+        timestamp++; // Increase timestamp for each frame TODO: Move outside loop?
 	}
 	return 0;
 }
 
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
+/* Set up PA to continuously sample audio and store in buffers */
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, char* name)
 {
 	PaStream *stream;
 
@@ -51,7 +54,36 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	if(err!=paNoError)
 		goto error;
 
-	err = Pa_OpenDefaultStream(&stream,2,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,x);
+	PaStreamParameters inputParameters;
+	inputParameters.channelCount = 2; // Stereo
+	inputParameters.sampleFormat = paFloat32;
+	// inputParameters.suggestedLatency = ;
+	inputParameters.hostApiSpecificStreamInfo = NULL;
+	inputParameters.device = Pa_GetDefaultInputDevice(); // Default input device
+	
+	// Try to locate the device selected in settings
+	int nDevices = Pa_GetDeviceCount();
+	for (int dev = 0; dev < nDevices; dev++) {
+		const PaDeviceInfo *info = Pa_GetDeviceInfo(dev);
+		if (info->maxInputChannels > 0) {
+			// Only check sources that has inputs
+			if (strcmp(info->name, name) == 0) {
+				inputParameters.device = dev;
+				break;
+			}
+		}
+	}
+
+	// Open the audio stream
+	err = Pa_OpenStream(&stream,
+						&inputParameters,
+						NULL,							// outputParameters
+						PA_SAMPLE_RATE,
+						paFramesPerBufferUnspecified,	// Frames per buffer
+						paNoFlag,
+						paudio_callback,
+						x);
+
 	*x = stream;
 	if(err!=paNoError)
 		goto error;
@@ -66,7 +98,7 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	*real_sample_rate = info->sampleRate / 2;
 #else
 	*nominal_sample_rate = PA_SAMPLE_RATE;
-	*real_sample_rate = info->sampleRate;
+    *real_sample_rate = info->sampleRate; // Actual sample rate, reported by PortAudio
 #endif
 	debug("sample rate: nominal = %d real = %f\n",*nominal_sample_rate,*real_sample_rate);
 
@@ -80,11 +112,11 @@ error:
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 {
 	static uint64_t last_tic = 0;
-	int wp = write_pointer;
+    int wp = write_pointer; // Current write position in the buffers
 	uint64_t ts = timestamp;
-	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
+    if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0; // Sanity check for the buffer pointer
 #ifdef LIGHT
-	if(wp % 2) wp--;
+    if(wp % 2) wp--; // Make sure pointer is even.
 	ts /= 2;
 #endif
 	int i;
@@ -97,7 +129,7 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 #endif
 		if(k < 0) k += PA_BUFF_SIZE;
 		for(j=0; j < p[i].sample_count; j++) {
-			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
+            p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k]; // Merge stereo into mono(?)
 #ifdef LIGHT
 			k += 2;
 #else
@@ -121,4 +153,32 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 	} else
 		debug("---\n");
 	return i;
+}
+
+/* Returns the number of input sources */
+int num_inputs() {
+	int inputs = 0;
+	// Gather list of hosts that have inputs.
+	int nDevices = Pa_GetDeviceCount();
+	for (int dev = 0; dev < nDevices; dev++) {
+		const PaDeviceInfo *info = Pa_GetDeviceInfo(dev);
+		if (info->maxInputChannels > 0) {
+			inputs++;
+		}
+	}
+	return inputs;
+}
+
+/* Get name of specified input */
+const char * input_name(int i) {
+	int num = 0;
+	int nDevices = Pa_GetDeviceCount();
+	for (int dev = 0; dev < nDevices; dev++) {
+		const PaDeviceInfo *info = Pa_GetDeviceInfo(dev);
+		if (info->maxInputChannels > 0) {
+			// Only count source that has input
+			if (++num == i) return info->name;
+		}
+	}
+	return NULL;
 }

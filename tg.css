@@ -1,0 +1,57 @@
+@define-color graph_background      rgb(0, 0, 0);       /* black       */
+@define-color grid_line             rgb(0, 80%, 0);     /* green       */
+@define-color grid_line_alternate   rgb(100%, 0, 0);    /* red         */
+@define-color waveform_active       rgb(255, 255, 255); /* white       */
+@define-color waveform_stopped      rgb(255, 255, 0);   /* yellow      */
+@define-color pulse                 rgb(0, 0, 100%);    /* blue        */
+@define-color pulse_range           rgb(0, 0, 50%);     /* blueish     */
+@define-color icon_on               rgb(105, 200, 61);  /* green       */
+@define-color icon_off              rgb(100%, 0, 0);    /* red         */
+@define-color text                  rgb(255, 255, 255); /* white       */
+@define-color tick                  rgb(128, 180, 255); /* pale blue   */
+@define-color tock                  rgb(220, 220, 100); /* pale yellow */
+
+
+* {
+	-GtkPaned-handle-size: 10;
+}
+
+#rate {
+	font-size: 40px;
+	font-weight: bold;
+}
+
+#rate_units {
+	font-size: 24px;
+}
+
+#beaterror {
+	font-size: 40px;
+	font-weight: bold;
+}
+
+#beaterror_units {
+	font-size: 24px;
+}
+
+#amplitude {
+	font-size: 40px;
+	font-weight: bold;
+}
+
+#bph {
+	font-size: 40px;
+	font-weight: bold;
+}
+
+#bph_units {
+	font-size: 24px;
+}
+
+#clear_button {
+	/* font-size: 16px; */
+}
+
+#center_button {
+	/* font-size: 16px; */
+}
