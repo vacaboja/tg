@@ -117,6 +117,8 @@ struct main_window {
 	GtkWidget *toc_drawing_area;
 	GtkWidget *period_drawing_area;
 	GtkWidget *paperstrip_drawing_area;
+	GtkWidget *clear_button;
+	GtkWidget *center_button;
 #ifdef DEBUG
 	GtkWidget *fps_label;
 	GtkWidget *debug_drawing_area;
@@ -585,8 +587,8 @@ gboolean period_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w
 {
 	cairo_init(cr);
 	
-	int width = gtk_widget_get_allocated_width(w->period_drawing_area);
-	int height = gtk_widget_get_allocated_height(w->period_drawing_area);
+	int width = gtk_widget_get_allocated_width(widget);
+	int height = gtk_widget_get_allocated_height(widget);
 	
 	int old;
 	struct processing_buffers *p = get_data(w, &old);
@@ -626,7 +628,7 @@ gboolean period_draw_event(GtkWidget *widget, cairo_t *cr, struct main_window *w
 	}
 	
 	if (p) {
-		draw_graph(a,b,cr,p,w->period_drawing_area);
+		draw_graph(a,b,cr,p,widget);
 		
 		cairo_set_source(cr, old ? stopped_color : waveform_color);
 		cairo_stroke_preserve(cr);
@@ -667,8 +669,8 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *cr, struct main_windo
 	
 	cairo_init(cr);
 	
-	int width = gtk_widget_get_allocated_width(w->paperstrip_drawing_area);
-	int height = gtk_widget_get_allocated_height(w->paperstrip_drawing_area);
+	int width = gtk_widget_get_allocated_width(widget);
+	int height = gtk_widget_get_allocated_height(widget);
 	
 	int stopped = 0;
 	if (w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
@@ -951,6 +953,10 @@ void handle_filetype_change(GtkComboBox *format_combo, GtkFileChooser *chooser) 
 
 /* Display the save screenshot dialog */
 void save_screenshot(GtkButton *button, struct main_window *w) {
+	// Hide Clear & Center buttons
+	gtk_widget_hide(w->clear_button);
+	gtk_widget_hide(w->center_button);
+	
 	// Set up the file chooser
 	GtkWidget *chooser = gtk_file_chooser_dialog_new("Save screenshot",
 													 GTK_WINDOW(w->window),
@@ -1016,6 +1022,10 @@ void save_screenshot(GtkButton *button, struct main_window *w) {
 		cairo_surface_destroy(surface);
 	}
 	
+	// Bring back the hidden buttons
+	gtk_widget_show(w->clear_button);
+	gtk_widget_show(w->center_button);
+	// Remove the save dialog
 	gtk_widget_destroy(chooser);
 }
 
@@ -1287,18 +1297,18 @@ void init_main_window(struct main_window *w)
 	gtk_grid_attach(GTK_GRID(left_grid), w->paperstrip_drawing_area, 0,0,2,1);
 	
 	// CLEAR button
-	GtkWidget *clear_button = gtk_button_new_with_label("Clear");
-	gtk_widget_set_name(clear_button, "clear_button"); // To allow for CSS styling
-	gtk_container_set_border_width(GTK_CONTAINER(clear_button), 2);
-	g_signal_connect(clear_button, "clicked", G_CALLBACK(handle_clear_trace), w);
-	gtk_grid_attach(GTK_GRID(left_grid), clear_button, 0,1,1,1);
+	w->clear_button = gtk_button_new_with_label("Clear");
+	gtk_widget_set_name(w->clear_button, "clear_button"); // To allow for CSS styling
+	gtk_container_set_border_width(GTK_CONTAINER(w->clear_button), 2);
+	g_signal_connect(w->clear_button, "clicked", G_CALLBACK(handle_clear_trace), w);
+	gtk_grid_attach(GTK_GRID(left_grid), w->clear_button, 0,1,1,1);
 	
 	// CENTER button
-	GtkWidget *center_button = gtk_button_new_with_label("Center");
-	gtk_widget_set_name(center_button, "center_button"); // To allow for CSS styling
-	gtk_container_set_border_width(GTK_CONTAINER(center_button), 2);
-	g_signal_connect(center_button, "clicked", G_CALLBACK(handle_center_trace), w);
-	gtk_grid_attach(GTK_GRID(left_grid), center_button, 1,1,1,1);
+	w->center_button = gtk_button_new_with_label("Center");
+	gtk_widget_set_name(w->center_button, "center_button"); // To allow for CSS styling
+	gtk_container_set_border_width(GTK_CONTAINER(w->center_button), 2);
+	g_signal_connect(w->center_button, "clicked", G_CALLBACK(handle_center_trace), w);
+	gtk_grid_attach(GTK_GRID(left_grid), w->center_button, 1,1,1,1);
 	
 	// Tic waveform area
 	w->tic_drawing_area = gtk_drawing_area_new();
