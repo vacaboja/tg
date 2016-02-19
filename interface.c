@@ -951,7 +951,6 @@ void handle_filetype_change(GtkComboBox *format_combo, GtkFileChooser *chooser) 
 
 /* Display the save screenshot dialog */
 void save_screenshot(GtkButton *button, struct main_window *w) {
-	
 	// Set up the file chooser
 	GtkWidget *chooser = gtk_file_chooser_dialog_new("Save screenshot",
 													 GTK_WINDOW(w->window),
@@ -959,17 +958,16 @@ void save_screenshot(GtkButton *button, struct main_window *w) {
 													 "Cancel", GTK_RESPONSE_CANCEL,
 													 "Save", GTK_RESPONSE_ACCEPT,
 													 NULL);
-	
 	// Generate file name.
 	GDateTime *now = g_date_time_new_now_local();
 	gchar *d = g_date_time_format(now, "%F at %H.%M.%S");
 	g_date_time_unref(now);
 	char *filename = g_strdup_printf("%s %s.pdf", g_get_application_name(), d);
-	gtk_file_chooser_set_current_name (GTK_FILE_CHOOSER (chooser), filename);
+	gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(chooser), filename);
 	g_free(filename);
 	
 	gtk_window_set_transient_for(GTK_WINDOW(chooser), GTK_WINDOW(w->window));
-	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER (chooser), TRUE);
+	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(chooser), TRUE);
 	
 	// File type selection combo box
 	GtkWidget *format_combo = gtk_combo_box_text_new();
@@ -1023,15 +1021,12 @@ void save_screenshot(GtkButton *button, struct main_window *w) {
 
 /* Display the Settings dialog */
 void show_preferences(GtkButton *button, struct main_window *w) {
-	GtkWidget *dialog;
 	GtkDialogFlags flags = GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT;
-	dialog = gtk_dialog_new_with_buttons ("Settings",
+	GtkWidget *dialog = gtk_dialog_new_with_buttons("Settings",
 										  GTK_WINDOW(w->window),
 										  flags,
-										  ("Cancel"),
-										  GTK_RESPONSE_CANCEL,
-										  "OK",
-										  GTK_RESPONSE_ACCEPT,
+										  ("Cancel"), GTK_RESPONSE_CANCEL,
+										  "OK", GTK_RESPONSE_ACCEPT,
 										  NULL);
 	
 	// gtk_window_set_resizable(GTK_WINDOW(dialog), FALSE); // Non-resizable
