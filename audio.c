@@ -31,9 +31,15 @@ int paudio_callback(const void *input_buffer,
 			void *data)
 {
 	unsigned long i;
+	long channels = (long)data;
 	for(i=0; i < frame_count; i++) {
-		pa_buffers[0][write_pointer] = ((float *)input_buffer)[2*i];
-		pa_buffers[1][write_pointer] = ((float *)input_buffer)[2*i + 1];
+		if(channels == 1) {
+			pa_buffers[0][write_pointer] = ((float *)input_buffer)[i];
+			pa_buffers[1][write_pointer] = ((float *)input_buffer)[i];
+		} else {
+			pa_buffers[0][write_pointer] = ((float *)input_buffer)[2*i];
+			pa_buffers[1][write_pointer] = ((float *)input_buffer)[2*i + 1];
+		}
 		if(write_pointer < PA_BUFF_SIZE - 1) write_pointer++;
 		else write_pointer = 0;
 		timestamp++;
@@ -45,14 +51,22 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 {
 	PaStream *stream;
 
-	PaStream **x = malloc(sizeof(PaStream*));
-
 	PaError err = Pa_Initialize();
 	if(err!=paNoError)
 		goto error;
 
-	err = Pa_OpenDefaultStream(&stream,2,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,x);
-	*x = stream;
+	PaDeviceIndex default_input = Pa_GetDefaultInputDevice();
+	if(default_input == paNoDevice) {
+		error("No default audio input device found");
+		return 1;
+	}
+	long channels = Pa_GetDeviceInfo(default_input)->maxInputChannels;
+	if(channels == 0) {
+		error("Default audio device has no input channels");
+		return 1;
+	}
+	if(channels > 2) channels = 2;
+	err = Pa_OpenDefaultStream(&stream,channels,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,(void*)channels);
 	if(err!=paNoError)
 		goto error;
 
