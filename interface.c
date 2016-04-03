@@ -77,8 +77,6 @@ void initialize_palette()
 
 struct main_window {
 	GtkWidget *window;
-	GtkWidget *bph_combo_box;
-	GtkWidget *la_spin_button;
 	GtkWidget *output_drawing_area;
 	GtkWidget *tic_drawing_area;
 	GtkWidget *toc_drawing_area;
@@ -855,37 +853,35 @@ void init_main_window(struct main_window *w)
 
 	// BPH label
 	GtkWidget *label = gtk_label_new("bph");
-	// gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	gtk_widget_show(label);
 
 	// BPH combo box
-	w->bph_combo_box = gtk_combo_box_text_new_with_entry();
-	gtk_box_pack_start(GTK_BOX(hbox), w->bph_combo_box, FALSE, TRUE, 0);
+	GtkWidget *bph_combo_box = gtk_combo_box_text_new_with_entry();
+	gtk_box_pack_start(GTK_BOX(hbox), bph_combo_box, FALSE, TRUE, 0);
 	// Fill in pre-defined values
-	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), "guess");
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(bph_combo_box), "guess");
 	int *bph;
 	for(bph = preset_bph; *bph; bph++) {
 		char s[100];
 		sprintf(s,"%d", *bph);
-		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), s);
+		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(bph_combo_box), s);
 	}
-	gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), 0);
-	g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
-	gtk_widget_show(w->bph_combo_box);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(bph_combo_box), 0);
+	g_signal_connect (bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
+	gtk_widget_show(bph_combo_box);
 
 	// Lift angle label
 	label = gtk_label_new("lift angle");
-	// gtk_widget_set_has_window (label, FALSE); // GTK_WIDGET_SET_FLAGS(label,GTK_NO_WINDOW);
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 	gtk_widget_show(label);
 
 	// Lift angle spin button
-	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
-	gtk_box_pack_start(GTK_BOX(hbox), w->la_spin_button, FALSE, TRUE, 0);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), DEFAULT_LA); // Start at default value
-	g_signal_connect (w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
-	gtk_widget_show(w->la_spin_button);
+	GtkWidget *la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
+	gtk_box_pack_start(GTK_BOX(hbox), la_spin_button, FALSE, TRUE, 0);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(la_spin_button), DEFAULT_LA); // Start at default value
+	g_signal_connect (la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
+	gtk_widget_show(la_spin_button);
 
 	// Info area on top
 	w->output_drawing_area = gtk_drawing_area_new();
