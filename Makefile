@@ -3,7 +3,7 @@ VERSION = 0.2.4-test
 CC = gcc
 
 CFLAGS = -Wall -O3 -ffast-math -fopenmp -DVERSION='"$(VERSION)"' `pkg-config --cflags gtk+-2.0 portaudio-2.0 fftw3f`
-LDFLAGS = -lm `pkg-config --libs gtk+-2.0 portaudio-2.0 fftw3f` -lfftw3f_omp
+LDFLAGS = -lm -lpthread `pkg-config --libs gtk+-2.0 portaudio-2.0 fftw3f`
 
 CFILES = interface.c algo.c audio.c
 HFILES = tg.h
@@ -13,6 +13,7 @@ ifeq ($(OS),Windows_NT)
 	CFLAGS += -mwindows
 	EXT = .exe
 else
+	LDFLAGS += -lfftw3f_omp
 	EXT =
 endif
 
