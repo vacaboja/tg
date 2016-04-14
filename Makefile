@@ -2,8 +2,8 @@ VERSION = 0.2.4-test
 
 CC = gcc
 
-CFLAGS = -Wall -O3 -ffast-math -fopenmp -DVERSION='"$(VERSION)"' `pkg-config --cflags gtk+-2.0 portaudio-2.0 fftw3f`
-LDFLAGS = -lm -lpthread `pkg-config --libs gtk+-2.0 portaudio-2.0 fftw3f`
+CFLAGS = -Wall -O3 -ffast-math -fopenmp -DVERSION='"$(VERSION)"' `pkg-config --cflags gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f`
+LDFLAGS = -lm -lpthread `pkg-config --libs gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f`
 
 CFILES = interface.c algo.c audio.c
 HFILES = tg.h

@@ -1064,6 +1064,9 @@ int run_interface()
 
 int main(int argc, char **argv)
 {
+#if !GLIB_CHECK_VERSION(2,31,0)
+	g_thread_init(NULL);
+#endif
 	gdk_threads_init();
 	gdk_threads_enter();
 
