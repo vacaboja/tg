@@ -22,8 +22,9 @@
 #include <math.h>
 #include <stdint.h>
 #include <complex.h>
-#include <omp.h>
 #include <fftw3.h>
+
+#define MAX_THREADS 8
 
 #define FILTER_CUTOFF 3000
 

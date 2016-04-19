@@ -1,19 +1,30 @@
-VERSION = 0.2.4-test
+VERSION = 0.2.4-test2
 
 CC = gcc
 
-CFLAGS = -Wall -O3 -ffast-math -fopenmp -DVERSION='"$(VERSION)"' `pkg-config --cflags gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f`
-LDFLAGS = -lm -lpthread `pkg-config --libs gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f`
+OPENMP = yes
+
+PACKAGES = gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f hwloc
+CFLAGS = -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
+LDFLAGS = -lm -lpthread `pkg-config --libs $(PACKAGES)`
 
 CFILES = interface.c algo.c audio.c
 HFILES = tg.h
 ALLFILES = $(CFILES) $(HFILES) Makefile
 
+ifeq ($(OPENMP),yes)
+	CFLAGS += -fopenmp
+endif
+
 ifeq ($(OS),Windows_NT)
 	CFLAGS += -mwindows
 	EXT = .exe
 else
+ifeq ($(OPENMP),yes)
 	LDFLAGS += -lfftw3f_omp
+else
+	LDFLAGS += -lfftw3f_threads
+endif
 	EXT =
 endif
 
