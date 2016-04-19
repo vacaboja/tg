@@ -177,9 +177,6 @@ void noise_suppressor(struct processing_buffers *p)
 	qsort(a, j, sizeof(float), fl_cmp);
 	float k = a[j/2];
 
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
 	for(i = 0; i < p->sample_count; i++) {
 		int j = i - window / 2;
 		j = j < 0 ? 0 : j > p->sample_count - window ? p->sample_count - window : j;
@@ -197,24 +194,15 @@ void prepare_data(struct processing_buffers *b)
 	noise_suppressor(b);
 #endif
 
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);
 
 	run_filter(b->lpf, b->samples, b->sample_count);
 
 	double average = 0;
-#ifdef _OPENMP
-#pragma omp parallel for reduction(+:average)
-#endif
 	for(i=0; i < b->sample_count; i++)
 		average += b->samples[i];
 	average /= b->sample_count;
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] -= average;
 
@@ -225,9 +213,6 @@ void prepare_data(struct processing_buffers *b)
 	}
 
 	fftwf_execute(b->plan_a);
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
 	for(i=0; i < b->sample_count+1; i++)
 			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
@@ -410,9 +395,6 @@ void prepare_waveform(struct processing_buffers *p)
 		p->waveform[i] = 0;
 
 	int wf_size = ceil(p->period);
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
 	for(i=0; i < wf_size; i++) {
 		float bin[(int)ceil(1 + p->sample_count / p->period)];
 		int j;

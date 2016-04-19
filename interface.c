@@ -20,10 +20,6 @@
 #include <stdarg.h>
 #include <gtk/gtk.h>
 #include <pthread.h>
-#include <hwloc.h>
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 int preset_bph[] = PRESET_BPH;
 
@@ -1066,27 +1062,6 @@ int run_interface()
 	return 0;
 }
 
-// Guess the optimal thread count
-// We want the number of cores (as opposed to processing units)
-int guess_threads()
-{
-	hwloc_topology_t topology;
-	hwloc_topology_init(&topology);
-	hwloc_topology_load(topology);
-
-	int depth = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-	if(depth == HWLOC_TYPE_DEPTH_UNKNOWN)
-		depth = hwloc_get_type_depth(topology, HWLOC_OBJ_PU); // guaranteed to exist
-
-	int ret = hwloc_get_nbobjs_by_depth(topology, depth);
-	hwloc_topology_destroy(topology);
-
-	if(ret < 1) ret = 1;
-	if(ret > MAX_THREADS) ret = MAX_THREADS;
-
-	return ret;
-}
-
 int main(int argc, char **argv)
 {
 #if !GLIB_CHECK_VERSION(2,31,0)
@@ -1097,22 +1072,6 @@ int main(int argc, char **argv)
 
 	gtk_init(&argc, &argv);
 	initialize_palette();
-
-	int threads = guess_threads();
-	debug("Using %d threads\n",threads);
-
-	if(!fftwf_init_threads()) {
-		error("Error initializing fftw threads");
-		return 1;
-	}
-	fftwf_plan_with_nthreads(threads);
-
-#ifdef _OPENMP
-	omp_set_num_threads(threads);
-	debug("OpenMP threads count = %d\n",omp_get_max_threads());
-#else
-	debug("OpenMP not enabled\n");
-#endif
 
 	int ret = run_interface();
 
