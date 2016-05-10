@@ -8,10 +8,11 @@ tg is available at https://github.com/vacaboja/tg
 
 ## Install instructions
 
-The source code can probably be built by any C99 compiler. You need the
-following libraries: gtk2, portaudio2, fftw3. There are Windows binaries,
-an install script for OS X, and more detailed instructions for
-Debian-based Linux distributions (e.g. Ubuntu).
+The source code can probably be built by any C99 compiler, but only gcc
+and clang have been tested. You need the following libraries: gtk2,
+portaudio2, fftw3. There are Windows binaries, an install script for OS X,
+and more detailed instructions for Debian-based Linux distributions (e.g.
+Ubuntu).
 
 ### Windows
 

@@ -1,0 +1,30 @@
+language: c
+
+os:
+  - linux
+  - osx
+
+compiler:
+  - gcc
+  - clang
+
+env:
+  - TARGET=all
+  - TARGET=debug
+
+addons:
+  apt:
+    packages:
+      - libgtk2.0-dev
+      - libjack-jackd2-dev
+      - portaudio19-dev
+      - libfftw3-dev
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install gtk+; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install portaudio; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install fftw; fi
+
+script:
+  make $TARGET

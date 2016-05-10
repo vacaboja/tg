@@ -1,6 +1,6 @@
 VERSION = 0.2.4
 
-CC = gcc
+CC ?= gcc
 
 PACKAGES = gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
 CFLAGS = -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
