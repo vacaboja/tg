@@ -1,6 +1,4 @@
-# A program for timing mechanical watches
-
-This software is in development: do not use.
+# A program for timing mechanical watches [![Build Status](https://travis-ci.org/vacaboja/tg.svg?branch=master)](https://travis-ci.org/vacaboja/tg)
 
 The program tg is copyright (C) 2015 by Marcello Mamino, and it is
 distributed under the GNU GPL license version 2. The full source code of
@@ -21,7 +19,7 @@ Binaries can be found at http://ciovil.li/tg.zip
 ### Macintosh
 
 A formula for the Homebrew package manager has been prepared by GitHub
-user (dmnc)[https://github.com/dmnc]. To use it, you need to install
+user [dmnc](https://github.com/dmnc). To use it, you need to install
 Homebrew first (instructions on http://brew.sh), then run the following
 command
 
