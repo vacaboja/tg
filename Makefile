@@ -25,6 +25,9 @@ debug: tg-dbg$(EXT)
 
 profile: tg-prf$(EXT) tg-lt-prf$(EXT)
 
+test: tg-dbg$(EXT)
+	./tg-dbg test
+
 tg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg,)
 

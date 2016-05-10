@@ -21,6 +21,10 @@
 #include <gtk/gtk.h>
 #include <pthread.h>
 
+#ifdef DEBUG
+int testing = 0;
+#endif
+
 int preset_bph[] = PRESET_BPH;
 
 cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
@@ -53,6 +57,10 @@ void error(char *format,...)
 	}
 
 	fprintf(stderr,"%s\n",t);
+
+#ifdef DEBUG
+	if(testing) return;
+#endif
 
 	GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,"%s",t);
 	gtk_dialog_run(GTK_DIALOG(dialog));
@@ -146,11 +154,6 @@ struct processing_buffers *get_data(struct main_window *w, int *old)
 	if(w->old)
 		w->guessed_bph = w->bph ? w->bph : guess_bph(w->old->period / w->sample_rate);
 	return w->old;
-}
-
-gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer data)
-{
-	return FALSE;
 }
 
 void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
@@ -815,9 +818,18 @@ void handle_center_trace(GtkButton *b, struct main_window *w)
 	redraw(w);
 }
 
-void quit()
+void quit(struct main_window *w)
 {
-	gtk_main_quit();
+	pthread_mutex_lock(&w->recompute_mutex);
+	w->recompute = -1;
+	pthread_cond_signal(&w->recompute_cond);
+	pthread_mutex_unlock(&w->recompute_mutex);
+}
+
+gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
+{
+	quit((struct main_window *)w);
+	return TRUE;
 }
 
 /* Set up the main window and populate with widgets */
@@ -838,8 +850,7 @@ void init_main_window(struct main_window *w)
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
 	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
-	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), NULL);
-	g_signal_connect(w->window, "destroy", G_CALLBACK(quit), w);
+	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), w);
 
 	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
 
@@ -978,10 +989,16 @@ void *computing_thread(void *void_w)
 		pthread_mutex_lock(&w->recompute_mutex);
 		while(!w->recompute)
 			pthread_cond_wait(&w->recompute_cond, &w->recompute_mutex);
-		w->recompute = 0;
+		if(w->recompute > 0) w->recompute = 0;
 		pthread_mutex_unlock(&w->recompute_mutex);
 
 		gdk_threads_enter();
+		if(w->recompute < 0) {
+			gtk_widget_destroy(w->window);
+			gtk_main_quit();
+			gdk_threads_leave();
+			return NULL;
+		}
 		int bph = w->bph;
 		uint64_t events_from = w->events_from;
 		gdk_threads_leave();
@@ -1014,7 +1031,7 @@ void *computing_thread(void *void_w)
 guint kick_computer(struct main_window *w)
 {
 	pthread_mutex_lock(&w->recompute_mutex);
-	w->recompute = 1;
+	if(w->recompute >= 0) w->recompute = 1;
 	pthread_cond_signal(&w->recompute_cond);
 	pthread_mutex_unlock(&w->recompute_mutex);
 
@@ -1056,6 +1073,10 @@ int run_interface()
 	}
 
 	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,&w,NULL);
+#ifdef DEBUG
+	if(testing)
+		g_timeout_add_full(G_PRIORITY_LOW,3000,(GSourceFunc)quit,&w,NULL);
+#endif
 
 	gtk_main(); // Runs the main loop
 
@@ -1071,6 +1092,10 @@ int main(int argc, char **argv)
 	gdk_threads_enter();
 
 	gtk_init(&argc, &argv);
+#ifdef DEBUG
+	if(argc > 1 && !strcmp("test",argv[1]))
+		testing = 1;
+#endif
 	initialize_palette();
 
 	int ret = run_interface();
