@@ -91,6 +91,16 @@ error:
 	return 1;
 }
 
+int terminate_portaudio()
+{
+	PaError err = Pa_Terminate();
+	if(err != paNoError) {
+		error("Error closing audio: %s", Pa_GetErrorText(err));
+		return 1;
+	}
+	return 0;
+}
+
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 {
 	static uint64_t last_tic = 0;

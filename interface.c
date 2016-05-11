@@ -1080,7 +1080,7 @@ int run_interface()
 
 	gtk_main(); // Runs the main loop
 
-	return 0;
+	return terminate_portaudio();
 }
 
 int main(int argc, char **argv)

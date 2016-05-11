@@ -101,6 +101,7 @@ void process(struct processing_buffers *p, int bph);
 
 /* audio.c */
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
+int terminate_portaudio();
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
 
 /* interface.c */
