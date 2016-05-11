@@ -55,6 +55,14 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	if(err!=paNoError)
 		goto error;
 
+#ifdef DEBUG
+	if(testing) {
+		*nominal_sample_rate = PA_SAMPLE_RATE;
+		*real_sample_rate = PA_SAMPLE_RATE;
+		goto end;
+	}
+#endif
+
 	PaDeviceIndex default_input = Pa_GetDefaultInputDevice();
 	if(default_input == paNoDevice) {
 		error("No default audio input device found");
@@ -81,6 +89,9 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 #else
 	*nominal_sample_rate = PA_SAMPLE_RATE;
 	*real_sample_rate = info->sampleRate;
+#endif
+#ifdef DEBUG
+end:
 #endif
 	debug("sample rate: nominal = %d real = %f\n",*nominal_sample_rate,*real_sample_rate);
 

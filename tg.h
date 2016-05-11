@@ -64,8 +64,6 @@
 
 #define PRESET_BPH { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 43200, 72000, 0 };
 
-#define INTERFACE_FONT "VeraMono.ttf"
-
 #ifdef DEBUG
 #define debug(...) print_debug(__VA_ARGS__)
 #else
@@ -105,5 +103,9 @@ int terminate_portaudio();
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
 
 /* interface.c */
+#ifdef DEBUG
+extern int testing;
+#endif
+
 void print_debug(char *format,...);
 void error(char *format,...);
