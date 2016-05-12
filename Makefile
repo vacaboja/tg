@@ -12,8 +12,10 @@ ALLFILES = $(CFILES) $(HFILES) Makefile
 
 ifeq ($(OS),Windows_NT)
 	CFLAGS += -mwindows
+	DEBUG_FLAGS = -mconsole
 	EXT = .exe
 else
+	DEBUG_FLAGS =
 	EXT =
 endif
 
@@ -35,7 +37,7 @@ tg-lt$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt,-DLIGHT)
 
 tg-dbg$(EXT): $(ALLFILES)
-	$(call COMPILE,tg-dbg,-ggdb -DDEBUG)
+	$(call COMPILE,tg-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG)
 
 tg-prf$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-prf,-pg)

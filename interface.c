@@ -828,6 +828,7 @@ void quit(struct main_window *w)
 
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 {
+	print_debug("Received delete event\n");
 	quit((struct main_window *)w);
 	return TRUE;
 }
@@ -994,6 +995,7 @@ void *computing_thread(void *void_w)
 
 		gdk_threads_enter();
 		if(w->recompute < 0) {
+			print_debug("Terminating computation thread\n");
 			gtk_widget_destroy(w->window);
 			gtk_main_quit();
 			gdk_threads_leave();
@@ -1079,6 +1081,7 @@ int run_interface()
 #endif
 
 	gtk_main(); // Runs the main loop
+	print_debug("Main loop has terminated\n");
 
 	return terminate_portaudio();
 }
@@ -1099,6 +1102,7 @@ int main(int argc, char **argv)
 	initialize_palette();
 
 	int ret = run_interface();
+	print_debug("Interface exited with status %d\n",ret);
 
 	gdk_threads_leave();
 
