@@ -818,12 +818,13 @@ void handle_center_trace(GtkButton *b, struct main_window *w)
 	redraw(w);
 }
 
-void quit(struct main_window *w)
+gboolean quit(struct main_window *w)
 {
 	pthread_mutex_lock(&w->recompute_mutex);
 	w->recompute = -1;
 	pthread_cond_signal(&w->recompute_cond);
 	pthread_mutex_unlock(&w->recompute_mutex);
+	return FALSE;
 }
 
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
@@ -983,6 +984,14 @@ guint refresh(struct main_window *w)
 	return FALSE;
 }
 
+guint close_main_window(struct main_window *w)
+{
+	print_debug("Closing main window\n");
+	gtk_widget_destroy(w->window);
+	gtk_main_quit();
+	return FALSE;
+}
+
 void *computing_thread(void *void_w)
 {
 	struct main_window *w = void_w;
@@ -993,14 +1002,13 @@ void *computing_thread(void *void_w)
 		if(w->recompute > 0) w->recompute = 0;
 		pthread_mutex_unlock(&w->recompute_mutex);
 
-		gdk_threads_enter();
 		if(w->recompute < 0) {
 			print_debug("Terminating computation thread\n");
-			gtk_widget_destroy(w->window);
-			gtk_main_quit();
-			gdk_threads_leave();
+			gdk_threads_add_idle((GSourceFunc)close_main_window,w);
 			return NULL;
 		}
+
+		gdk_threads_enter();
 		int bph = w->bph;
 		uint64_t events_from = w->events_from;
 		gdk_threads_leave();

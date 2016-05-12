@@ -104,6 +104,7 @@ error:
 
 int terminate_portaudio()
 {
+	print_debug("Closing portaudio\n");
 	PaError err = Pa_Terminate();
 	if(err != paNoError) {
 		error("Error closing audio: %s", Pa_GetErrorText(err));
