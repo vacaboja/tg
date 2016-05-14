@@ -216,6 +216,10 @@ void prepare_data(struct processing_buffers *b)
 	for(i=0; i < b->sample_count+1; i++)
 			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
+
+#ifdef DEBUG
+	memcpy(b->debug, b->samples_sc, b->sample_count * sizeof(float));
+#endif
 }
 
 int peak_detector(float *buff, int a, int b)
@@ -617,4 +621,12 @@ void process(struct processing_buffers *p, int bph)
 	}
 	locate_events(p);
 	compute_amplitude(p);
+}
+
+void process_cal(struct processing_buffers *p)
+{
+	prepare_data(p);
+	p->ready = !compute_period(p,7200);
+	debug("ready = %d\n",p->ready);
+	return;
 }

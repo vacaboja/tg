@@ -99,6 +99,9 @@ struct main_window {
 	pthread_cond_t recompute_cond;
 	int recompute;
 
+	int calibrate;
+	int calibrating;
+
 	struct processing_buffers *bfs;
 	struct processing_buffers *old;
 	int is_old;
@@ -763,8 +766,10 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 	struct processing_buffers *p = get_data(w,&old);
 
 	if(p) {
-		double a = p->period / 10;
-		double b = p->period * 2;
+		//double a = p->period / 10;
+		//double b = p->period * 2;
+		double a = w->sample_rate / 10;
+		double b = w->sample_rate * 2;
 
 		draw_debug_graph(a,b,c,p,w->debug_drawing_area);
 
@@ -816,6 +821,18 @@ void handle_center_trace(GtkButton *b, struct main_window *w)
 	} else
 		w->trace_centering = 0;
 	redraw(w);
+}
+
+void handle_calibrate(GtkToggleButton *b, struct main_window *w)
+{
+	int button_state = gtk_toggle_button_get_active(b) == TRUE;
+	if(button_state != w->calibrate) {
+		w->calibrate = button_state;
+		pthread_mutex_lock(&w->recompute_mutex);
+		if(w->recompute >= 0) w->recompute = 1;
+		pthread_cond_signal(&w->recompute_cond);
+		pthread_mutex_unlock(&w->recompute_mutex);
+	}
 }
 
 gboolean quit(struct main_window *w)
@@ -895,6 +912,12 @@ void init_main_window(struct main_window *w)
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(la_spin_button), DEFAULT_LA); // Start at default value
 	g_signal_connect (la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 	gtk_widget_show(la_spin_button);
+
+	// CALIBRATE button
+	GtkWidget *cal_button = gtk_toggle_button_new_with_label("Calibrate");
+	gtk_box_pack_end(GTK_BOX(hbox), cal_button, FALSE, FALSE, 0);
+	g_signal_connect(cal_button, "toggled", G_CALLBACK(handle_calibrate), w);
+	gtk_widget_show(cal_button);
 
 	// Info area on top
 	w->output_drawing_area = gtk_drawing_area_new();
@@ -1009,27 +1032,40 @@ void *computing_thread(void *void_w)
 		}
 
 		gdk_threads_enter();
+		int calibrate = w->calibrate;
 		int bph = w->bph;
 		uint64_t events_from = w->events_from;
 		gdk_threads_leave();
 
-		int signal = analyze_pa_data(w->bfs, bph, events_from);
+		int signal = calibrate ?
+			analyze_pa_data_cal(w->bfs) :
+			analyze_pa_data(w->bfs, bph, events_from);
 
 		gdk_threads_enter();
 
-		int i;
 		struct processing_buffers *p = w->bfs;
 
-		for(i=0; i<NSTEPS && p[i].ready; i++);
-		for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
-		if(i>=0) {
-			if(w->old) pb_destroy_clone(w->old);
-			w->old = pb_clone(&p[i]);
-			w->is_old = 0;
+		w->calibrating = calibrate;
+
+		if(calibrate) {
 			w->signal = signal;
+			if(w->old) {
+				pb_destroy_clone(w->old);
+				w->old = NULL;
+			}
 		} else {
-			w->is_old = 1;
-			w->signal = -signal;
+			int i;
+			for(i=0; i<NSTEPS && p[i].ready; i++);
+			for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
+			if(i>=0) {
+				if(w->old) pb_destroy_clone(w->old);
+				w->old = pb_clone(&p[i]);
+				w->is_old = 0;
+				w->signal = signal;
+			} else {
+				w->is_old = 1;
+				w->signal = -signal;
+			}
 		}
 
 		gdk_threads_leave();
@@ -1071,6 +1107,8 @@ int run_interface()
 	w.old = NULL;
 	w.is_old = 1;
 	w.recompute = 0;
+	w.calibrate = 0;
+	w.calibrating = 0;
 
 	// Set up GDK+ widgets
 	init_main_window(&w);

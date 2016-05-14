@@ -115,7 +115,7 @@ int terminate_portaudio()
 
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 {
-	static uint64_t last_tic = 0;
+	static uint64_t last_tic = 0; // WHAT A HORRIBLE HACK!
 	int wp = write_pointer;
 	uint64_t ts = timestamp;
 	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
@@ -157,4 +157,9 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 	} else
 		debug("---\n");
 	return i;
+}
+
+int analyze_pa_data_cal(struct processing_buffers *p)
+{
+	return 0;
 }

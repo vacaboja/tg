@@ -96,11 +96,13 @@ void setup_buffers(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
 void process(struct processing_buffers *p, int bph);
+void process_cal(struct processing_buffers *p);
 
 /* audio.c */
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int terminate_portaudio();
 int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
+int analyze_pa_data_cal(struct processing_buffers *p);
 
 /* interface.c */
 #ifdef DEBUG
