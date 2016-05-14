@@ -71,10 +71,6 @@
 #endif
 
 /* algo.c */
-struct filter {
-	double a0,a1,a2,b1,b2;
-};
-
 struct processing_buffers {
 	int sample_rate;
 	int sample_count;
@@ -99,10 +95,15 @@ void process(struct processing_buffers *p, int bph);
 void process_cal(struct processing_buffers *p);
 
 /* audio.c */
+struct processing_data {
+	struct processing_buffers *buffers;
+	uint64_t last_tic;
+};
+
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int terminate_portaudio();
-int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from);
-int analyze_pa_data_cal(struct processing_buffers *p);
+int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from);
+int analyze_pa_data_cal(struct processing_data *pd);
 
 /* interface.c */
 #ifdef DEBUG

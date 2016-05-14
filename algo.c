@@ -18,6 +18,10 @@
 
 #include "tg.h"
 
+struct filter {
+	double a0,a1,a2,b1,b2;
+};
+
 int fl_cmp(const void *a, const void *b)
 {
 	float x = *(float*)a;

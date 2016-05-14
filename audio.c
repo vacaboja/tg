@@ -113,9 +113,9 @@ int terminate_portaudio()
 	return 0;
 }
 
-int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
+int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
 {
-	static uint64_t last_tic = 0; // WHAT A HORRIBLE HACK!
+	struct processing_buffers *p = pd->buffers;
 	int wp = write_pointer;
 	uint64_t ts = timestamp;
 	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
@@ -145,21 +145,21 @@ int analyze_pa_data(struct processing_buffers *p, int bph, uint64_t events_from)
 	debug("\nSTART OF COMPUTATION CYCLE\n\n");
 	for(i=0; i<NSTEPS; i++) {
 		p[i].timestamp = ts;
-		p[i].last_tic = last_tic;
+		p[i].last_tic = pd->last_tic;
 		p[i].events_from = events_from;
 		process(&p[i],bph);
 		if( !p[i].ready ) break;
 		debug("step %d : %f +- %f\n",i,p[i].period/p[i].sample_rate,p[i].sigma/p[i].sample_rate);
 	}
 	if(i) {
-		last_tic = p[i-1].last_tic;
+		pd->last_tic = p[i-1].last_tic;
 		debug("%f +- %f\n",p[i-1].period/p[i-1].sample_rate,p[i-1].sigma/p[i-1].sample_rate);
 	} else
 		debug("---\n");
 	return i;
 }
 
-int analyze_pa_data_cal(struct processing_buffers *p)
+int analyze_pa_data_cal(struct processing_data *pd)
 {
 	return 0;
 }

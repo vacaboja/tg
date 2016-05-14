@@ -102,7 +102,7 @@ struct main_window {
 	int calibrate;
 	int calibrating;
 
-	struct processing_buffers *bfs;
+	struct processing_data *pdata;
 	struct processing_buffers *old;
 	int is_old;
 
@@ -1038,12 +1038,10 @@ void *computing_thread(void *void_w)
 		gdk_threads_leave();
 
 		int signal = calibrate ?
-			analyze_pa_data_cal(w->bfs) :
-			analyze_pa_data(w->bfs, bph, events_from);
+			analyze_pa_data_cal(w->pdata) :
+			analyze_pa_data(w->pdata, bph, events_from);
 
 		gdk_threads_enter();
-
-		struct processing_buffers *p = w->bfs;
 
 		w->calibrating = calibrate;
 
@@ -1054,6 +1052,7 @@ void *computing_thread(void *void_w)
 				w->old = NULL;
 			}
 		} else {
+			struct processing_buffers *p = w->pdata->buffers;
 			int i;
 			for(i=0; i<NSTEPS && p[i].ready; i++);
 			for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
@@ -1101,9 +1100,13 @@ int run_interface()
 		p[i].period = -1;
 	}
 
+	struct processing_data pd;
+	pd.buffers = p;
+	pd.last_tic = 0;
+
 	struct main_window w;
 	w.sample_rate = real_sr;
-	w.bfs = p;
+	w.pdata = &pd;
 	w.old = NULL;
 	w.is_old = 1;
 	w.recompute = 0;
