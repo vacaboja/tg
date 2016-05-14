@@ -846,7 +846,7 @@ gboolean quit(struct main_window *w)
 
 gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 {
-	print_debug("Received delete event\n");
+	debug("Received delete event\n");
 	quit((struct main_window *)w);
 	return TRUE;
 }
@@ -1009,7 +1009,7 @@ guint refresh(struct main_window *w)
 
 guint close_main_window(struct main_window *w)
 {
-	print_debug("Closing main window\n");
+	debug("Closing main window\n");
 	gtk_widget_destroy(w->window);
 	gtk_main_quit();
 	return FALSE;
@@ -1026,7 +1026,7 @@ void *computing_thread(void *void_w)
 		pthread_mutex_unlock(&w->recompute_mutex);
 
 		if(w->recompute < 0) {
-			print_debug("Terminating computation thread\n");
+			debug("Terminating computation thread\n");
 			gdk_threads_add_idle((GSourceFunc)close_main_window,w);
 			return NULL;
 		}
@@ -1127,7 +1127,7 @@ int run_interface()
 #endif
 
 	gtk_main(); // Runs the main loop
-	print_debug("Main loop has terminated\n");
+	debug("Main loop has terminated\n");
 
 	return terminate_portaudio();
 }
@@ -1148,7 +1148,7 @@ int main(int argc, char **argv)
 	initialize_palette();
 
 	int ret = run_interface();
-	print_debug("Interface exited with status %d\n",ret);
+	debug("Interface exited with status %d\n",ret);
 
 	gdk_threads_leave();
 
