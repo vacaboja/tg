@@ -17,9 +17,6 @@
 */
 
 #include "tg.h"
-#include <stdarg.h>
-#include <gtk/gtk.h>
-#include <pthread.h>
 
 #ifdef DEBUG
 int testing = 0;
@@ -82,46 +79,6 @@ void initialize_palette()
 	define_color(&blueish,0,0,.5);
 	define_color(&yellow,1,1,0);
 }
-
-struct main_window {
-	GtkWidget *window;
-	GtkWidget *output_drawing_area;
-	GtkWidget *tic_drawing_area;
-	GtkWidget *toc_drawing_area;
-	GtkWidget *period_drawing_area;
-	GtkWidget *paperstrip_drawing_area;
-#ifdef DEBUG
-	GtkWidget *debug_drawing_area;
-#endif
-
-	pthread_t computing_thread;
-	pthread_mutex_t recompute_mutex;
-	pthread_cond_t recompute_cond;
-	int recompute;
-	guint computer_kicker;
-
-	int calibrate;
-	int calibrating;
-
-	struct processing_data *pdata;
-	struct processing_buffers *old;
-	int is_old;
-
-	int bph;
-	int guessed_bph;
-	int last_bph;
-	double la;
-	double cal;
-	double sample_rate;
-	int nominal_sr;
-
-	uint64_t *events;
-	int events_wp;
-	uint64_t events_from;
-	double trace_centering;
-
-	int signal;
-};
 
 void redraw(struct main_window *w)
 {
@@ -810,12 +767,17 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	redraw(w);
 }
 
+void update_sample_rate(struct main_window *w)
+{
+	w->sample_rate = w->nominal_sr * (1 + w->cal / (3600*24));
+}
+
 void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 {
 	double cal = gtk_spin_button_get_value(b);
 	if(cal < MIN_CAL || cal > MAX_CAL) cal = 0;
 	w->cal = cal;
-	w->sample_rate = w->nominal_sr * (1 + w->cal / (3600*24));
+	update_sample_rate(w);
 	redraw(w);
 }
 
@@ -878,9 +840,7 @@ void init_main_window(struct main_window *w)
 	w->events_from = 0;
 	w->trace_centering = 0;
 
-	w->guessed_bph = w->last_bph = DEFAULT_BPH;
-	w->bph = 0;
-	w->la = DEFAULT_LA;
+	w->guessed_bph = w->last_bph = w->bph ? w->bph : DEFAULT_BPH;
 
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
@@ -907,13 +867,21 @@ void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(hbox), bph_combo_box, FALSE, TRUE, 0);
 	// Fill in pre-defined values
 	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(bph_combo_box), "guess");
-	int *bph;
-	for(bph = preset_bph; *bph; bph++) {
+	int i,current = 0;
+	for(i = 0; preset_bph[i]; i++) {
 		char s[100];
-		sprintf(s,"%d", *bph);
+		sprintf(s,"%d", preset_bph[i]);
 		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(bph_combo_box), s);
+		if(w->bph == preset_bph[i]) current = i+1;
 	}
-	gtk_combo_box_set_active(GTK_COMBO_BOX(bph_combo_box), 0);
+	if(current || w->bph == 0)
+		gtk_combo_box_set_active(GTK_COMBO_BOX(bph_combo_box), current);
+	else {
+		char s[32];
+		sprintf(s,"%d",w->bph);
+		GtkEntry *e = GTK_ENTRY(gtk_bin_get_child(GTK_BIN(bph_combo_box)));
+		gtk_entry_set_text(e,s);
+	}
 	g_signal_connect (bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
 	gtk_widget_show(bph_combo_box);
 
@@ -925,7 +893,7 @@ void init_main_window(struct main_window *w)
 	// Lift angle spin button
 	GtkWidget *la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
 	gtk_box_pack_start(GTK_BOX(hbox), la_spin_button, FALSE, TRUE, 0);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(la_spin_button), DEFAULT_LA); // Start at default value
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(la_spin_button), w->la);
 	g_signal_connect(la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 	gtk_widget_show(la_spin_button);
 
@@ -1134,14 +1102,23 @@ int run_interface()
 
 	struct main_window w;
 	w.nominal_sr = nominal_sr;
-	w.sample_rate = real_sr;
-	w.cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
+	w.cal = MIN_CAL - 1;
+	w.bph = 0;
+	w.la = DEFAULT_LA;
 	w.pdata = &pd;
 	w.old = NULL;
 	w.is_old = 1;
 	w.recompute = 0;
 	w.calibrate = 0;
 	w.calibrating = 0;
+
+	load_config(&w);
+
+	if(w.la < MIN_LA || w.la > MAX_LA) w.la = DEFAULT_LA;
+	if(w.bph < MIN_BPH || w.bph > MAX_BPH) w.bph = 0;
+	if(w.cal < MIN_CAL || w.cal > MAX_CAL)
+		w.cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
+	update_sample_rate(&w);
 
 	// Set up GDK+ widgets
 	init_main_window(&w);
@@ -1161,6 +1138,8 @@ int run_interface()
 
 	gtk_main(); // Runs the main loop
 	debug("Main loop has terminated\n");
+
+	save_config(&w);
 
 	return terminate_portaudio();
 }

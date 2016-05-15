@@ -23,8 +23,11 @@
 #include <stdint.h>
 #include <complex.h>
 #include <fftw3.h>
+#include <stdarg.h>
+#include <gtk/gtk.h>
+#include <pthread.h>
 
-#define MAX_THREADS 8
+#define CONFIG_FILE_NAME "tg-timer.ini"
 
 #define FILTER_CUTOFF 3000
 
@@ -108,9 +111,56 @@ int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd);
 
 /* interface.c */
+struct main_window {
+	GtkWidget *window;
+	GtkWidget *output_drawing_area;
+	GtkWidget *tic_drawing_area;
+	GtkWidget *toc_drawing_area;
+	GtkWidget *period_drawing_area;
+	GtkWidget *paperstrip_drawing_area;
+#ifdef DEBUG
+	GtkWidget *debug_drawing_area;
+#endif
+
+	pthread_t computing_thread;
+	pthread_mutex_t recompute_mutex;
+	pthread_cond_t recompute_cond;
+	int recompute;
+	guint computer_kicker;
+
+	int calibrate;
+	int calibrating;
+
+	struct processing_data *pdata;
+	struct processing_buffers *old;
+	int is_old;
+
+	int bph;
+	int guessed_bph;
+	int last_bph;
+	double la;
+	double cal;
+	double sample_rate;
+	int nominal_sr;
+
+	uint64_t *events;
+	int events_wp;
+	uint64_t events_from;
+	double trace_centering;
+
+	int signal;
+
+	GKeyFile *config_file;
+	gchar *config_file_name;
+};
+
 #ifdef DEBUG
 extern int testing;
 #endif
 
 void print_debug(char *format,...);
 void error(char *format,...);
+
+// config.c
+void load_config(struct main_window *w);
+void save_config(struct main_window *w);

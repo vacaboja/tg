@@ -6,7 +6,7 @@ PACKAGES = gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
 CFLAGS = -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
 LDFLAGS = -lm -lpthread `pkg-config --libs $(PACKAGES)`
 
-CFILES = interface.c algo.c audio.c
+CFILES = interface.c algo.c audio.c config.c
 HFILES = tg.h
 ALLFILES = $(CFILES) $(HFILES) Makefile
 
