@@ -55,12 +55,22 @@ void save_config(struct main_window *w)
 {
 	debug("Config: saving configuration file\n");
 
+	g_key_file_set_string(w->config_file, "tg", "version", VERSION);
+
 #define SAVE(NAME,PLACE,TYPE) \
 	g_key_file_set_ ## TYPE (w->config_file, "tg", #NAME, w -> PLACE);
 
 	FIELDS(SAVE);
 
-	gboolean ret = g_key_file_save_to_file(w->config_file, w->config_file_name, NULL);
+#ifdef DEBUG
+	gboolean ret =
+#endif
+	g_key_file_save_to_file(w->config_file, w->config_file_name, NULL);
 
-	if(!ret) debug("Config: failed to save config file");
+#ifdef DEBUG
+	if(!ret) {
+		debug("Config: failed to save config file");
+		if(testing) exit(1);
+	}
+#endif
 }
