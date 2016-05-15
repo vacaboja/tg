@@ -188,14 +188,14 @@ void noise_suppressor(struct processing_buffers *p)
 	}
 }
 
-void prepare_data(struct processing_buffers *b)
+void prepare_data(struct processing_buffers *b, int run_noise_suppressor)
 {
 	int i;
 
 	memset(b->samples + b->sample_count, 0, b->sample_count * sizeof(float));
 	run_filter(b->hpf, b->samples, b->sample_count);
 #ifndef LIGHT
-	noise_suppressor(b);
+	if(run_noise_suppressor) noise_suppressor(b);
 #endif
 
 	for(i=0; i < b->sample_count; i++)
@@ -220,10 +220,6 @@ void prepare_data(struct processing_buffers *b)
 	for(i=0; i < b->sample_count+1; i++)
 			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
-
-#ifdef DEBUG
-	memcpy(b->debug, b->samples_sc, b->sample_count * sizeof(float));
-#endif
 }
 
 int peak_detector(float *buff, int a, int b)
@@ -343,7 +339,6 @@ int compute_period(struct processing_buffers *b, int bph)
 		cycle++;
 	}
 	if(count > 0) estimate = sum / count;
-	if(estimate >= b->sample_rate / 2) return 1;
 	b->period = estimate;
 	if(count > 1)
 		b->sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1));
@@ -378,31 +373,33 @@ float tmean(float *x, int n)
 	return sum/(n*4/5);
 }
 
-void prepare_waveform(struct processing_buffers *p)
+void compute_phase(struct processing_buffers *p, double period)
 {
 	int i;
 	double x = 0, y = 0;
-	for(i = 0; i < p->period/2; i++) {
+	for(i = 0; i < period; i++) {
 		int j;
 		p->waveform[i] = 0;
 		for(j=0;;j++) {
-			int n = round(i + j * p->period/2);
+			int n = round(i + j * period);
 			if(n >= p->sample_count) break;
 			p->waveform[i] += p->samples[n];
 		}
 		p->waveform[i] /= j;
 	}
-	for(i=0; i<p->period/2; i++) {
-		double a = i * 4 * M_PI / p->period;
+	for(i=0; i<period; i++) {
+		double a = i * 2 * M_PI / period;
 		x += p->waveform[i] * cos(a);
 		y += p->waveform[i] * sin(a);
 	}
-	p->phase = p->period * (M_PI + atan2(y,x)) / (4 * M_PI);
+	p->phase = period * (M_PI + atan2(y,x)) / (2 * M_PI);
+}
 
+void compute_waveform(struct processing_buffers *p, int wf_size)
+{
+	int i;
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
-
-	int wf_size = ceil(p->period);
 	for(i=0; i < wf_size; i++) {
 		float bin[(int)ceil(1 + p->sample_count / p->period)];
 		int j;
@@ -423,10 +420,29 @@ void prepare_waveform(struct processing_buffers *p)
 	for(i=0; i<p->period; i++)
 		p->waveform[i] -= nl;
 
+	p->waveform_max = vmax(p->waveform, 0, wf_size, NULL);
+}
+
+void prepare_waveform(struct processing_buffers *p)
+{
+	compute_phase(p,p->period/2);
+	compute_waveform(p,ceil(p->period));
+
+	int i;
 	fftwf_execute(p->plan_c);
 	for(i=0; i < p->sample_rate+1; i++)
 			p->sc_fft[i] *= conj(p->sc_fft[i]);
 	fftwf_execute(p->plan_d);
+}
+
+void prepare_waveform_cal(struct processing_buffers *p)
+{
+	compute_phase(p,p->sample_rate);
+	compute_waveform(p,p->sample_rate);
+
+#ifdef DEBUG
+	memcpy(p->debug, p->waveform, p->sample_rate * sizeof(float));
+#endif
 }
 
 void smooth(float *in, float *out, int window, int size)
@@ -480,8 +496,6 @@ int compute_parameters(struct processing_buffers *p)
 	if(max <= 0) return 1;
 	p->tic = max_i;
 	p->toc = p->tic + tic_to_toc;
-
-	p->waveform_max = vmax(p->waveform, 0, ceil(p->period), NULL);
 
 	double phase = p->timestamp - p->last_tic;
 	double apparent_phase = p->sample_count - (p->phase + p->tic);
@@ -611,8 +625,12 @@ void compute_amplitude(struct processing_buffers *p)
 
 void process(struct processing_buffers *p, int bph)
 {
-	prepare_data(p);
+	prepare_data(p,1);
 	p->ready = !compute_period(p,bph);
+	if(p->period >= p->sample_rate / 2) {
+		debug("Detected period too long\n");
+		p->ready = 0;
+	}
 	if(!p->ready) {
 		debug("abort after compute_period()\n");
 		return;
@@ -629,8 +647,14 @@ void process(struct processing_buffers *p, int bph)
 
 void process_cal(struct processing_buffers *p)
 {
-	prepare_data(p);
+	prepare_data(p,0);
 	p->ready = !compute_period(p,7200);
-	debug("ready = %d\n",p->ready);
+	if(!p->ready) {
+		debug("abort after compute_period()\n");
+		return;
+	}
+	prepare_waveform_cal(p);
+	double phase = fmod((p->timestamp + p->phase) / p->sample_rate, 1.);
+	debug("Phase = %f\n",phase);
 	return;
 }

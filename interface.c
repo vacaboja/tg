@@ -98,6 +98,7 @@ struct main_window {
 	pthread_mutex_t recompute_mutex;
 	pthread_cond_t recompute_cond;
 	int recompute;
+	guint computer_kicker;
 
 	int calibrate;
 	int calibrating;
@@ -110,7 +111,9 @@ struct main_window {
 	int guessed_bph;
 	int last_bph;
 	double la;
+	double cal;
 	double sample_rate;
+	int nominal_sr;
 
 	uint64_t *events;
 	int events_wp;
@@ -132,7 +135,7 @@ void redraw(struct main_window *w)
 #endif
 }
 
-/* Find the preset bph value closest corresponding to the current period */
+/* Find the preset bph value closest to the current period */
 int guess_bph(double period)
 {
 	double bph = 7200 / period;
@@ -763,7 +766,8 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 	cairo_t *c = cairo_init(widget);
 
 	int old = 0;
-	struct processing_buffers *p = get_data(w,&old);
+	struct processing_buffers *p = w->calibrating ?
+		&w->pdata->buffers[NSTEPS-1] : get_data(w,&old);
 
 	if(p) {
 		//double a = p->period / 10;
@@ -806,6 +810,15 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	redraw(w);
 }
 
+void handle_cal_change(GtkSpinButton *b, struct main_window *w)
+{
+	double cal = gtk_spin_button_get_value(b);
+	if(cal < MIN_CAL || cal > MAX_CAL) cal = 0;
+	w->cal = cal;
+	w->sample_rate = w->nominal_sr * (1 + w->cal / (3600*24));
+	redraw(w);
+}
+
 void handle_clear_trace(GtkButton *b, struct main_window *w)
 {
 	memset(w->events,0,EVENTS_COUNT*sizeof(uint64_t));
@@ -832,6 +845,9 @@ void handle_calibrate(GtkToggleButton *b, struct main_window *w)
 		if(w->recompute >= 0) w->recompute = 1;
 		pthread_cond_signal(&w->recompute_cond);
 		pthread_mutex_unlock(&w->recompute_mutex);
+		g_source_remove(w->computer_kicker);
+		w->computer_kicker = g_timeout_add_full(G_PRIORITY_LOW,
+				w->calibrate?618:100,(GSourceFunc)kick_computer,w,NULL);
 	}
 }
 
@@ -910,8 +926,20 @@ void init_main_window(struct main_window *w)
 	GtkWidget *la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
 	gtk_box_pack_start(GTK_BOX(hbox), la_spin_button, FALSE, TRUE, 0);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(la_spin_button), DEFAULT_LA); // Start at default value
-	g_signal_connect (la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
+	g_signal_connect(la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 	gtk_widget_show(la_spin_button);
+
+	// Lift angle label
+	label = gtk_label_new("cal");
+	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
+	gtk_widget_show(label);
+
+	// Calibration spin button
+	GtkWidget *cal_spin_button = gtk_spin_button_new_with_range(MIN_CAL, MAX_CAL, .1);
+	gtk_box_pack_start(GTK_BOX(hbox), cal_spin_button, FALSE, TRUE, 0);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(cal_spin_button), w->cal);
+	g_signal_connect(cal_spin_button, "value_changed", G_CALLBACK(handle_cal_change), w);
+	gtk_widget_show(cal_spin_button);
 
 	// CALIBRATE button
 	GtkWidget *cal_button = gtk_toggle_button_new_with_label("Calibrate");
@@ -1105,7 +1133,9 @@ int run_interface()
 	pd.last_tic = 0;
 
 	struct main_window w;
+	w.nominal_sr = nominal_sr;
 	w.sample_rate = real_sr;
+	w.cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
 	w.pdata = &pd;
 	w.old = NULL;
 	w.is_old = 1;
@@ -1123,7 +1153,7 @@ int run_interface()
 		return 1;
 	}
 
-	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,&w,NULL);
+	w.computer_kicker = g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,&w,NULL);
 #ifdef DEBUG
 	if(testing)
 		g_timeout_add_full(G_PRIORITY_LOW,3000,(GSourceFunc)quit,&w,NULL);

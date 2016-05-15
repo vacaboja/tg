@@ -113,11 +113,10 @@ int terminate_portaudio()
 	return 0;
 }
 
-int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
+void fill_buffers(struct processing_buffers *p)
 {
-	struct processing_buffers *p = pd->buffers;
-	int wp = write_pointer;
 	uint64_t ts = timestamp;
+	int wp = write_pointer;
 	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
 #ifdef LIGHT
 	if(wp % 2) wp--;
@@ -126,6 +125,7 @@ int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
 	int i;
 	for(i=0; i<NSTEPS; i++) {
 		int j,k;
+		p[i].timestamp = ts;
 #ifdef LIGHT
 		k = wp - 2*p[i].sample_count;
 #else
@@ -142,9 +142,16 @@ int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
 			if(k >= PA_BUFF_SIZE) k -= PA_BUFF_SIZE;
 		}
 	}
+}
+
+int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
+{
+	struct processing_buffers *p = pd->buffers;
+	fill_buffers(p);
+
+	int i;
 	debug("\nSTART OF COMPUTATION CYCLE\n\n");
 	for(i=0; i<NSTEPS; i++) {
-		p[i].timestamp = ts;
 		p[i].last_tic = pd->last_tic;
 		p[i].events_from = events_from;
 		process(&p[i],bph);
@@ -161,5 +168,10 @@ int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
 
 int analyze_pa_data_cal(struct processing_data *pd)
 {
+	struct processing_buffers *p = pd->buffers;
+	fill_buffers(p);
+
+	debug("\nSTART OF CALIBRATION CYCLE\n\n");
+	process_cal(&p[NSTEPS-1]);
 	return 0;
 }
