@@ -87,14 +87,15 @@ void save_config(struct main_window *w)
 	FIELDS(SAVE);
 
 #ifdef DEBUG
-	gboolean ret =
-#endif
-	g_key_file_save_to_file(w->config_file, w->config_file_name, NULL);
+	GError *ge = NULL;
+	g_key_file_save_to_file(w->config_file, w->config_file_name, &ge);
 
-#ifdef DEBUG
-	if(!ret) {
-		debug("Config: failed to save config file");
+	if(ge) {
+		debug("Config: failed to save config file: %s\n",ge->message);
+		g_error_free(ge);
 		if(testing) exit(1);
 	}
+#else
+	g_key_file_save_to_file(w->config_file, w->config_file_name, NULL);
 #endif
 }
