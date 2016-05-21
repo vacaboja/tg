@@ -166,12 +166,17 @@ int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
 	return i;
 }
 
-int analyze_pa_data_cal(struct processing_data *pd)
+int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 {
 	struct processing_buffers *p = pd->buffers;
 	fill_buffers(p);
 
+	int i;
 	debug("\nSTART OF CALIBRATION CYCLE\n\n");
-	process_cal(&p[NSTEPS-1]);
-	return 0;
+	for(i=0; i<NSTEPS-1; i++)
+		if(test_cal(&p[i]))
+			return i;
+	if(process_cal(&p[NSTEPS-1], cd))
+		return NSTEPS-1;
+	return NSTEPS;
 }

@@ -31,6 +31,8 @@
 
 #define FILTER_CUTOFF 3000
 
+#define CAL_DATA_SIZE 1000
+
 #ifdef LIGHT
 
 #define NSTEPS 4
@@ -84,6 +86,7 @@ struct processing_buffers {
 	fftwf_plan plan_a, plan_b, plan_c, plan_d, plan_e, plan_f, plan_g;
 	struct filter *hpf, *lpf;
 	double period,sigma,be,waveform_max,phase,tic_pulse,toc_pulse;
+	double cal_phase;
 	int tic,toc;
 	int ready;
 	uint64_t timestamp, last_tic, last_toc, events_from;
@@ -93,11 +96,22 @@ struct processing_buffers {
 #endif
 };
 
+struct calibration_data {
+	int wp;
+	int size;
+	int state;
+	double calibration;
+	uint64_t start_time;
+	double *times;
+	double *phases;
+};
+
 void setup_buffers(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
 void process(struct processing_buffers *p, int bph);
-void process_cal(struct processing_buffers *p);
+int test_cal(struct processing_buffers *p);
+int process_cal(struct processing_buffers *p, struct calibration_data *cd);
 
 /* audio.c */
 struct processing_data {
@@ -108,7 +122,7 @@ struct processing_data {
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int terminate_portaudio();
 int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from);
-int analyze_pa_data_cal(struct processing_data *pd);
+int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 
 /* interface.c */
 struct main_window {
@@ -130,9 +144,11 @@ struct main_window {
 
 	int calibrate;
 	int calibrating;
+	uint64_t cal_time;
 
 	struct processing_data *pdata;
 	struct processing_buffers *old;
+	struct calibration_data *cdata;
 	int is_old;
 
 	int bph;

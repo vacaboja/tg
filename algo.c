@@ -401,23 +401,23 @@ void compute_waveform(struct processing_buffers *p, int wf_size)
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
 	for(i=0; i < wf_size; i++) {
-		float bin[(int)ceil(1 + p->sample_count / p->period)];
+		float bin[(int)ceil(1 + p->sample_count / wf_size)];
 		int j;
-		double k = fmod(i+p->phase,p->period);
+		double k = fmod(i+p->phase,wf_size);
 		for(j=0;;j++) {
-			int n = round(k+j*p->period);
+			int n = round(k+j*wf_size);
 			if(n >= p->sample_count) break;
 			bin[j] = p->samples[n];
 		}
 		p->waveform[i] = tmean(bin,j);
 	}
 
-	int step = ceil(p->period / 100);
-	for(i=0; i * step < p->period; i++)
+	int step = ceil(wf_size / 100);
+	for(i=0; i * step < wf_size; i++)
 		p->waveform_sc[i] = p->waveform[i * step];
 	qsort(p->waveform_sc,i,sizeof(float),fl_cmp);
 	double nl = p->waveform_sc[i/2];
-	for(i=0; i<p->period; i++)
+	for(i=0; i<wf_size; i++)
 		p->waveform[i] -= nl;
 
 	p->waveform_max = vmax(p->waveform, 0, wf_size, NULL);
@@ -623,6 +623,33 @@ void compute_amplitude(struct processing_buffers *p)
 	}
 }
 
+void compute_cal(struct calibration_data *cd, int sample_rate)
+{
+	int i;
+	double x = 0, y = 0;
+	for(i=0;i<cd->size;i++) {
+		x += cos(cd->phases[i] * 2 * M_PI);
+		y += sin(cd->phases[i] * 2 * M_PI);
+	}
+	double c = (atan2(y,x) - M_PI) / (2 * M_PI);
+	double x_av = 0, y_av = 0;
+	for(i=0;i<cd->size;i++) {
+		x_av += cd->times[i];
+		y_av += cd->phases[i] = fmod(cd->phases[i] - c, 1);
+	}
+	x_av /= cd->size;
+	y_av /= cd->size;
+	double n = 0, d = 0;
+	for(i=0;i<cd->size;i++) {
+		double x = cd->times[i] - x_av;
+		n += x * (cd->phases[i] - y_av);
+		d += x * x;
+	}
+	cd->calibration = n * 3600 * 24 / d;
+	cd->state = 1;
+	debug("Calibration result: %f s/d\n",cd->calibration);
+}
+
 void process(struct processing_buffers *p, int bph)
 {
 	prepare_data(p,1);
@@ -645,16 +672,41 @@ void process(struct processing_buffers *p, int bph)
 	compute_amplitude(p);
 }
 
-void process_cal(struct processing_buffers *p)
+int test_cal(struct processing_buffers *p)
 {
 	prepare_data(p,0);
-	p->ready = !compute_period(p,7200);
-	if(!p->ready) {
+	return compute_period(p,7200);
+}
+
+int process_cal(struct processing_buffers *p, struct calibration_data *cd)
+{
+	prepare_data(p,0);
+	if(compute_period(p,7200)) {
 		debug("abort after compute_period()\n");
-		return;
+		return 1;
 	}
 	prepare_waveform_cal(p);
-	double phase = fmod((p->timestamp + p->phase) / p->sample_rate, 1.);
+	int i;
+	double phase = -1;
+	for(i = p->sample_rate/4; i < p->sample_rate/2; i++)
+		if(p->waveform[i] > p->waveform_max/3)
+			phase = fmod((p->timestamp + p->phase + i) / p->sample_rate, 1.);
+	if(phase < 0) {
+		debug("unable to find rising edge\n");
+		return 1;
+	}
 	debug("Phase = %f\n",phase);
-	return;
+	if(cd->wp < cd->size) {
+		if(cd->wp == 0)
+			cd->start_time = p->timestamp;
+		double time = (double)(p->timestamp - cd->start_time) / p->sample_rate;
+		if(cd->wp == 0 || time > cd->times[cd->wp-1] + 1) {
+			cd->times[cd->wp] = time;
+			cd->phases[cd->wp] = phase;
+			cd->wp++;
+		}
+	}
+	if(cd->wp == cd->size && cd->state == 0)
+		compute_cal(cd, p->sample_rate);
+	return 0;
 }

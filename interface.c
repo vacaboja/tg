@@ -191,9 +191,9 @@ double amplitude_to_time(double lift_angle, double amp)
 	return asin(lift_angle / (2 * amp)) / M_PI;
 }
 
-double draw_watch_icon(cairo_t *c, int signal)
+double draw_watch_icon(cairo_t *c, int signal, int happy)
 {
-	int happy = !!signal;
+	happy = !!happy;
 	cairo_set_line_width(c,3);
 	cairo_set_source(c,happy?green:red);
 	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
@@ -246,6 +246,16 @@ cairo_t *cairo_init(GtkWidget *widget)
 	return c;
 }
 
+double print_s(cairo_t *c, double x, double y, char *s)
+{
+	cairo_text_extents_t extents;
+	cairo_move_to(c,x,y);
+	cairo_show_text(c,s);
+	cairo_text_extents(c,s,&extents);
+	x += extents.x_advance;
+	return x;
+}
+
 double print_number(cairo_t *c, double x, double y, char *s)
 {
 	cairo_text_extents_t extents;
@@ -269,34 +279,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	int old;
 	struct processing_buffers *p = get_data(w,&old);
 
-	double x = draw_watch_icon(c,w->signal);
-
-	char outputs[8][20];
-
-	if(p) {
-		int bph = w->guessed_bph;
-		int rate = round(get_rate(bph, w->sample_rate, p));
-		double be = fabs(p->be) * 1000 / p->sample_rate;
-		double amp = get_amplitude(w->la, p);
-		char rates[20];
-		sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
-		sprintf(outputs[0],"%4s",rates);
-		sprintf(outputs[2]," %4.1f",be);
-		if(amp > 0)
-			sprintf(outputs[4]," %3.0f",amp);
-		else
-			strcpy(outputs[4]," ---");
-	} else {
-		strcpy(outputs[0],"----");
-		strcpy(outputs[2]," ----");
-		strcpy(outputs[4]," ---");
-	}
-	sprintf(outputs[6]," %d",w->guessed_bph);
-
-	strcpy(outputs[1]," s/d");
-	strcpy(outputs[3]," ms");
-	strcpy(outputs[5]," deg");
-	strcpy(outputs[7]," bph");
+	double x = draw_watch_icon(c,w->signal,w->calibrating ? w->signal==NSTEPS : w->signal);
 
 	cairo_text_extents_t extents;
 
@@ -304,19 +287,74 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	cairo_text_extents(c,"0",&extents);
 	double y = (double)OUTPUT_WINDOW_HEIGHT/2 - extents.y_bearing - extents.height/2;
 
-	int i;
-	for(i=0; i<8; i++) {
-		if(i%2) {
-			cairo_set_source(c, white);
-			cairo_move_to(c,x,y);
+	if(w->calibrating) {
+		cairo_set_source(c, white);
+		x = print_s(c,x,y,"cal");
+		cairo_set_font_size(c, OUTPUT_FONT*2/3);
+		x = print_s(c,x,y," (");
+		cairo_text_extents(c,"wait",&extents);
+		double a = extents.x_advance;
+		cairo_text_extents(c,"acq.",&extents);
+		if(a < extents.x_advance) a = extents.x_advance;
+		cairo_text_extents(c,"done",&extents);
+		if(a < extents.x_advance) a = extents.x_advance;
+		cairo_set_source(c,w->cdata->state ? green : w->signal == NSTEPS ? white : yellow);
+		cairo_move_to(c,x,y);
+		cairo_show_text(c,w->cdata->state ? "done" : w->signal == NSTEPS ? "acq." : "wait");
+		x += a;
+		cairo_set_source(c, white);
+		x = print_s(c,x,y,")");
+		cairo_set_font_size(c, OUTPUT_FONT);
+		char s[20];
+		if(w->cdata->state) {
+			double cal = w->cdata->calibration;
+			sprintf(s," %s%.1f",cal<0?"-":"+",fabs(cal));
+			x = print_s(c,x,y,s);
 			cairo_set_font_size(c, OUTPUT_FONT*2/3);
-			cairo_show_text(c,outputs[i]);
-			cairo_text_extents(c,outputs[i],&extents);
-			x += extents.x_advance;
+			x = print_s(c,x,y," s/d");
 		} else {
-			cairo_set_source(c, i > 4 || !p || !old ? white : yellow);
-			cairo_set_font_size(c, OUTPUT_FONT);
-			x = print_number(c,x,y,outputs[i]);
+			sprintf(s," %d",100*w->cdata->wp/w->cdata->size);
+			x = print_number(c,x,y,s);
+			x = print_s(c,x,y," %");
+		}
+	} else {
+		char outputs[8][20];
+		if(p) {
+			int bph = w->guessed_bph;
+			int rate = round(get_rate(bph, w->sample_rate, p));
+			double be = fabs(p->be) * 1000 / p->sample_rate;
+			double amp = get_amplitude(w->la, p);
+			char rates[20];
+			sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
+			sprintf(outputs[0],"%4s",rates);
+			sprintf(outputs[2]," %4.1f",be);
+			if(amp > 0)
+				sprintf(outputs[4]," %3.0f",amp);
+			else
+				strcpy(outputs[4]," ---");
+		} else {
+			strcpy(outputs[0],"----");
+			strcpy(outputs[2]," ----");
+			strcpy(outputs[4]," ---");
+		}
+		sprintf(outputs[6]," %d",w->guessed_bph);
+
+		strcpy(outputs[1]," s/d");
+		strcpy(outputs[3]," ms");
+		strcpy(outputs[5]," deg");
+		strcpy(outputs[7]," bph");
+
+		int i;
+		for(i=0; i<8; i++) {
+			if(i%2) {
+				cairo_set_source(c, white);
+				cairo_set_font_size(c, OUTPUT_FONT*2/3);
+				x = print_s(c,x,y,outputs[i]);
+			} else {
+				cairo_set_source(c, i > 4 || !p || !old ? white : yellow);
+				cairo_set_font_size(c, OUTPUT_FONT);
+				x = print_number(c,x,y,outputs[i]);
+			}
 		}
 	}
 #ifdef DEBUG
@@ -328,8 +366,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 			sprintf(s,"  %.2f fps",1./g_timer_elapsed(timer, NULL));
 			cairo_set_source(c, white);
 			cairo_set_font_size(c, OUTPUT_FONT);
-			cairo_move_to(c,x,y);
-			cairo_show_text(c,s);
+			x = print_s(c,x,y,s);
 			g_timer_reset(timer);
 		}
 	}
@@ -592,6 +629,11 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	int stopped = 0;
 	if(w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
 		time = 5 * w->sample_rate + w->events[w->events_wp];
+		stopped = 1;
+	}
+	if(w->calibrating) {
+		if(w->cal_time < time)
+			time = w->cal_time;
 		stopped = 1;
 	}
 
@@ -1033,11 +1075,23 @@ void *computing_thread(void *void_w)
 		uint64_t events_from = w->events_from;
 		gdk_threads_leave();
 
+		if(calibrate && !w->calibrating) {
+			w->cdata->wp = 0;
+			w->cdata->state = 0;
+		}
+
 		int signal = calibrate ?
-			analyze_pa_data_cal(w->pdata) :
+			analyze_pa_data_cal(w->pdata, w->cdata) :
 			analyze_pa_data(w->pdata, bph, events_from);
 
 		gdk_threads_enter();
+
+		if(calibrate && !w->calibrating)
+#ifdef LIGHT
+			w->cal_time = timestamp / 2;
+#else
+			w->cal_time = timestamp;
+#endif
 
 		w->calibrating = calibrate;
 
@@ -1046,6 +1100,7 @@ void *computing_thread(void *void_w)
 			if(w->old) {
 				pb_destroy_clone(w->old);
 				w->old = NULL;
+				w->is_old = signal < NSTEPS;
 			}
 		} else {
 			struct processing_buffers *p = w->pdata->buffers;
@@ -1100,12 +1155,18 @@ int run_interface()
 	pd.buffers = p;
 	pd.last_tic = 0;
 
+	struct calibration_data cd;
+	cd.size = CAL_DATA_SIZE;
+	cd.times = malloc(cd.size * sizeof(double));
+	cd.phases = malloc(cd.size * sizeof(double));
+
 	struct main_window w;
 	w.nominal_sr = nominal_sr;
 	w.cal = MIN_CAL - 1;
 	w.bph = 0;
 	w.la = DEFAULT_LA;
 	w.pdata = &pd;
+	w.cdata = &cd;
 	w.old = NULL;
 	w.is_old = 1;
 	w.recompute = 0;
@@ -1141,6 +1202,7 @@ int run_interface()
 
 	save_config(&w);
 
+	// We leak the processing buffers, program is terminating anyway
 	return terminate_portaudio();
 }
 
