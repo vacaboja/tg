@@ -87,6 +87,7 @@ struct processing_buffers {
 	struct filter *hpf, *lpf;
 	double period,sigma,be,waveform_max,phase,tic_pulse,toc_pulse;
 	double cal_phase;
+	int waveform_max_i;
 	int tic,toc;
 	int ready;
 	uint64_t timestamp, last_tic, last_toc, events_from;
@@ -132,6 +133,7 @@ struct main_window {
 	GtkWidget *toc_drawing_area;
 	GtkWidget *period_drawing_area;
 	GtkWidget *paperstrip_drawing_area;
+	GtkWidget *cal_spin_button;
 #ifdef DEBUG
 	GtkWidget *debug_drawing_area;
 #endif
@@ -145,6 +147,7 @@ struct main_window {
 	int calibrate;
 	int calibrating;
 	uint64_t cal_time;
+	int cal_updated;
 
 	struct processing_data *pdata;
 	struct processing_buffers *old;

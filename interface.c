@@ -292,30 +292,47 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		x = print_s(c,x,y,"cal");
 		cairo_set_font_size(c, OUTPUT_FONT*2/3);
 		x = print_s(c,x,y," (");
-		cairo_text_extents(c,"wait",&extents);
-		double a = extents.x_advance;
-		cairo_text_extents(c,"acq.",&extents);
-		if(a < extents.x_advance) a = extents.x_advance;
-		cairo_text_extents(c,"done",&extents);
-		if(a < extents.x_advance) a = extents.x_advance;
-		cairo_set_source(c,w->cdata->state ? green : w->signal == NSTEPS ? white : yellow);
 		cairo_move_to(c,x,y);
-		cairo_show_text(c,w->cdata->state ? "done" : w->signal == NSTEPS ? "acq." : "wait");
-		x += a;
+		{
+			double a = 0;
+			char *s[] = {"wait", "acq.", "done", "fail", NULL}, **t = s;
+			for(;*t;t++) {
+				cairo_text_extents(c,*t,&extents);
+				if(a < extents.x_advance) a = extents.x_advance;
+			}
+			x += a;
+		}
+		switch(w->cdata->state) {
+			case 1:
+				cairo_set_source(c,green);
+				cairo_show_text(c,"done");
+				break;
+			case 0:
+				cairo_set_source(c, w->signal == NSTEPS ? white : yellow);
+				cairo_show_text(c, w->signal == NSTEPS ? "acq." : "wait");
+				break;
+			case -1:
+				cairo_set_source(c,red);
+				cairo_show_text(c,"fail");
+				break;
+		}
 		cairo_set_source(c, white);
 		x = print_s(c,x,y,")");
 		cairo_set_font_size(c, OUTPUT_FONT);
 		char s[20];
-		if(w->cdata->state) {
-			double cal = w->cdata->calibration;
-			sprintf(s," %s%.1f",cal<0?"-":"+",fabs(cal));
-			x = print_s(c,x,y,s);
-			cairo_set_font_size(c, OUTPUT_FONT*2/3);
-			x = print_s(c,x,y," s/d");
-		} else {
-			sprintf(s," %d",100*w->cdata->wp/w->cdata->size);
-			x = print_number(c,x,y,s);
-			x = print_s(c,x,y," %");
+		double cal = w->cdata->calibration;
+		switch(w->cdata->state) {
+			case 1:
+				sprintf(s," %s%.1f",cal<0?"-":"+",fabs(cal));
+				x = print_s(c,x,y,s);
+				cairo_set_font_size(c, OUTPUT_FONT*2/3);
+				x = print_s(c,x,y," s/d");
+				break;
+			case 0:
+				sprintf(s," %d",100*w->cdata->wp/w->cdata->size);
+				x = print_number(c,x,y,s);
+				x = print_s(c,x,y," %");
+				break;
 		}
 	} else {
 		char outputs[8][20];
@@ -945,11 +962,11 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(label);
 
 	// Calibration spin button
-	GtkWidget *cal_spin_button = gtk_spin_button_new_with_range(MIN_CAL, MAX_CAL, .1);
-	gtk_box_pack_start(GTK_BOX(hbox), cal_spin_button, FALSE, TRUE, 0);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(cal_spin_button), w->cal);
-	g_signal_connect(cal_spin_button, "value_changed", G_CALLBACK(handle_cal_change), w);
-	gtk_widget_show(cal_spin_button);
+	w->cal_spin_button = gtk_spin_button_new_with_range(MIN_CAL, MAX_CAL, .1);
+	gtk_box_pack_start(GTK_BOX(hbox), w->cal_spin_button, FALSE, TRUE, 0);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), w->cal);
+	g_signal_connect(w->cal_spin_button, "value_changed", G_CALLBACK(handle_cal_change), w);
+	gtk_widget_show(w->cal_spin_button);
 
 	// CALIBRATE button
 	GtkWidget *cal_button = gtk_toggle_button_new_with_label("Calibrate");
@@ -1078,6 +1095,7 @@ void *computing_thread(void *void_w)
 		if(calibrate && !w->calibrating) {
 			w->cdata->wp = 0;
 			w->cdata->state = 0;
+			w->cal_updated = 0;
 		}
 
 		int signal = calibrate ?
@@ -1101,6 +1119,12 @@ void *computing_thread(void *void_w)
 				pb_destroy_clone(w->old);
 				w->old = NULL;
 				w->is_old = signal < NSTEPS;
+			}
+			if(w->cdata->state == 1 && !w->cal_updated) {
+				w->cal_updated = 1;
+				w->cal = w->cdata->calibration;
+				gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), w->cal);
+				save_config(w);
 			}
 		} else {
 			struct processing_buffers *p = w->pdata->buffers;
@@ -1139,7 +1163,6 @@ int run_interface()
 	int nominal_sr;
 	double real_sr;
 
-	// Initialize audio
 	if(start_portaudio(&nominal_sr, &real_sr)) return 1;
 
 	struct processing_buffers p[NSTEPS];
@@ -1181,7 +1204,6 @@ int run_interface()
 		w.cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
 	update_sample_rate(&w);
 
-	// Set up GDK+ widgets
 	init_main_window(&w);
 
 	if(    pthread_mutex_init(&w.recompute_mutex, NULL)
@@ -1197,7 +1219,7 @@ int run_interface()
 		g_timeout_add_full(G_PRIORITY_LOW,3000,(GSourceFunc)quit,&w,NULL);
 #endif
 
-	gtk_main(); // Runs the main loop
+	gtk_main();
 	debug("Main loop has terminated\n");
 
 	save_config(&w);

@@ -420,7 +420,7 @@ void compute_waveform(struct processing_buffers *p, int wf_size)
 	for(i=0; i<wf_size; i++)
 		p->waveform[i] -= nl;
 
-	p->waveform_max = vmax(p->waveform, 0, wf_size, NULL);
+	p->waveform_max = vmax(p->waveform, 0, wf_size, &p->waveform_max_i);
 }
 
 void prepare_waveform(struct processing_buffers *p)
@@ -600,7 +600,7 @@ void compute_amplitude(struct processing_buffers *p)
 	}
 	double glob_max = vmax(smooth_wf, 0, ceil(p->period), NULL);
 	double threshold = fmax(.01 * glob_max, 1.4 * max);
-	debug("amp threshold from %s\n", .01 * glob_max > 1.2 * max ? "global maximum" : "noise level");
+	debug("amp threshold from %s\n", .01 * glob_max > 1.4 * max ? "global maximum" : "noise level");
 	for(k = 0; k < 2; k++) {
 		double max = 0;
 		j = floor(fmod((k ? p->tic : p->toc) - p->period/8, p->period));
@@ -639,15 +639,18 @@ void compute_cal(struct calibration_data *cd, int sample_rate)
 	}
 	x_av /= cd->size;
 	y_av /= cd->size;
-	double n = 0, d = 0;
+	double xx = 0, xy = 0, yy = 0;
 	for(i=0;i<cd->size;i++) {
 		double x = cd->times[i] - x_av;
-		n += x * (cd->phases[i] - y_av);
-		d += x * x;
+		double y = cd->phases[i] - y_av;
+		xx += x * x;
+		xy += x * y;
+		yy += y * y;
 	}
-	cd->calibration = n * 3600 * 24 / d;
-	cd->state = 1;
-	debug("Calibration result: %f s/d\n",cd->calibration);
+	cd->calibration = xy * 3600 * 24 / xx;
+	double delta = sqrt((xx * yy - xy * xy) / (cd->size - 2)) / xx;
+	debug("Calibration result: %f s/d +- %f\n",cd->calibration,delta*3600*24);
+	cd->state = delta * 3600 * 24 < 0.1 ? 1 : -1;
 }
 
 void process(struct processing_buffers *p, int bph)
@@ -688,8 +691,16 @@ int process_cal(struct processing_buffers *p, struct calibration_data *cd)
 	prepare_waveform_cal(p);
 	int i;
 	double phase = -1;
-	for(i = p->sample_rate/4; i < p->sample_rate/2; i++)
-		if(p->waveform[i] > p->waveform_max/3)
+	if(p->waveform_max_i < p->sample_rate*4/10 || p->waveform_max_i > p->sample_rate*6/10) {
+		debug("unable to lock on signal\n");
+		return 1;
+	}
+	double maxa = vmax(p->waveform,0,p->sample_rate/4,NULL);
+	double maxb = vmax(p->waveform,p->sample_rate*3/4,p->sample_rate,NULL);
+	double max = fmax(maxa,maxb);
+	double thd = max + (p->waveform_max - max) * 0.05;
+	for(i = p->sample_rate*4/10; i <= p->waveform_max_i; i++)
+		if(p->waveform[i] > thd)
 			phase = fmod((p->timestamp + p->phase + i) / p->sample_rate, 1.);
 	if(phase < 0) {
 		debug("unable to find rising edge\n");
