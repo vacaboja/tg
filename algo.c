@@ -623,6 +623,43 @@ void compute_amplitude(struct processing_buffers *p)
 	}
 }
 
+int add_sample_cal(struct processing_buffers *p, struct calibration_data *cd)
+{
+	int i;
+	double phase = -1;
+	if(p->waveform_max_i < p->sample_rate*4/10 || p->waveform_max_i > p->sample_rate*6/10) {
+		debug("unable to lock on signal\n");
+		return 1;
+	}
+	double maxa = vmax(p->waveform,0,p->sample_rate/4,NULL);
+	double maxb = vmax(p->waveform,p->sample_rate*3/4,p->sample_rate,NULL);
+	double max = fmax(maxa,maxb);
+	double thd = max + (p->waveform_max - max) * 0.05;
+	for(i = p->sample_rate/4; i <= p->waveform_max_i; i++) {
+		if(p->waveform[i] > thd) {
+			if(i > p->sample_rate*4/10)
+				phase = fmod((p->timestamp + p->phase + i) / p->sample_rate, 1.);
+			break;
+		}
+	}
+	if(phase < 0) {
+		debug("unable to find rising edge\n");
+		return 1;
+	}
+	debug("Phase = %f\n",phase);
+	if(cd->wp < cd->size) {
+		if(cd->wp == 0)
+			cd->start_time = p->timestamp;
+		double time = (double)(p->timestamp - cd->start_time) / p->sample_rate;
+		if(cd->wp == 0 || time > cd->times[cd->wp-1] + 0.9) {
+			cd->times[cd->wp] = time;
+			cd->phases[cd->wp] = phase;
+			cd->wp++;
+		}
+	}
+	return 0;
+}
+
 void compute_cal(struct calibration_data *cd, int sample_rate)
 {
 	int i;
@@ -689,34 +726,8 @@ int process_cal(struct processing_buffers *p, struct calibration_data *cd)
 		return 1;
 	}
 	prepare_waveform_cal(p);
-	int i;
-	double phase = -1;
-	if(p->waveform_max_i < p->sample_rate*4/10 || p->waveform_max_i > p->sample_rate*6/10) {
-		debug("unable to lock on signal\n");
+	if(add_sample_cal(p,cd))
 		return 1;
-	}
-	double maxa = vmax(p->waveform,0,p->sample_rate/4,NULL);
-	double maxb = vmax(p->waveform,p->sample_rate*3/4,p->sample_rate,NULL);
-	double max = fmax(maxa,maxb);
-	double thd = max + (p->waveform_max - max) * 0.05;
-	for(i = p->sample_rate*4/10; i <= p->waveform_max_i; i++)
-		if(p->waveform[i] > thd)
-			phase = fmod((p->timestamp + p->phase + i) / p->sample_rate, 1.);
-	if(phase < 0) {
-		debug("unable to find rising edge\n");
-		return 1;
-	}
-	debug("Phase = %f\n",phase);
-	if(cd->wp < cd->size) {
-		if(cd->wp == 0)
-			cd->start_time = p->timestamp;
-		double time = (double)(p->timestamp - cd->start_time) / p->sample_rate;
-		if(cd->wp == 0 || time > cd->times[cd->wp-1] + 1) {
-			cd->times[cd->wp] = time;
-			cd->phases[cd->wp] = phase;
-			cd->wp++;
-		}
-	}
 	if(cd->wp == cd->size && cd->state == 0)
 		compute_cal(cd, p->sample_rate);
 	return 0;

@@ -31,7 +31,7 @@
 
 #define FILTER_CUTOFF 3000
 
-#define CAL_DATA_SIZE 1000
+#define CAL_DATA_SIZE 900
 
 #ifdef LIGHT
 

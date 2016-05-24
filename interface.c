@@ -868,7 +868,7 @@ void handle_calibrate(GtkToggleButton *b, struct main_window *w)
 		pthread_mutex_unlock(&w->recompute_mutex);
 		g_source_remove(w->computer_kicker);
 		w->computer_kicker = g_timeout_add_full(G_PRIORITY_LOW,
-				w->calibrate?618:100,(GSourceFunc)kick_computer,w,NULL);
+				w->calibrate?1000:100,(GSourceFunc)kick_computer,w,NULL);
 	}
 }
 
