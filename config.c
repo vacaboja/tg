@@ -45,15 +45,11 @@ g_key_file_save_to_file (GKeyFile     *key_file,
 #define g_key_file_get_int g_key_file_get_integer
 #define g_key_file_set_int g_key_file_set_integer // the devil may take glib
 
-#define FIELDS(OP) \
-	OP(bph, bph, int) \
-	OP(lift_angle, la, double) \
-	OP(calibration, cal, double)
-
 void load_config(struct main_window *w)
 {
 	w->config_file = g_key_file_new();
 	w->config_file_name = g_build_filename(g_get_user_config_dir(), CONFIG_FILE_NAME, NULL);
+	w->conf_data = malloc(sizeof(struct conf_data));
 	debug("Config: loading configuration file %s\n", w->config_file_name);
 	gboolean ret = g_key_file_load_from_file(w->config_file, w->config_file_name, G_KEY_FILE_KEEP_COMMENTS, NULL);
 	if(!ret) {
@@ -68,11 +64,13 @@ void load_config(struct main_window *w)
 		if(e) { \
 			debug("Config: error loading field " #NAME "\n"); \
 			g_error_free(e); \
-		} else \
+		} else { \
 			w -> PLACE = val; \
+			w -> conf_data -> PLACE = val; \
+		} \
 	}
 
-	FIELDS(LOAD);
+	CONFIG_FIELDS(LOAD);
 }
 
 void save_config(struct main_window *w)
@@ -82,9 +80,10 @@ void save_config(struct main_window *w)
 	g_key_file_set_string(w->config_file, "tg", "version", VERSION);
 
 #define SAVE(NAME,PLACE,TYPE) \
-	g_key_file_set_ ## TYPE (w->config_file, "tg", #NAME, w -> PLACE);
+	g_key_file_set_ ## TYPE (w->config_file, "tg", #NAME, w -> PLACE); \
+	w -> conf_data -> PLACE = w -> PLACE;
 
-	FIELDS(SAVE);
+	CONFIG_FIELDS(SAVE);
 
 #ifdef DEBUG
 	GError *ge = NULL;
@@ -98,4 +97,15 @@ void save_config(struct main_window *w)
 #else
 	g_key_file_save_to_file(w->config_file, w->config_file_name, NULL);
 #endif
+}
+
+void save_on_change(struct main_window *w)
+{
+#define CHANGED(NAME,PLACE,TYPE) \
+	if(w -> PLACE != w -> conf_data -> PLACE) { \
+		save_config(w); \
+		return; \
+	}
+
+	CONFIG_FIELDS(CHANGED);
 }

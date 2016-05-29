@@ -554,7 +554,7 @@ void do_locate_events(int *events, struct processing_buffers *p, float *waveform
 void locate_events(struct processing_buffers *p)
 {
 	int count = 1 + ceil((p->timestamp - p->events_from) / p->period);
-	if(count <= 0 || 2*count > EVENTS_MAX) {
+	if(count <= 0 || 2*count >= EVENTS_MAX) {
 		p->events[0] = 0;
 		return;
 	}
@@ -623,6 +623,14 @@ void compute_amplitude(struct processing_buffers *p)
 	}
 }
 
+void setup_cal_data(struct calibration_data *cd)
+{
+	cd->size = CAL_DATA_SIZE;
+	cd->times = malloc(cd->size * sizeof(double));
+	cd->phases = malloc(cd->size * sizeof(double));
+	cd->events = malloc(cd->size * sizeof(uint64_t));
+}
+
 int add_sample_cal(struct processing_buffers *p, struct calibration_data *cd)
 {
 	int i;
@@ -654,6 +662,8 @@ int add_sample_cal(struct processing_buffers *p, struct calibration_data *cd)
 		if(cd->wp == 0 || time > cd->times[cd->wp-1] + 0.9) {
 			cd->times[cd->wp] = time;
 			cd->phases[cd->wp] = phase;
+			cd->events[cd->wp] = (p->timestamp - p->timestamp % p->sample_rate) +
+						(uint64_t)floor(phase * p->sample_rate);
 			cd->wp++;
 		}
 	}

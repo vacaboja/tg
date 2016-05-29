@@ -58,6 +58,7 @@
 #define EVENTS_COUNT 10000
 #define EVENTS_MAX 100
 #define PAPERSTRIP_ZOOM 10
+#define PAPERSTRIP_ZOOM_CAL 100
 #define PAPERSTRIP_MARGIN .2
 
 #define MIN_BPH 12000
@@ -105,12 +106,14 @@ struct calibration_data {
 	uint64_t start_time;
 	double *times;
 	double *phases;
+	uint64_t *events;
 };
 
 void setup_buffers(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
 void process(struct processing_buffers *p, int bph);
+void setup_cal_data(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
 
@@ -122,6 +125,7 @@ struct processing_data {
 
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int terminate_portaudio();
+uint64_t get_timestamp();
 int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 
@@ -146,7 +150,6 @@ struct main_window {
 
 	int calibrate;
 	int calibrating;
-	uint64_t cal_time;
 	int cal_updated;
 
 	struct processing_data *pdata;
@@ -171,6 +174,7 @@ struct main_window {
 
 	GKeyFile *config_file;
 	gchar *config_file_name;
+	struct conf_data *conf_data;
 };
 
 #ifdef DEBUG
@@ -181,5 +185,16 @@ void print_debug(char *format,...);
 void error(char *format,...);
 
 // config.c
+#define CONFIG_FIELDS(OP) \
+	OP(bph, bph, int) \
+	OP(lift_angle, la, double) \
+	OP(calibration, cal, double)
+
+struct conf_data {
+#define DEF(NAME,PLACE,TYPE) TYPE PLACE;
+	CONFIG_FIELDS(DEF)
+};
+
 void load_config(struct main_window *w);
 void save_config(struct main_window *w);
+void save_on_change(struct main_window *w);

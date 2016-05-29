@@ -19,9 +19,10 @@
 #include "tg.h"
 #include <portaudio.h>
 
-volatile float pa_buffers[2][PA_BUFF_SIZE];
-volatile int write_pointer = 0;
-volatile uint64_t timestamp = 0;
+float pa_buffers[2][PA_BUFF_SIZE];
+int write_pointer = 0;
+uint64_t timestamp = 0;
+pthread_mutex_t audio_mutex;
 
 int paudio_callback(const void *input_buffer,
 			void *output_buffer,
@@ -32,24 +33,33 @@ int paudio_callback(const void *input_buffer,
 {
 	unsigned long i;
 	long channels = (long)data;
+	int wp = write_pointer;
 	for(i=0; i < frame_count; i++) {
 		if(channels == 1) {
-			pa_buffers[0][write_pointer] = ((float *)input_buffer)[i];
-			pa_buffers[1][write_pointer] = ((float *)input_buffer)[i];
+			pa_buffers[0][wp] = ((float *)input_buffer)[i];
+			pa_buffers[1][wp] = ((float *)input_buffer)[i];
 		} else {
-			pa_buffers[0][write_pointer] = ((float *)input_buffer)[2*i];
-			pa_buffers[1][write_pointer] = ((float *)input_buffer)[2*i + 1];
+			pa_buffers[0][wp] = ((float *)input_buffer)[2*i];
+			pa_buffers[1][wp] = ((float *)input_buffer)[2*i + 1];
 		}
-		if(write_pointer < PA_BUFF_SIZE - 1) write_pointer++;
-		else write_pointer = 0;
-		timestamp++;
+		if(wp < PA_BUFF_SIZE - 1) wp++;
+		else wp = 0;
 	}
+	pthread_mutex_lock(&audio_mutex);
+	write_pointer = wp;
+	timestamp += frame_count;
+	pthread_mutex_unlock(&audio_mutex);
 	return 0;
 }
 
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 {
 	PaStream *stream;
+
+	if(pthread_mutex_init(&audio_mutex,NULL)) {
+		error("Failed to setup audio mutex");
+		return 1;
+	}
 
 	PaError err = Pa_Initialize();
 	if(err!=paNoError)
@@ -113,10 +123,24 @@ int terminate_portaudio()
 	return 0;
 }
 
+uint64_t get_timestamp()
+{
+	pthread_mutex_lock(&audio_mutex);
+#ifdef LIGHT
+	uint64_t ts = timestamp / 2;
+#else
+	uint64_t ts = timestamp;
+#endif
+	pthread_mutex_unlock(&audio_mutex);
+	return ts;
+}
+
 void fill_buffers(struct processing_buffers *p)
 {
+	pthread_mutex_lock(&audio_mutex);
 	uint64_t ts = timestamp;
 	int wp = write_pointer;
+	pthread_mutex_unlock(&audio_mutex);
 	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
 #ifdef LIGHT
 	if(wp % 2) wp--;
