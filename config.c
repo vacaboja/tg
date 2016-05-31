@@ -50,13 +50,17 @@ void load_config(struct main_window *w)
 	w->config_file = g_key_file_new();
 	w->config_file_name = g_build_filename(g_get_user_config_dir(), CONFIG_FILE_NAME, NULL);
 	w->conf_data = malloc(sizeof(struct conf_data));
+#define SETUP(NAME,PLACE,TYPE) \
+	w -> conf_data -> PLACE = w -> PLACE;
+
+	CONFIG_FIELDS(SETUP);
+
 	debug("Config: loading configuration file %s\n", w->config_file_name);
 	gboolean ret = g_key_file_load_from_file(w->config_file, w->config_file_name, G_KEY_FILE_KEEP_COMMENTS, NULL);
 	if(!ret) {
 		debug("Config: failed to load config file");
 		return;
 	}
-
 #define LOAD(NAME,PLACE,TYPE) \
 	{ \
 		GError *e = NULL; \

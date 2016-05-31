@@ -64,11 +64,11 @@
 #define MIN_BPH 12000
 #define MAX_BPH 72000
 #define DEFAULT_BPH 21600
-#define MIN_LA 10
-#define MAX_LA 90
-#define DEFAULT_LA 52
-#define MIN_CAL -99.9
-#define MAX_CAL 99.9
+#define MIN_LA 10 // deg
+#define MAX_LA 90 // deg
+#define DEFAULT_LA 52 // deg
+#define MIN_CAL -1000 // 0.1 s/d
+#define MAX_CAL 1000 // 0.1 s/d
 
 #define PRESET_BPH { 12000, 14400, 18000, 19800, 21600, 25200, 28800, 36000, 43200, 72000, 0 };
 
@@ -160,8 +160,8 @@ struct main_window {
 	int bph;
 	int guessed_bph;
 	int last_bph;
-	double la;
-	double cal;
+	double la; // deg
+	int cal; // 0.1 s/d
 	double sample_rate;
 	int nominal_sr;
 
@@ -188,7 +188,7 @@ void error(char *format,...);
 #define CONFIG_FIELDS(OP) \
 	OP(bph, bph, int) \
 	OP(lift_angle, la, double) \
-	OP(calibration, cal, double)
+	OP(calibration, cal, int)
 
 struct conf_data {
 #define DEF(NAME,PLACE,TYPE) TYPE PLACE;

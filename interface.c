@@ -634,7 +634,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 			debug("event at %llu\n",w->events[w->events_wp]);
 		}
 		w->events_from = time;
-		slope = w->cal * zoom_factor / (3600. * 24.);
+		slope = (double) w->cal * zoom_factor / (10 * 3600 * 24);
 	} else {
 		sweep = w->sample_rate * 3600. / w->guessed_bph;
 		zoom_factor = PAPERSTRIP_ZOOM;
@@ -675,7 +675,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_set_line_width(c,1.3);
 
 	slope *= strip_width;
-	if(slope <= 1 && slope >= -1) {
+	if(slope <= 2 && slope >= -2) {
 		for(i=0; i<4; i++) {
 			double y = 0;
 			cairo_move_to(c, (double)width * (i+.5) / 4, 0);
@@ -842,16 +842,41 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 
 void update_sample_rate(struct main_window *w)
 {
-	w->sample_rate = w->nominal_sr * (1 + w->cal / (3600*24));
+	w->sample_rate = w->nominal_sr * (1 + (double) w->cal / (10 * 3600 * 24));
 }
 
 void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 {
-	double cal = gtk_spin_button_get_value(b);
-	if(cal < MIN_CAL || cal > MAX_CAL) cal = 0;
-	w->cal = cal;
+	w->cal = gtk_spin_button_get_value(b);;
 	update_sample_rate(w);
 	redraw(w);
+}
+
+gboolean output_cal(GtkSpinButton *spin, gpointer data)
+{
+	GtkAdjustment *adj;
+	gchar *text;
+	int value;
+
+	adj = gtk_spin_button_get_adjustment (spin);
+	value = (int)gtk_adjustment_get_value (adj);
+	text = g_strdup_printf ("%c%d.%d", value < 0 ? '-' : '+', abs(value)/10, abs(value)%10);
+	gtk_entry_set_text (GTK_ENTRY (spin), text);
+	g_free (text);
+
+	return TRUE;
+}
+
+gboolean input_cal(GtkSpinButton *spin, double *val, gpointer data)
+{
+	double x = 0;
+	sscanf(gtk_entry_get_text (GTK_ENTRY (spin)), "%lf", &x);
+	int n = round(x*10);
+	if(n < MIN_CAL) n = MIN_CAL;
+	if(n > MAX_CAL) n = MAX_CAL;
+	*val = n;
+
+	return TRUE;
 }
 
 void handle_clear_trace(GtkButton *b, struct main_window *w)
@@ -980,10 +1005,14 @@ void init_main_window(struct main_window *w)
 	gtk_widget_show(label);
 
 	// Calibration spin button
-	w->cal_spin_button = gtk_spin_button_new_with_range(MIN_CAL, MAX_CAL, .1);
+	w->cal_spin_button = gtk_spin_button_new_with_range(MIN_CAL, MAX_CAL, 1);
 	gtk_box_pack_start(GTK_BOX(hbox), w->cal_spin_button, FALSE, TRUE, 0);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), w->cal);
+	gtk_spin_button_set_numeric(GTK_SPIN_BUTTON(w->cal_spin_button), FALSE);
+	gtk_entry_set_width_chars(GTK_ENTRY(w->cal_spin_button), 6);
 	g_signal_connect(w->cal_spin_button, "value_changed", G_CALLBACK(handle_cal_change), w);
+	g_signal_connect(w->cal_spin_button, "output", G_CALLBACK(output_cal), NULL);
+	g_signal_connect(w->cal_spin_button, "input", G_CALLBACK(input_cal), NULL);
 	gtk_widget_show(w->cal_spin_button);
 
 	// CALIBRATE button
@@ -1136,7 +1165,7 @@ void *computing_thread(void *void_w)
 			}
 			if(w->cdata->state == 1 && !w->cal_updated) {
 				w->cal_updated = 1;
-				w->cal = w->cdata->calibration;
+				w->cal = round(10 * w->cdata->calibration);
 				gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), w->cal);
 			}
 		} else {
