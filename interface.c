@@ -797,7 +797,7 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 
 	int old = 0;
 	struct processing_buffers *p = w->calibrating ?
-		&w->pdata->buffers[NSTEPS-1] : get_data(w,&old);
+		&w->pdata->buffers[0] : get_data(w,&old);
 
 	if(p) {
 		//double a = p->period / 10;

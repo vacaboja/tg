@@ -1,4 +1,4 @@
-VERSION = 0.3.0
+VERSION = 0.3.1
 
 CC ?= gcc
 
@@ -23,7 +23,7 @@ COMPILE = $(CC) $(CFLAGS) -DPROGRAM_NAME='"$(1)"' $(2) -o $(1)$(EXT) $(CFILES) $
 
 all: tg$(EXT) tg-lt$(EXT)
 
-debug: tg-dbg$(EXT)
+debug: tg-dbg$(EXT) tg-lt-dbg$(EXT)
 
 profile: tg-prf$(EXT) tg-lt-prf$(EXT)
 
@@ -39,6 +39,9 @@ tg-lt$(EXT): $(ALLFILES)
 tg-dbg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG)
 
+tg-lt-dbg$(EXT): $(ALLFILES)
+	$(call COMPILE,tg-lt-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG -DLIGHT)
+
 tg-prf$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-prf,-pg)
 
@@ -46,4 +49,4 @@ tg-lt-prf$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt-prf,-DLIGHT -pg)
 
 clean:
-	rm -f tg$(EXT) tg-lt$(EXT) tg-dbg$(EXT) tg-prf$(EXT) tg-lt-prf$(EXT) gmon.out perf.data*
+	rm -f tg$(EXT) tg-lt$(EXT) tg-dbg$(EXT) tg-lt-dbg$(EXT) tg-prf$(EXT) tg-lt-prf$(EXT) gmon.out perf.data*

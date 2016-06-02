@@ -220,6 +220,10 @@ void prepare_data(struct processing_buffers *b, int run_noise_suppressor)
 	for(i=0; i < b->sample_count+1; i++)
 			b->sc_fft[i] = b->fft[i] * conj(b->fft[i]);
 	fftwf_execute(b->plan_b);
+
+#ifdef DEBUG
+	memcpy(b->debug, b->samples_sc, b->sample_count * sizeof(float));
+#endif
 }
 
 int peak_detector(float *buff, int a, int b)
@@ -439,10 +443,6 @@ void prepare_waveform_cal(struct processing_buffers *p)
 {
 	compute_phase(p,p->sample_rate);
 	compute_waveform(p,p->sample_rate);
-
-#ifdef DEBUG
-	memcpy(p->debug, p->waveform, p->sample_rate * sizeof(float));
-#endif
 }
 
 void smooth(float *in, float *out, int window, int size)

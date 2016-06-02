@@ -34,20 +34,14 @@
 #define CAL_DATA_SIZE 900
 
 #ifdef LIGHT
-
-#define NSTEPS 4
 #define FIRST_STEP 0
-#define PA_SAMPLE_RATE 44100
-#define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP + 1))
-
 #else
+#define FIRST_STEP 1
+#endif
 
 #define NSTEPS 4
-#define FIRST_STEP 1
 #define PA_SAMPLE_RATE 44100
 #define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
-
-#endif
 
 #define OUTPUT_FONT 40
 #define OUTPUT_WINDOW_HEIGHT 70

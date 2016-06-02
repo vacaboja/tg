@@ -195,11 +195,12 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 	struct processing_buffers *p = pd->buffers;
 	fill_buffers(p);
 
-	int i;
+	int i,j;
 	debug("\nSTART OF CALIBRATION CYCLE\n\n");
-	for(i=0; i<NSTEPS-1; i++)
-		if(test_cal(&p[i]))
-			return i;
+	for(j=0; p[j].sample_count < 2*p[j].sample_rate; j++);
+	for(i=0; i+j<NSTEPS-1; i++)
+		if(test_cal(&p[i+j]))
+			return i ? i+j : 0;
 	if(process_cal(&p[NSTEPS-1], cd))
 		return NSTEPS-1;
 	return NSTEPS;
