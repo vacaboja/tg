@@ -1,4 +1,4 @@
-VERSION = 0.3.0-test
+VERSION = 0.3.0
 
 CC ?= gcc
 
