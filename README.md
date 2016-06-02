@@ -4,6 +4,10 @@ The program tg is copyright (C) 2015 by Marcello Mamino, and it is
 distributed under the GNU GPL license version 2. The full source code of
 tg is available at https://github.com/vacaboja/tg
 
+Tg is in development, and there is still no manual. Some info can be found
+in this
+[thread at WUS](http://forums.watchuseek.com/f6/open-source-timing-software-2542874.html).
+
 ## Install instructions
 
 The source code can probably be built by any C99 compiler, but only gcc
