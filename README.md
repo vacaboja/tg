@@ -16,7 +16,7 @@ systems. See the sub-sections below for the details.
 
 ### Windows
 
-Binaries can be found at http://ciovil.li/tg.zip
+Binaries can be found at https://ciovil.li/tg.zip
 
 ### Macintosh
 
