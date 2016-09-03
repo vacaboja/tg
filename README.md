@@ -10,11 +10,9 @@ in this
 
 ## Install instructions
 
-The source code can probably be built by any C99 compiler, but only gcc
-and clang have been tested. You need the following libraries: gtk2,
-portaudio2, fftw3. There are Windows binaries, an install script for OS X,
-and more detailed instructions for Debian-based Linux distributions (e.g.
-Ubuntu).
+Tg is known to work under Microsoft Windows, OS X, and Linux. Moreover it
+should be possible to compile the source code under most modern UNIX-like
+systems. See the sub-sections below for the details.
 
 ### Windows
 
@@ -43,3 +41,9 @@ this must be done. Then, finally, run
 
 The package libjack-jackd2-dev is not necessary, it only works around a
 known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).
+
+### Compiling from sources
+
+The source code of tg can probably be built by any C99 compiler, however
+only gcc and clang have been tested. You need the following libraries:
+gtk2, portaudio2, fftw3 (all available as open-source).
