@@ -6,7 +6,9 @@ tg is available at https://github.com/vacaboja/tg
 
 Tg is in development, and there is still no manual. Some info can be found
 in this
-[thread at WUS](http://forums.watchuseek.com/f6/open-source-timing-software-2542874.html).
+[thread at WUS](http://forums.watchuseek.com/f6/open-source-timing-software-2542874.html),
+in particular the calibration procedure is described at
+[this post](http://forums.watchuseek.com/f6/open-source-timing-software-2542874-post29970370.html).
 
 ## Install instructions
 
