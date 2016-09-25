@@ -80,7 +80,7 @@ struct processing_buffers {
 	fftwf_complex *fft, *sc_fft, *tic_fft, *slice_fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d, plan_e, plan_f, plan_g;
 	struct filter *hpf, *lpf;
-	double period,sigma,be,waveform_max,phase,tic_pulse,toc_pulse;
+	double period,sigma,be,waveform_max,phase,tic_pulse,toc_pulse,amp;
 	double cal_phase;
 	int waveform_max_i;
 	int tic,toc;
@@ -106,7 +106,7 @@ struct calibration_data {
 void setup_buffers(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
-void process(struct processing_buffers *p, int bph);
+void process(struct processing_buffers *p, int bph, double la);
 void setup_cal_data(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
@@ -120,7 +120,7 @@ struct processing_data {
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int terminate_portaudio();
 uint64_t get_timestamp();
-int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from);
+int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 
 /* interface.c */

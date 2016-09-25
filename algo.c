@@ -123,6 +123,7 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->waveform_max = p->waveform_max;
 	new->tic_pulse = p->tic_pulse;
 	new->toc_pulse = p->toc_pulse;
+	new->amp = p->amp;
 	new->tic = p->tic;
 	new->toc = p->toc;
 	new->ready = p->ready;
@@ -561,10 +562,10 @@ void locate_events(struct processing_buffers *p)
 
 	int events[2*count];
 	int half = p->tic < p->period/2 ? 0 : round(p->period / 2);
-	int offset = p->tic - half;
+	int offset = p->tic - half - (p->tic_pulse - p->toc_pulse) / 2;
 	do_locate_events(events, p, p->waveform + half, (int)(p->last_tic + p->sample_count - p->timestamp), offset, count);
 	half = p->toc < p->period/2 ? 0 : round(p->period / 2);
-	offset = p->toc - half;
+	offset = p->toc - half - (p->toc_pulse - p->tic_pulse) / 2;
 	do_locate_events(events+count, p, p->waveform + half, (int)(p->last_toc + p->sample_count - p->timestamp), offset, count);
 	qsort(events, 2*count, sizeof(int), int_cmp);
 
@@ -579,7 +580,7 @@ void locate_events(struct processing_buffers *p)
 	p->events[j] = 0;
 }
 
-void compute_amplitude(struct processing_buffers *p)
+void compute_amplitude(struct processing_buffers *p, double la)
 {
 	int i,j,k;
 
@@ -601,26 +602,49 @@ void compute_amplitude(struct processing_buffers *p)
 	double glob_max = vmax(smooth_wf, 0, ceil(p->period), NULL);
 	double threshold = fmax(.01 * glob_max, 1.4 * max);
 	debug("amp threshold from %s\n", .01 * glob_max > 1.4 * max ? "global maximum" : "noise level");
-	for(k = 0; k < 2; k++) {
-		double max = 0;
-		j = floor(fmod((k ? p->tic : p->toc) - p->period/8, p->period));
-		for(i = 0; i < p->period/8; i++) {
-			if(smooth_wf[j] > threshold) break;
-			if(++j > p->period) j = 0;
+
+	p->amp = -1;
+	p->tic_pulse = p->toc_pulse = -1;
+	while(threshold < .2 * glob_max) {
+		debug("amp threshold = %f%% glob max\n", threshold * 100 / glob_max);
+		double tic_pulse = -1;
+		double toc_pulse = -1;
+		for(k = 0; k < 2; k++) {
+			double max = 0;
+			j = floor(fmod((k ? p->tic : p->toc) + 7*p->period/8, p->period));
+			for(i = 0; i < p->period/8; i++) {
+				if(smooth_wf[j] > threshold) break;
+				if(++j > p->period) j = 0;
+			}
+			for(; i < p->period/8; i++) {
+				double x = smooth_wf[j];
+				if(x > max) max = x;
+				else break;
+				if(++j > p->period) j = 0;
+			}
+			if(i < p->period/8) {
+				double pulse = p->period/8 - i - 1;
+				if(k) tic_pulse = pulse;
+				else toc_pulse = pulse;
+				debug("amp %s pulse = %f\n", k ? "tic" : "toc", 1000 * pulse / p->sample_rate);
+			} else
+				goto next_threshold;
 		}
-		for(; i < p->period/8; i++) {
-			double x = smooth_wf[j];
-			if(x > max) max = x;
-			else break;
-			if(++j > p->period) j = 0;
-		}
-		double pulse = i < p->period/8 ? p->period/8 - i - 1: -1;
-		if(k)
-			p->tic_pulse = pulse;
-		else
-			p->toc_pulse = pulse;
-		debug("amp %s pulse = %f\n", k ? "tic" : "toc", 1000 * pulse / p->sample_rate);
+		double tic_amp = la * .5 / sin(M_PI * tic_pulse / p->period);
+		double toc_amp = la * .5 / sin(M_PI * toc_pulse / p->period);
+		if(135 < tic_amp && tic_amp < 360 && 135 < toc_amp && toc_amp < 360 && fabs(tic_amp - toc_amp) < 60) {
+			p->amp = (tic_amp + toc_amp) / 2;
+			p->tic_pulse = tic_pulse;
+			p->toc_pulse = toc_pulse;
+			p->be = p->period/2 - fabs(p->toc - p->tic + p->tic_pulse - p->toc_pulse);
+			debug("amp: be = %.1f\n",fabs(p->be)*1000/p->sample_rate);
+			debug("amp = %f\n", p->amp);
+			break;
+		} else
+			debug("amp rejected\n");
+next_threshold:	threshold *= 1.4;
 	}
+	if(p->amp < 0) debug("amp failed\n");
 }
 
 void setup_cal_data(struct calibration_data *cd)
@@ -700,7 +724,7 @@ void compute_cal(struct calibration_data *cd, int sample_rate)
 	cd->state = delta * 3600 * 24 < 0.1 ? 1 : -1;
 }
 
-void process(struct processing_buffers *p, int bph)
+void process(struct processing_buffers *p, int bph, double la)
 {
 	prepare_data(p,1);
 	p->ready = !compute_period(p,bph);
@@ -718,8 +742,8 @@ void process(struct processing_buffers *p, int bph)
 		debug("abort after compute_parameters()\n");
 		return;
 	}
+	compute_amplitude(p, la);
 	locate_events(p);
-	compute_amplitude(p);
 }
 
 int test_cal(struct processing_buffers *p)

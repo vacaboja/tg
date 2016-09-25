@@ -168,7 +168,7 @@ void fill_buffers(struct processing_buffers *p)
 	}
 }
 
-int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
+int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from)
 {
 	struct processing_buffers *p = pd->buffers;
 	fill_buffers(p);
@@ -178,7 +178,7 @@ int analyze_pa_data(struct processing_data *pd, int bph, uint64_t events_from)
 	for(i=0; i<NSTEPS; i++) {
 		p[i].last_tic = pd->last_tic;
 		p[i].events_from = events_from;
-		process(&p[i],bph);
+		process(&p[i], bph, la);
 		if( !p[i].ready ) break;
 		debug("step %d : %f +- %f\n",i,p[i].period/p[i].sample_rate,p[i].sigma/p[i].sample_rate);
 	}
