@@ -223,18 +223,6 @@ double get_rate(int bph, double sample_rate, struct processing_buffers *p)
 	return (7200/(bph*p->period / sample_rate) - 1)*24*3600;
 }
 
-double get_amplitude(double la, struct processing_buffers *p)
-{
-	double ret = -1;
-	if(p->tic_pulse > 0 && p->toc_pulse > 0) {
-		double tic_amp = la * .5 / sin(M_PI * p->tic_pulse / p->period);
-		double toc_amp = la * .5 / sin(M_PI * p->toc_pulse / p->period);
-		if(la < tic_amp && tic_amp < 360 && la < toc_amp && toc_amp < 360 && fabs(tic_amp - toc_amp) < 60)
-			ret = (tic_amp + toc_amp) / 2;
-	}
-	return ret;
-}
-
 cairo_t *cairo_init(GtkWidget *widget)
 {
 	cairo_t *c = gdk_cairo_create(gtk_widget_get_window(widget));
@@ -340,13 +328,12 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 			int bph = w->guessed_bph;
 			int rate = round(get_rate(bph, w->sample_rate, p));
 			double be = fabs(p->be) * 1000 / p->sample_rate;
-			double amp = get_amplitude(w->la, p);
 			char rates[20];
 			sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
 			sprintf(outputs[0],"%4s",rates);
 			sprintf(outputs[2]," %4.1f",be);
-			if(amp > 0)
-				sprintf(outputs[4]," %3.0f",amp);
+			if(p->amp > 0)
+				sprintf(outputs[4]," %3.0f",p->amp);
 			else
 				strcpy(outputs[4]," ---");
 		} else {
@@ -1136,6 +1123,7 @@ void *computing_thread(void *void_w)
 		gdk_threads_enter();
 		int calibrate = w->calibrate;
 		int bph = w->bph;
+		double la = w->la;
 		uint64_t events_from = w->events_from;
 		gdk_threads_leave();
 
@@ -1147,7 +1135,7 @@ void *computing_thread(void *void_w)
 
 		int signal = calibrate ?
 			analyze_pa_data_cal(w->pdata, w->cdata) :
-			analyze_pa_data(w->pdata, bph, events_from);
+			analyze_pa_data(w->pdata, bph, la, events_from);
 
 		gdk_threads_enter();
 
