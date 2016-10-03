@@ -1,52 +1,60 @@
-VERSION = 0.3.2
+VERSION := 0.3.2
 
 CC ?= gcc
 
-PACKAGES = gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
-CFLAGS = -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
-LDFLAGS = -lm -lpthread `pkg-config --libs $(PACKAGES)`
+PACKAGES := gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
+CFLAGS := -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
+LDFLAGS := -lm -lpthread `pkg-config --libs $(PACKAGES)`
 
-CFILES = interface.c algo.c audio.c config.c
-HFILES = tg.h
-ALLFILES = $(CFILES) $(HFILES) Makefile
+CFILES := $(wildcard src/*.c)
+HFILES := $(wildcard src/*.h)
+
+BUILDDIR = build/
 
 ifeq ($(OS),Windows_NT)
 	CFLAGS += -mwindows
-	DEBUG_FLAGS = -mconsole
-	EXT = .exe
+	DEBUG_FLAGS := -mconsole
+	EXT := .exe
+	RESFILE := $(BUILDDIR)tg-timer.res
 else
-	DEBUG_FLAGS =
-	EXT =
+	DEBUG_FLAGS :=
+	EXT :=
+	RESFILE :=
 endif
 
-COMPILE = $(CC) $(CFLAGS) -DPROGRAM_NAME='"$(1)"' $(2) -o $(1)$(EXT) $(CFILES) $(LDFLAGS)
+ALLFILES := $(CFILES) $(HFILES) $(RESFILE) Makefile
 
-all: tg$(EXT) tg-lt$(EXT)
+COMPILE = $(CC) $(CFLAGS) -DPROGRAM_NAME='"$(1)"' $(2) -o $(BUILDDIR)$(1)$(EXT) $(CFILES) $(RESFILE) $(LDFLAGS)
 
-debug: tg-dbg$(EXT) tg-lt-dbg$(EXT)
+all: $(BUILDDIR)tg$(EXT) $(BUILDDIR)tg-lt$(EXT)
 
-profile: tg-prf$(EXT) tg-lt-prf$(EXT)
+debug: $(BUILDDIR)tg-dbg$(EXT) $(BUILDDIR)tg-lt-dbg$(EXT)
 
-test: tg-dbg$(EXT)
-	./tg-dbg test
+profile: $(BUILDDIR)tg-prf$(EXT) $(BUILDDIR)tg-lt-prf$(EXT)
 
-tg$(EXT): $(ALLFILES)
+test: $(BUILDDIR)tg-dbg$(EXT)
+	$(BUILDDIR)tg-dbg test
+
+$(BUILDDIR)tg-timer.res: tg-timer.rc icons/tg-timer.ico
+	windres tg-timer.rc -O coff -o $(BUILDDIR)tg-timer.res
+
+$(BUILDDIR)tg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg,)
 
-tg-lt$(EXT): $(ALLFILES)
+$(BUILDDIR)tg-lt$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt,-DLIGHT)
 
-tg-dbg$(EXT): $(ALLFILES)
+$(BUILDDIR)tg-dbg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG)
 
-tg-lt-dbg$(EXT): $(ALLFILES)
+$(BUILDDIR)tg-lt-dbg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG -DLIGHT)
 
-tg-prf$(EXT): $(ALLFILES)
+$(BUILDDIR)tg-prf$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-prf,-pg)
 
-tg-lt-prf$(EXT): $(ALLFILES)
+$(BUILDDIR)tg-lt-prf$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt-prf,-DLIGHT -pg)
 
 clean:
-	rm -f tg$(EXT) tg-lt$(EXT) tg-dbg$(EXT) tg-lt-dbg$(EXT) tg-prf$(EXT) tg-lt-prf$(EXT) gmon.out perf.data*
+	rm -f $(BUILDDIR)*
