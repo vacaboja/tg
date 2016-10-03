@@ -1,4 +1,4 @@
-VERSION := 0.3.2
+VERSION := $(shell cat version)
 
 CC ?= gcc
 BUILDDIR ?= build
