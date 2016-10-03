@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Tg-lt
+Comment=Software-based timegrapher (light)
+Exec=tg-timer-lt
+Icon=tg-timer
+Terminal=false
+Categories=Utility;
