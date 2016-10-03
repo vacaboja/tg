@@ -6,7 +6,7 @@ PREFIX ?= /usr/local
 
 PACKAGES := gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
 CFLAGS := -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
-LDFLAGS := -lm -lpthread `pkg-config --libs $(PACKAGES)`
+LDFLAGS += -lm -lpthread `pkg-config --libs $(PACKAGES)`
 
 CFILES := $(wildcard src/*.c)
 HFILES := $(wildcard src/*.h)
@@ -74,5 +74,5 @@ install: all $(ICONSIZES)
 .PHONY: install
 
 clean:
-	rm -f $(BUILDDIR)/*
+	rm -rf $(BUILDDIR)/*
 .PHONY: clean

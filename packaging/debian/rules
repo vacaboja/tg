@@ -1,3 +1,9 @@
 #!/usr/bin/make -f
+
+override_dh_auto_test:
+
+override_dh_auto_install:
+	PREFIX=$$(pwd)/debian/tg-timer/usr $(MAKE) install
+
 %:
 	dh $@

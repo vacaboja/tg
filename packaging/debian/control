@@ -3,10 +3,13 @@ Maintainer: Marcello Mamino <vacaboja@gmail.com>
 Section: misc
 Priority: optional
 Standards-Version: 3.9.2
-Build-Depends: debhelper (>= 9), libgtk2.0-dev (>= 2.24), libjack-jackd2-dev (>= 1.9), portaudio19-dev (>=19), libfftw3-dev (>=3.3)
+Build-Depends: debhelper (>= 9), libgtk2.0-dev (>= 2.24), portaudio19-dev (>=19), libfftw3-dev (>=3.3)
 
 Package: tg-timer
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Program for timing mechanincal watches
- Tg (tg-timer) is a program to evaluate the performance of mechanical watch movements. Tg works with the noise produced by a watch mechanism, and it produces real-time readings of the rate (or accuracy) and various other operational parameters.
+ Tg (tg-timer) is a program to evaluate the performance of mechanical watch
+ movements. Tg works with the noise produced by a watch mechanism, and it
+ produces real-time readings of the rate (or accuracy) and various other
+ operational parameters.

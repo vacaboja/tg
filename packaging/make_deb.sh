@@ -7,11 +7,11 @@ cd $DIR/..
 
 VERSION=`cat version`
 
-git archive HEAD --prefix=tg-$VERSION/ | gzip -c > build/tg_$VERSION.orig.tar.gz
+git archive HEAD --prefix=tg-timer-$VERSION/ | gzip -c > build/tg-timer_$VERSION.orig.tar.gz
 
 cd build
 
-tar xzf tg_$VERSION.orig.tar.gz
-cp -r $ABSDIR/debian tg-$VERSION
-cd tg-$VERSION
+tar xzf tg-timer_$VERSION.orig.tar.gz
+cp -r $ABSDIR/debian tg-timer-$VERSION
+cd tg-timer-$VERSION
 debuild -us -uc
