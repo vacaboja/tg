@@ -71,6 +71,8 @@ install: all $(ICONSIZES)
 	install -D -m 0755 -s $(BUILDDIR)/tg-lt$(EXT) $(PREFIX)/bin/tg-timer-lt$(EXT)
 	install -D -m 0644 packaging/tg-timer.desktop $(PREFIX)/share/applications/tg-timer.desktop
 	install -D -m 0644 packaging/tg-timer-lt.desktop $(PREFIX)/share/applications/tg-timer-lt.desktop
+	install -D -m 0644 docs/tg-timer.1.gz $(PREFIX)/share/man/man1/tg-timer.1.gz
+	ln -s tg-timer.1.gz $(PREFIX)/share/man/man1/tg-timer-lt.1.gz
 .PHONY: install
 
 clean:
