@@ -1,0 +1,75 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+  <Product Name='Tg' Id='c115a469-9f0f-480f-9a94-3b7c0fd0e6fc' UpgradeCode='088fdac7-fc91-4881-a2db-eed04425a207'
+    Language='1033' Codepage='1252' Version='0.3.2' Manufacturer='Marcello Mamino'>
+
+    <Package Id='*' Keywords='Installer'
+      Description="Tg 0.3.2-test Installer"
+      Manufacturer='Marcello Mamino'
+      InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <Media Id='1' Cabinet='Sample.cab' EmbedCab='yes' />
+
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+      <Directory Id='ProgramFilesFolder' Name='PFiles'>
+        <Directory Id='INSTALLDIR' Name='tg-timer'>
+
+          <Component Id='MainExecutable' Guid='6e833bf7-47dc-4cb9-8ec7-b7124d7f5ccb'>
+            <File Id='TgEXE' Name='tg.exe' DiskId='1' Source='tg.exe' KeyPath='yes'>
+              <Shortcut Id="startmenuTg" Directory="ProgramMenuDir" Name="Tg 0.3.2-test" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+              <Shortcut Id="desktopTg" Directory="DesktopFolder" Name="Tg 0.3.2-test" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+            </File>
+          </Component>
+
+          <Component Id='LightExecutable' Guid='baae7b52-bba5-4cf2-b42d-688f03452880'>
+            <File Id='TgLtEXE' Name='tg-lt.exe' DiskId='1' Source='tg-lt.exe' KeyPath='yes'>
+              <Shortcut Id="startmenuTgLt" Directory="ProgramMenuDir" Name="Tg lt 0.3.2-test" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+              <Shortcut Id="desktopTgLt" Directory="DesktopFolder" Name="Tg lt 0.3.2-test" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+            </File>
+          </Component>
+
+          <Component Id='License' Guid='85681ece-739d-49f1-963b-4cb751f5fc80'>
+            <File Id='License' Name='LICENSE' DiskId='1' Source='LICENSE' KeyPath='yes' />
+          </Component>
+
+          <Component Id='Readme' Guid='e1e20877-24a7-4754-865b-334a722b7291'>
+            <File Id='Readme' Name='README.md' DiskId='1' Source='README.md' KeyPath='yes' />
+          </Component>
+
+        </Directory>
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder" Name="Programs">
+        <Directory Id="ProgramMenuDir" Name="Tg 0.3.2-test">
+          <Component Id="ProgramMenuDir" Guid="57beb28d-a284-41ee-a93e-f829dbad4853">
+            <RemoveFolder Id='ProgramMenuDir' On='uninstall' />
+            <RegistryValue Root='HKCU' Key='Software\[Manufacturer]\[ProductName]' Type='string' Value='' KeyPath='yes' />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <Feature Id='Complete' Level='1' ConfigurableDirectory='INSTALLDIR'>
+      <ComponentRef Id='MainExecutable' />
+      <ComponentRef Id='LightExecutable' />
+      <ComponentRef Id='License' />
+      <ComponentRef Id='Readme' />
+      <ComponentGroupRef Id='Dlls' />
+      <ComponentRef Id='ProgramMenuDir' />
+    </Feature>
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
+
+    <UIRef Id="WixUI_InstallDir" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+
+    <Icon Id="tg.exe" SourceFile="tg.exe" />
+
+  </Product>
+</Wix>
