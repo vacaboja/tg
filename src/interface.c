@@ -1165,7 +1165,7 @@ void *computing_thread(void *void_w)
 				if(w->old) pb_destroy_clone(w->old);
 				w->old = pb_clone(&p[i]);
 				w->is_old = 0;
-				w->signal = signal;
+				w->signal = i == NSTEPS-1 && p[i].amp < 0 ? signal-1 : signal;
 			} else {
 				w->is_old = 1;
 				w->signal = -signal;

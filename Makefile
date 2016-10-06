@@ -44,9 +44,11 @@ $(BUILDDIR)/tg-timer.res: icons/tg-timer.rc icons/tg-timer.ico
 
 $(BUILDDIR)/tg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg,)
+	strip $(BUILDDIR)/tg$(EXT)
 
 $(BUILDDIR)/tg-lt$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-lt,-DLIGHT)
+	strip $(BUILDDIR)/tg-lt$(EXT)
 
 $(BUILDDIR)/tg-dbg$(EXT): $(ALLFILES)
 	$(call COMPILE,tg-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG)
