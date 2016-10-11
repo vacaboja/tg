@@ -11,26 +11,22 @@ ABSDIR=`cd "$DIR"; pwd`
 
 DLLS=`cd "$1"; pwd`
 
-TARGET="$ABSDIR/../build/msi"
-
 cd "$ABSDIR"/..
 
 VERSION=`cat version`
+NAME="tg-timer_$VERSION"
+TARGET="$ABSDIR/../build/$NAME"
 
 make
 
 rm -rf "$TARGET"
 mkdir -p "$TARGET"
-cp "$ABSDIR/tg-timer.wxs" "$TARGET"
-cp "$ABSDIR/LICENSE.rtf" "$TARGET"
 cp "$ABSDIR/../README.md" "$TARGET"
 cp "$ABSDIR/../LICENSE" "$TARGET"
 cp "$ABSDIR/../build/tg.exe" "$TARGET"
 cp "$ABSDIR/../build/tg-lt.exe" "$TARGET"
 cp "$DLLS"/* "$TARGET"
-heat dir "$DLLS" -srd -gg -sreg -dr INSTALLDIR -cg Dlls -out "$TARGET/Dlls.wxs"
 
-cd "$TARGET"
-
-candle tg-timer.wxs Dlls.wxs
-light -out tg-timer_${VERSION}.msi -ext WixUIExtension tg-timer.wixobj Dlls.wixobj
+cd build
+rm -f "${NAME}.zip"
+7z a -tzip "${NAME}.zip" "${NAME}"/*
