@@ -33,4 +33,4 @@ heat dir "$DLLS" -srd -gg -sreg -dr INSTALLDIR -cg Dlls -out "$TARGET/Dlls.wxs"
 cd "$TARGET"
 
 candle tg-timer.wxs Dlls.wxs
-light -out tg-timer-${VERSION}.msi -ext WixUIExtension tg-timer.wixobj Dlls.wixobj
+light -out tg-timer_${VERSION}.msi -ext WixUIExtension tg-timer.wixobj Dlls.wixobj
