@@ -5,8 +5,8 @@ BUILDDIR ?= build
 PREFIX ?= /usr/local
 
 PACKAGES := gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
-CFLAGS := -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
-LDFLAGS += -lm -lpthread `pkg-config --libs $(PACKAGES)`
+CFLAGS += -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
+LDFLAGS += -Wl,--as-needed -lm -lpthread `pkg-config --libs $(PACKAGES)`
 
 CFILES := $(wildcard src/*.c)
 HFILES := $(wildcard src/*.h)
