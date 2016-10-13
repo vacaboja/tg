@@ -4,12 +4,17 @@ CC ?= gcc
 BUILDDIR ?= build
 PREFIX ?= /usr/local
 
+ifneq ($(shell uname -s),Darwin)
+	LDFLAGS += -Wl,--as-needed
+endif
+
 PACKAGES := gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
 CFLAGS += -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
-LDFLAGS += -Wl,--as-needed -lm -lpthread `pkg-config --libs $(PACKAGES)`
+LDFLAGS += -lm -lpthread `pkg-config --libs $(PACKAGES)`
 
-CFILES := $(wildcard src/*.c)
-HFILES := $(wildcard src/*.h)
+SRCDIR := src
+CFILES := $(wildcard $(SRCDIR)/*.c)
+HFILES := $(wildcard $(SRCDIR)/*.h)
 
 ifeq ($(OS),Windows_NT)
 	CFLAGS += -mwindows
@@ -21,10 +26,6 @@ else
 	EXT :=
 	RESFILE :=
 endif
-
-ALLFILES := $(CFILES) $(HFILES) $(RESFILE) Makefile
-
-COMPILE = $(CC) $(CFLAGS) -DPROGRAM_NAME='"$(1)"' $(2) -o $(BUILDDIR)/$(1)$(EXT) $(CFILES) $(RESFILE) $(LDFLAGS)
 
 all: $(BUILDDIR)/tg$(EXT) $(BUILDDIR)/tg-lt$(EXT)
 .PHONY: all
@@ -42,25 +43,23 @@ test: $(BUILDDIR)/tg-dbg$(EXT)
 $(BUILDDIR)/tg-timer.res: icons/tg-timer.rc icons/tg-timer.ico
 	windres icons/tg-timer.rc -O coff -o $(BUILDDIR)/tg-timer.res
 
-$(BUILDDIR)/tg$(EXT): $(ALLFILES)
-	$(call COMPILE,tg,)
-	strip $(BUILDDIR)/tg$(EXT)
+define TARGET
+$(BUILDDIR)/$(1)_%.o: $(SRCDIR)/%.c $(HFILES)
+	$(CC) -c $(CFLAGS) -DPROGRAM_NAME='"$(1)"' $(2) $$< -o $$@
 
-$(BUILDDIR)/tg-lt$(EXT): $(ALLFILES)
-	$(call COMPILE,tg-lt,-DLIGHT)
-	strip $(BUILDDIR)/tg-lt$(EXT)
+$(BUILDDIR)/$(1)$(EXT): $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/$(1)_%.o,$(CFILES)) $(RESFILE)
+	$(CC) -o $(BUILDDIR)/$(1)$(EXT) $$^ $(LDFLAGS)
+ifeq ($(3),strip)
+	strip $(BUILDDIR)/$(1)$(EXT)
+endif
+endef
 
-$(BUILDDIR)/tg-dbg$(EXT): $(ALLFILES)
-	$(call COMPILE,tg-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG)
-
-$(BUILDDIR)/tg-lt-dbg$(EXT): $(ALLFILES)
-	$(call COMPILE,tg-lt-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG -DLIGHT)
-
-$(BUILDDIR)/tg-prf$(EXT): $(ALLFILES)
-	$(call COMPILE,tg-prf,-pg)
-
-$(BUILDDIR)/tg-lt-prf$(EXT): $(ALLFILES)
-	$(call COMPILE,tg-lt-prf,-DLIGHT -pg)
+$(eval $(call TARGET,tg,,strip))
+$(eval $(call TARGET,tg-lt,-DLIGHT,strip))
+$(eval $(call TARGET,tg-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG,))
+$(eval $(call TARGET,tg-lt-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG -DLIGHT,))
+$(eval $(call TARGET,tg-prf,-pg,))
+$(eval $(call TARGET,tg-lt-prf,-DLIGHT -pg,))
 
 ICONSIZES := $(foreach SIZE, $(shell cat icons/sizes), $(SIZE)x$(SIZE))
 
@@ -69,8 +68,8 @@ $(ICONSIZES): %: icons/%/tg-timer.png
 .PHONY: $(ICONSIZES)
 
 install: all $(ICONSIZES)
-	install -D -m 0755 -s $(BUILDDIR)/tg$(EXT) $(PREFIX)/bin/tg-timer$(EXT)
-	install -D -m 0755 -s $(BUILDDIR)/tg-lt$(EXT) $(PREFIX)/bin/tg-timer-lt$(EXT)
+	install -D -m 0755 $(BUILDDIR)/tg$(EXT) $(PREFIX)/bin/tg-timer$(EXT)
+	install -D -m 0755 $(BUILDDIR)/tg-lt$(EXT) $(PREFIX)/bin/tg-timer-lt$(EXT)
 	install -D -m 0644 icons/tg-timer.desktop $(PREFIX)/share/applications/tg-timer.desktop
 	install -D -m 0644 icons/tg-timer-lt.desktop $(PREFIX)/share/applications/tg-timer-lt.desktop
 	install -D -m 0644 docs/tg-timer.1.gz $(PREFIX)/share/man/man1/tg-timer.1.gz
