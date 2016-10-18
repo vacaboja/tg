@@ -17,8 +17,8 @@ CFILES := $(wildcard $(SRCDIR)/*.c)
 HFILES := $(wildcard $(SRCDIR)/*.h)
 
 ifeq ($(OS),Windows_NT)
-	CFLAGS += -mwindows
-	DEBUG_FLAGS := -mconsole
+	LDFLAGS += -mwindows
+	DEBUG_LDFLAGS := -mconsole
 	EXT := .exe
 	RESFILE := $(BUILDDIR)/tg-timer.res
 else
@@ -48,18 +48,18 @@ $(BUILDDIR)/$(1)_%.o: $(SRCDIR)/%.c $(HFILES)
 	$(CC) -c $(CFLAGS) -DPROGRAM_NAME='"$(1)"' $(2) $$< -o $$@
 
 $(BUILDDIR)/$(1)$(EXT): $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/$(1)_%.o,$(CFILES)) $(RESFILE)
-	$(CC) -o $(BUILDDIR)/$(1)$(EXT) $$^ $(LDFLAGS)
-ifeq ($(3),strip)
+	$(CC) -o $(BUILDDIR)/$(1)$(EXT) $$^ $(LDFLAGS) $(3)
+ifeq ($(4),strip)
 	strip $(BUILDDIR)/$(1)$(EXT)
 endif
 endef
 
-$(eval $(call TARGET,tg,,strip))
-$(eval $(call TARGET,tg-lt,-DLIGHT,strip))
-$(eval $(call TARGET,tg-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG,))
-$(eval $(call TARGET,tg-lt-dbg,$(DEBUG_FLAGS) -ggdb -DDEBUG -DLIGHT,))
-$(eval $(call TARGET,tg-prf,-pg,))
-$(eval $(call TARGET,tg-lt-prf,-DLIGHT -pg,))
+$(eval $(call TARGET,tg,,,strip))
+$(eval $(call TARGET,tg-lt,-DLIGHT,,strip))
+$(eval $(call TARGET,tg-dbg,-ggdb -DDEBUG,$(DEBUG_LDFLAGS),))
+$(eval $(call TARGET,tg-lt-dbg,-ggdb -DDEBUG -DLIGHT,$(DEBUG_LDFLAGS),))
+$(eval $(call TARGET,tg-prf,-pg,,))
+$(eval $(call TARGET,tg-lt-prf,-DLIGHT -pg,,))
 
 ICONSIZES := $(foreach SIZE, $(shell cat icons/sizes), $(SIZE)x$(SIZE))
 

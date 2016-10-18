@@ -1,5 +1,5 @@
-tg-timer (0.4.0-test.1-1) UNRELEASED; urgency=medium
+tg-timer (0.4.0-test.2-1) UNRELEASED; urgency=medium
 
   * We don't keep a changelog.
 
- -- Marcello Mamino <vacaboja@gmail.com>  Tue, 18 Oct 2016 09:40:43 +0200
+ -- Marcello Mamino <vacaboja@gmail.com>  Tue, 18 Oct 2016 23:00:31 +0200
