@@ -1,14 +1,15 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
-  <Product Name='Tg' Id='36c57efc-5d9d-489d-8c2a-8651117854c4' UpgradeCode='088fdac7-fc91-4881-a2db-eed04425a207'
+  <Product Name='Tg' Id='48b63089-30fa-41a7-85b1-f164d43740ff' UpgradeCode='088fdac7-fc91-4881-a2db-eed04425a207'
     Language='1033' Codepage='1252' Version='0.4.0' Manufacturer='Marcello Mamino'>
 
     <Package Id='*' Keywords='Installer'
-      Description="Tg 0.4.0-test.2 Installer"
+      Description='Tg 0.4.0-test.3 Installer'
       Manufacturer='Marcello Mamino'
       InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' />
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MajorUpgrade AllowSameVersionUpgrades='yes' Schedule='afterInstallInitialize'
+                  DowngradeErrorMessage='A newer version of [ProductName] is already installed.' />
 
     <Media Id='1' Cabinet='Sample.cab' EmbedCab='yes' />
 
@@ -16,41 +17,41 @@
       <Directory Id='ProgramFilesFolder' Name='PFiles'>
         <Directory Id='INSTALLDIR' Name='tg-timer'>
 
-          <Component Id='MainExecutable' Guid='cfe16a5f-c7c4-4e15-8bb4-01786a1dd147'>
+          <Component Id='MainExecutable' Guid='ff85e28f-056b-45c0-af0d-1be8bce00fe2'>
             <File Id='TgEXE' Name='tg.exe' DiskId='1' Source='tg.exe' KeyPath='yes'>
-              <Shortcut Id="startmenuTg" Directory="ProgramMenuDir" Name="Tg 0.4.0-test.2" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
-              <Shortcut Id="desktopTg" Directory="DesktopFolder" Name="Tg 0.4.0-test.2" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+              <Shortcut Id='startmenuTg' Directory='ProgramMenuDir' Name='Tg 0.4.0-test.3' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
+              <Shortcut Id='desktopTg' Directory='DesktopFolder' Name='Tg 0.4.0-test.3' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
           </Component>
 
-          <Component Id='LightExecutable' Guid='8b270f7c-5ab7-4a1f-b26a-def96fb0187b'>
+          <Component Id='LightExecutable' Guid='3b59349c-4183-4fc4-8cd7-72fa626bad91'>
             <File Id='TgLtEXE' Name='tg-lt.exe' DiskId='1' Source='tg-lt.exe' KeyPath='yes'>
-              <Shortcut Id="startmenuTgLt" Directory="ProgramMenuDir" Name="Tg lt 0.4.0-test.2" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
-              <Shortcut Id="desktopTgLt" Directory="DesktopFolder" Name="Tg lt 0.4.0-test.2" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+              <Shortcut Id='startmenuTgLt' Directory='ProgramMenuDir' Name='Tg lt 0.4.0-test.3' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
+              <Shortcut Id='desktopTgLt' Directory='DesktopFolder' Name='Tg lt 0.4.0-test.3' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
           </Component>
 
-          <Component Id='License' Guid='6f9ee6e8-066c-49ba-a2e9-aa1142ee670c'>
+          <Component Id='License' Guid='9792d3e3-6e02-4128-bb4c-0c26d07a1951'>
             <File Id='License' Name='LICENSE' DiskId='1' Source='LICENSE' KeyPath='yes' />
           </Component>
 
-          <Component Id='Readme' Guid='da67dc17-33c0-4a75-8725-fa7b750e99b1'>
+          <Component Id='Readme' Guid='5ef71fb9-cb47-4611-8627-fa45ba7dee16'>
             <File Id='Readme' Name='README.md' DiskId='1' Source='README.md' KeyPath='yes' />
           </Component>
 
         </Directory>
       </Directory>
 
-      <Directory Id="ProgramMenuFolder" Name="Programs">
-        <Directory Id="ProgramMenuDir" Name="Tg 0.4.0-test.2">
-          <Component Id="ProgramMenuDir" Guid="e6eab531-a687-4aae-a256-ba5e71b7b376">
+      <Directory Id='ProgramMenuFolder' Name='Programs'>
+        <Directory Id='ProgramMenuDir' Name='Tg 0.4.0-test.3'>
+          <Component Id='ProgramMenuDir' Guid='4fd643ef-6741-4b7b-8d3a-d3368b91ffb8'>
             <RemoveFolder Id='ProgramMenuDir' On='uninstall' />
             <RegistryValue Root='HKCU' Key='Software\[Manufacturer]\[ProductName]' Type='string' Value='' KeyPath='yes' />
           </Component>
         </Directory>
       </Directory>
 
-      <Directory Id="DesktopFolder" Name="Desktop" />
+      <Directory Id='DesktopFolder' Name='Desktop' />
     </Directory>
 
     <Feature Id='Complete' Level='1' ConfigurableDirectory='INSTALLDIR'>
@@ -62,14 +63,14 @@
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
 
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id='WIXUI_INSTALLDIR' Value='INSTALLDIR' />
 
-    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
+    <WixVariable Id='WixUILicenseRtf' Value='LICENSE.rtf' />
 
-    <UIRef Id="WixUI_InstallDir" />
-    <UIRef Id="WixUI_ErrorProgressText" />
+    <UIRef Id='WixUI_InstallDir' />
+    <UIRef Id='WixUI_ErrorProgressText' />
 
-    <Icon Id="tg.exe" SourceFile="tg.exe" />
+    <Icon Id='tg.exe' SourceFile='tg.exe' />
 
   </Product>
 </Wix>

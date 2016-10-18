@@ -4,11 +4,12 @@
     Language='1033' Codepage='1252' Version='#VERSIONX#' Manufacturer='Marcello Mamino'>
 
     <Package Id='*' Keywords='Installer'
-      Description="Tg #VERSION# Installer"
+      Description='Tg #VERSION# Installer'
       Manufacturer='Marcello Mamino'
       InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' />
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MajorUpgrade AllowSameVersionUpgrades='yes' Schedule='afterInstallInitialize'
+                  DowngradeErrorMessage='A newer version of [ProductName] is already installed.' />
 
     <Media Id='1' Cabinet='Sample.cab' EmbedCab='yes' />
 
@@ -18,15 +19,15 @@
 
           <Component Id='MainExecutable' Guid='#UUID#'>
             <File Id='TgEXE' Name='tg.exe' DiskId='1' Source='tg.exe' KeyPath='yes'>
-              <Shortcut Id="startmenuTg" Directory="ProgramMenuDir" Name="Tg #VERSION#" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
-              <Shortcut Id="desktopTg" Directory="DesktopFolder" Name="Tg #VERSION#" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+              <Shortcut Id='startmenuTg' Directory='ProgramMenuDir' Name='Tg #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
+              <Shortcut Id='desktopTg' Directory='DesktopFolder' Name='Tg #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
           </Component>
 
           <Component Id='LightExecutable' Guid='#UUID#'>
             <File Id='TgLtEXE' Name='tg-lt.exe' DiskId='1' Source='tg-lt.exe' KeyPath='yes'>
-              <Shortcut Id="startmenuTgLt" Directory="ProgramMenuDir" Name="Tg lt #VERSION#" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
-              <Shortcut Id="desktopTgLt" Directory="DesktopFolder" Name="Tg lt #VERSION#" WorkingDirectory='INSTALLDIR' Icon="tg.exe" IconIndex="0" Advertise="yes" />
+              <Shortcut Id='startmenuTgLt' Directory='ProgramMenuDir' Name='Tg lt #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
+              <Shortcut Id='desktopTgLt' Directory='DesktopFolder' Name='Tg lt #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
           </Component>
 
@@ -41,16 +42,16 @@
         </Directory>
       </Directory>
 
-      <Directory Id="ProgramMenuFolder" Name="Programs">
-        <Directory Id="ProgramMenuDir" Name="Tg #VERSION#">
-          <Component Id="ProgramMenuDir" Guid="#UUID#">
+      <Directory Id='ProgramMenuFolder' Name='Programs'>
+        <Directory Id='ProgramMenuDir' Name='Tg #VERSION#'>
+          <Component Id='ProgramMenuDir' Guid='#UUID#'>
             <RemoveFolder Id='ProgramMenuDir' On='uninstall' />
             <RegistryValue Root='HKCU' Key='Software\[Manufacturer]\[ProductName]' Type='string' Value='' KeyPath='yes' />
           </Component>
         </Directory>
       </Directory>
 
-      <Directory Id="DesktopFolder" Name="Desktop" />
+      <Directory Id='DesktopFolder' Name='Desktop' />
     </Directory>
 
     <Feature Id='Complete' Level='1' ConfigurableDirectory='INSTALLDIR'>
@@ -62,14 +63,14 @@
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
 
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id='WIXUI_INSTALLDIR' Value='INSTALLDIR' />
 
-    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
+    <WixVariable Id='WixUILicenseRtf' Value='LICENSE.rtf' />
 
-    <UIRef Id="WixUI_InstallDir" />
-    <UIRef Id="WixUI_ErrorProgressText" />
+    <UIRef Id='WixUI_InstallDir' />
+    <UIRef Id='WixUI_ErrorProgressText' />
 
-    <Icon Id="tg.exe" SourceFile="tg.exe" />
+    <Icon Id='tg.exe' SourceFile='tg.exe' />
 
   </Product>
 </Wix>
