@@ -18,7 +18,7 @@ systems. See the sub-sections below for the details.
 
 ### Windows
 
-Binaries can be found at https://ciovil.li/tg.zip
+Binaries can be found at https://tg.ciovil.li
 
 ### Macintosh
 
@@ -39,7 +39,19 @@ You can now launch tg by typing
 
 	tg-timer &
 
-### Debian or Debian-based (e.g. Ubuntu)
+### Debian or Debian-based (e.g. Mint, Ubuntu)
+
+Binary .deb packages can be downloaded from https://tg.ciovil.li
+
+### Compiling from sources
+
+The source code of tg can probably be built by any C99 compiler, however
+only gcc and clang have been tested. You need the following libraries:
+gtk2, portaudio2, fftw3 (all available as open-source).
+
+### Compiling on Debian
+
+To compile tg on Debian
 
 	sudo apt-get install libgtk2.0-dev libjack-jackd2-dev portaudio19-dev libfftw3-dev git
 	git clone https://github.com/vacaboja/tg.git
@@ -48,9 +60,3 @@ You can now launch tg by typing
 
 The package libjack-jackd2-dev is not necessary, it only works around a
 known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).
-
-### Compiling from sources
-
-The source code of tg can probably be built by any C99 compiler, however
-only gcc and clang have been tested. You need the following libraries:
-gtk2, portaudio2, fftw3 (all available as open-source).
