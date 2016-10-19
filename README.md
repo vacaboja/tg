@@ -24,15 +24,20 @@ Binaries can be found at https://ciovil.li/tg.zip
 
 A formula for the Homebrew package manager has been prepared by GitHub
 user [dmnc](https://github.com/dmnc). To use it, you need to install
-Homebrew first (instructions on http://brew.sh), then run the following
-command
+Homebrew first (instructions on http://brew.sh).
+
+Then run the following command to check everything is set up correctly
+and follow any instructions it gives you.
 
 	brew doctor
 
-Thew brew doctor might ask you to install some additional software, and
-this must be done. Then, finally, run
+To install tg, run
 
-	brew install dmnc/horology/tg --HEAD
+	brew install dmnc/horology/tg
+	
+You can now launch tg by typing
+
+	tg-timer &
 
 ### Debian or Debian-based (e.g. Ubuntu)
 
