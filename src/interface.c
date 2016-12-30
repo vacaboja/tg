@@ -92,33 +92,6 @@ void redraw(struct main_window *w)
 #endif
 }
 
-/* Find the preset bph value closest to the current period */
-int guess_bph(double period)
-{
-	double bph = 7200 / period;
-	double min = bph;
-	int i,ret;
-
-	ret = 0;
-	for(i=0; preset_bph[i]; i++) {
-		double diff = fabs(bph - preset_bph[i]);
-		if(diff < min) {
-			min = diff;
-			ret = i;
-		}
-	}
-
-	return preset_bph[ret];
-}
-
-struct processing_buffers *get_data(struct main_window *w, int *old)
-{
-	*old = w->is_old;
-	if(w->old)
-		w->guessed_bph = w->bph ? w->bph : guess_bph(w->old->period / w->sample_rate);
-	return w->old;
-}
-
 void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
 	GtkAllocation temp;
@@ -218,11 +191,6 @@ double draw_watch_icon(cairo_t *c, int signal, int happy)
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
-double get_rate(int bph, double sample_rate, struct processing_buffers *p)
-{
-	return (7200/(bph*p->period / sample_rate) - 1)*24*3600;
-}
-
 cairo_t *cairo_init(GtkWidget *widget)
 {
 	cairo_t *c = gdk_cairo_create(gtk_widget_get_window(widget));
@@ -264,10 +232,11 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 {
 	cairo_t *c = cairo_init(widget);
 
-	int old;
-	struct processing_buffers *p = get_data(w,&old);
+	struct snapshot *snst = w->snapshots[w->current_snapshot];
+	struct processing_buffers *p = snst->pb;
+	int old = snst->is_old;
 
-	double x = draw_watch_icon(c,w->signal,w->calibrating ? w->signal==NSTEPS : w->signal);
+	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal);
 
 	cairo_text_extents_t extents;
 
@@ -275,7 +244,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	cairo_text_extents(c,"0",&extents);
 	double y = (double)OUTPUT_WINDOW_HEIGHT/2 - extents.y_bearing - extents.height/2;
 
-	if(w->calibrating) {
+	if(snst->calibrate) {
 		cairo_set_source(c, white);
 		x = print_s(c,x,y,"cal");
 		cairo_set_font_size(c, OUTPUT_FONT*2/3);
@@ -290,14 +259,14 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 			}
 			x += a;
 		}
-		switch(w->cdata->state) {
+		switch(snst->cal_state) {
 			case 1:
 				cairo_set_source(c,green);
 				cairo_show_text(c,"done");
 				break;
 			case 0:
-				cairo_set_source(c, w->signal == NSTEPS ? white : yellow);
-				cairo_show_text(c, w->signal == NSTEPS ? "acq." : "wait");
+				cairo_set_source(c, snst->signal == NSTEPS ? white : yellow);
+				cairo_show_text(c, snst->signal == NSTEPS ? "acq." : "wait");
 				break;
 			case -1:
 				cairo_set_source(c,red);
@@ -308,16 +277,18 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		x = print_s(c,x,y,")");
 		cairo_set_font_size(c, OUTPUT_FONT);
 		char s[20];
-		double cal = w->cdata->calibration;
-		switch(w->cdata->state) {
+		switch(snst->cal_state) {
 			case 1:
-				sprintf(s," %s%.1f",cal<0?"-":"+",fabs(cal));
+				sprintf(s, " %s%d.%d",
+						snst->cal_result < 0 ? "-" : "+",
+						abs(snst->cal_result) / 10,
+						abs(snst->cal_result) % 10 );
 				x = print_s(c,x,y,s);
 				cairo_set_font_size(c, OUTPUT_FONT*2/3);
 				x = print_s(c,x,y," s/d");
 				break;
 			case 0:
-				sprintf(s," %d",100*w->cdata->wp/w->cdata->size);
+				sprintf(s, " %d", snst->cal_percent);
 				x = print_number(c,x,y,s);
 				x = print_s(c,x,y," %");
 				break;
@@ -325,15 +296,14 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	} else {
 		char outputs[8][20];
 		if(p) {
-			int bph = w->guessed_bph;
-			int rate = round(get_rate(bph, w->sample_rate, p));
-			double be = fabs(p->be) * 1000 / p->sample_rate;
+			int rate = round(snst->rate);
+			double be = snst->be;
 			char rates[20];
 			sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
 			sprintf(outputs[0],"%4s",rates);
 			sprintf(outputs[2]," %4.1f",be);
-			if(p->amp > 0)
-				sprintf(outputs[4]," %3.0f",p->amp);
+			if(snst->amp > 0)
+				sprintf(outputs[4]," %3.0f",snst->amp);
 			else
 				strcpy(outputs[4]," ---");
 		} else {
@@ -341,7 +311,7 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 			strcpy(outputs[2]," ----");
 			strcpy(outputs[4]," ---");
 		}
-		sprintf(outputs[6]," %d",w->guessed_bph);
+		sprintf(outputs[6]," %d",snst->guessed_bph);
 
 		strcpy(outputs[1]," s/d");
 		strcpy(outputs[3]," ms");
@@ -430,13 +400,14 @@ void expose_waveform(
 	cairo_move_to(c,width - extents.x_advance - font/4,height-font/2);
 	cairo_show_text(c,"ms");
 
-	int old;
-	struct processing_buffers *p = get_data(w,&old);
-	double period = p ? p->period / w->sample_rate : 7200. / w->guessed_bph;
+	struct snapshot *snst = w->snapshots[w->current_snapshot];
+	struct processing_buffers *p = snst->pb;
+	int old = snst->is_old;
+	double period = p ? p->period / snst->sample_rate : 7200. / snst->guessed_bph;
 
 	for(i = 10; i < 360; i+=10) {
-		if(2*i < w->la) continue;
-		double t = period*amplitude_to_time(w->la,i);
+		if(2*i < snst->la) continue;
+		double t = period*amplitude_to_time(snst->la,i);
 		if(t > .001 * NEGATIVE_SPAN) continue;
 		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
 		cairo_move_to(c, x+.5, .5);
@@ -451,7 +422,7 @@ void expose_waveform(
 	double last_x = 0;
 	cairo_set_source(c,white);
 	for(i = 50; i < 360; i+=50) {
-		double t = period*amplitude_to_time(w->la,i);
+		double t = period*amplitude_to_time(snst->la,i);
 		if(t > .001 * NEGATIVE_SPAN) continue;
 		int x = round(width * (NEGATIVE_SPAN - 1000*t) / (NEGATIVE_SPAN + POSITIVE_SPAN));
 		if(x > last_x) {
@@ -470,7 +441,7 @@ void expose_waveform(
 	cairo_show_text(c,"deg");
 
 	if(p) {
-		double span = 0.001 * w->sample_rate;
+		double span = 0.001 * snst->sample_rate;
 		int offset = get_offset(p);
 
 		double a = offset - span * NEGATIVE_SPAN;
@@ -484,7 +455,7 @@ void expose_waveform(
 
 		double pulse = get_pulse(p);
 		if(pulse > 0) {
-			int x = round((NEGATIVE_SPAN - pulse * 1000 / p->sample_rate) * width / (POSITIVE_SPAN + NEGATIVE_SPAN));
+			int x = round((NEGATIVE_SPAN - pulse / span) * width / (POSITIVE_SPAN + NEGATIVE_SPAN));
 			cairo_move_to(c, x, 1);
 			cairo_line_to(c, x, height - 1);
 			cairo_set_source(c,blue);
@@ -543,8 +514,9 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 	int width = temp.width;
 	int height = temp.height;
 
-	int old;
-	struct processing_buffers *p = get_data(w,&old);
+	struct snapshot *snst = w->snapshots[w->current_snapshot];
+	struct processing_buffers *p = snst->pb;
+	int old = snst->is_old;
 
 	double toc,a=0,b=0;
 
@@ -553,17 +525,17 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 		a = ((double)p->tic + toc)/2 - p->period/2;
 		b = ((double)p->tic + toc)/2 + p->period/2;
 
-		cairo_move_to(c, (p->tic - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
-		cairo_line_to(c, (p->tic - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
+		cairo_move_to(c, (p->tic - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
+		cairo_line_to(c, (p->tic - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
 		cairo_set_source(c,blueish);
 		cairo_fill(c);
 
-		cairo_move_to(c, (toc - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
-		cairo_line_to(c, (toc - a - NEGATIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, height);
-		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*w->sample_rate) * width/p->period, 0);
+		cairo_move_to(c, (toc - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
+		cairo_line_to(c, (toc - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
+		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
 		cairo_set_source(c,blueish);
 		cairo_fill(c);
 	}
@@ -600,47 +572,22 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct main_win
 
 gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main_window *w)
 {
-	int i,old;
+	int i;
 	uint64_t time = get_timestamp();
-	struct processing_buffers *p = get_data(w,&old);
+	struct snapshot *snst = w->snapshots[w->current_snapshot];
+	struct processing_buffers *p = snst->pb;
 	double sweep;
 	int zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display
-	if(w->calibrating) {
-		sweep = w->nominal_sr;
+	if(snst->calibrate) {
+		sweep = snst->nominal_sr;
 		zoom_factor = PAPERSTRIP_ZOOM_CAL;
-		struct calibration_data *d = w->cdata;
-		for(i=d->wp-1; i >= 0 &&
-			d->events[i] / w->nominal_sr > w->events[w->events_wp] / w->nominal_sr;
-			i--);
-		for(i++; i<d->wp; i++) {
-			if(d->events[i] / w->nominal_sr <= w->events[w->events_wp] / w->nominal_sr)
-				continue;
-			if(++w->events_wp == EVENTS_COUNT) w->events_wp = 0;
-			w->events[w->events_wp] = d->events[i];
-			debug("event at %llu\n",w->events[w->events_wp]);
-		}
-		w->events_from = time;
-		slope = (double) w->cal * zoom_factor / (10 * 3600 * 24);
+		slope = (double) snst->cal * zoom_factor / (10 * 3600 * 24);
 	} else {
-		sweep = w->sample_rate * 3600. / w->guessed_bph;
+		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
 		zoom_factor = PAPERSTRIP_ZOOM;
-		if(p && !old) {
-			uint64_t last = w->events[w->events_wp];
-			for(i=0; i<EVENTS_MAX && p->events[i]; i++)
-				if(p->events[i] > last + floor(p->period / 4)) {
-					if(++w->events_wp == EVENTS_COUNT) w->events_wp = 0;
-					w->events[w->events_wp] = p->events[i];
-					debug("event at %llu\n",w->events[w->events_wp]);
-				}
-			w->events_from = p->timestamp - ceil(p->period);
-		} else {
-			w->events_from = time;
-		}
-		if(p && w->events[w->events_wp]) {
-			double rate = get_rate(w->guessed_bph, w->sample_rate, p);
-			slope = - rate * zoom_factor / (3600. * 24.);
-		}
+		if(p && snst->events[snst->events_wp])
+			slope = - snst->rate * zoom_factor / (3600. * 24.);
 	}
 
 	cairo_t *c = cairo_init(widget);
@@ -652,8 +599,8 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	int height = temp.height;
 
 	int stopped = 0;
-	if(w->events[w->events_wp] && time > 5 * w->sample_rate + w->events[w->events_wp]) {
-		time = 5 * w->sample_rate + w->events[w->events_wp];
+	if(snst->events[snst->events_wp] && time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
+		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
 		stopped = 1;
 	}
 
@@ -700,7 +647,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	cairo_stroke(c);
 
 	double now = sweep*ceil(time/sweep);
-	double ten_s = w->sample_rate * 10 / sweep;
+	double ten_s = snst->sample_rate * 10 / sweep;
 	double last_line = fmod(now/sweep, ten_s);
 	int last_tenth = floor(now/(sweep*ten_s));
 	for(i=0;;i++) {
@@ -713,9 +660,9 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 	}
 
 	cairo_set_source(c,stopped?yellow:white);
-	for(i = w->events_wp;;) {
-		if(!w->events[i]) break;
-		double event = now - w->events[i] + w->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
+	for(i = snst->events_wp;;) {
+		if(!snst->events[i]) break;
+		double event = now - snst->events[i] + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
 		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
 		int row = floor(event / sweep);
 		if(row >= height) break;
@@ -736,7 +683,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 			cairo_fill(c);
 		}
 		if(--i < 0) i = EVENTS_COUNT - 1;
-		if(i == w->events_wp) break;
+		if(i == snst->events_wp) break;
 	}
 
 	cairo_set_source(c,white);
@@ -765,9 +712,9 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct main
 		font = 12;
 	cairo_set_font_size(c,font);
 
-	sprintf(s, "%.1f ms", w->calibrating ?
+	sprintf(s, "%.1f ms", snst->calibrate ?
 				1000. / zoom_factor :
-				3600000. / (w->guessed_bph * zoom_factor));
+				3600000. / (snst->guessed_bph * zoom_factor));
 	cairo_text_extents(c,s,&extents);
 	cairo_move_to(c, (width - extents.x_advance)/2, height - 30);
 	cairo_show_text(c,s);
@@ -782,19 +729,20 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 {
 	cairo_t *c = cairo_init(widget);
 
-	int old = 0;
-	struct processing_buffers *p = w->calibrating ?
-		&w->pdata->buffers[0] : get_data(w,&old);
+	struct snapshot *snst = w->snapshots[w->current_snapshot];
+	struct processing_buffers *p;
+	if(snst->calibrate)
+		p = &w->computer->pdata->buffers[0];
+	else
+		p = snst->pb;
 
 	if(p) {
-		//double a = p->period / 10;
-		//double b = p->period * 2;
-		double a = w->sample_rate / 10;
-		double b = w->sample_rate * 2;
+		double a = snst->nominal_sr / 10;
+		double b = snst->nominal_sr * 2;
 
 		draw_debug_graph(a,b,c,p,w->debug_drawing_area);
 
-		cairo_set_source(c,old?yellow:white);
+		cairo_set_source(c,snst->is_old?yellow:white);
 		cairo_stroke(c);
 	}
 
@@ -804,19 +752,51 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct main_wind
 }
 #endif
 
-guint kick_computer(struct main_window *);
+void recompute(struct main_window *w)
+{
+	w->computer_timeout = 0;
+	lock_computer(w->computer);
+	w->computer->bph = w->bph;
+	w->computer->la = w->la;
+	w->computer->calibrate = w->calibrate;
+	if(w->computer->recompute >= 0)
+		w->computer->recompute = 1;
+	unlock_computer(w->computer);
+}
+
+guint kick_computer(struct main_window *w)
+{
+	w->computer_timeout++;
+	if(w->calibrate && w->computer_timeout < 10) {
+		return TRUE;
+	} else {
+		recompute(w);
+		return TRUE;
+	}
+}
+
+void refresh_results(struct main_window *w)
+{
+	w->snapshots[0]->bph = w->bph;
+	w->snapshots[0]->la = w->la;
+	w->snapshots[0]->cal = w->cal;
+	compute_results(w->snapshots[0]);
+}
+
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
 {
 	char *s = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(b));
 	if(s) {
-		int n;
+		int bph;
 		char *t;
-		n = (int)strtol(s,&t,10);
-		if(*t || n < MIN_BPH || n > MAX_BPH) w->bph = 0;
-		else w->bph = w->guessed_bph = n;
+		int n = (int)strtol(s,&t,10);
+		if(*t || n < MIN_BPH || n > MAX_BPH) bph = 0;
+		else bph = n;
 		g_free(s);
+		w->bph = bph;
+		refresh_results(w);
+		redraw(w);
 	}
-	kick_computer(w);
 }
 
 void handle_la_change(GtkSpinButton *b, struct main_window *w)
@@ -824,18 +804,15 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	double la = gtk_spin_button_get_value(b);
 	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
 	w->la = la;
+	refresh_results(w);
 	redraw(w);
-}
-
-void update_sample_rate(struct main_window *w)
-{
-	w->sample_rate = w->nominal_sr * (1 + (double) w->cal / (10 * 3600 * 24));
 }
 
 void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 {
-	w->cal = gtk_spin_button_get_value(b);;
-	update_sample_rate(w);
+	int cal = gtk_spin_button_get_value(b);;
+	w->cal = cal;
+	refresh_results(w);
 	redraw(w);
 }
 
@@ -868,22 +845,30 @@ gboolean input_cal(GtkSpinButton *spin, double *val, gpointer data)
 
 void handle_clear_trace(GtkButton *b, struct main_window *w)
 {
-	memset(w->events,0,EVENTS_COUNT*sizeof(uint64_t));
+	lock_computer(w->computer);
+	memset(w->snapshots[0]->events,0,EVENTS_COUNT*sizeof(uint64_t));
+	w->computer->clear_trace = 1;
+	unlock_computer(w->computer);
 	redraw(w);
 }
 
 void handle_center_trace(GtkButton *b, struct main_window *w)
 {
-	uint64_t last_ev = w->events[w->events_wp];
+	struct snapshot *snst = w->snapshots[w->current_snapshot];
+	uint64_t last_ev = snst->events[snst->events_wp];
+	double new_centering;
 	if(last_ev) {
 		double sweep;
-		if(w->calibrating)
-			sweep = (double) w->sample_rate / PAPERSTRIP_ZOOM_CAL;
+		if(snst->calibrate)
+			sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
 		else
-			sweep = w->sample_rate * 3600. / (PAPERSTRIP_ZOOM * w->guessed_bph);
-		w->trace_centering = fmod(last_ev + .5*sweep , sweep);
-	} else
-		w->trace_centering = 0;
+			sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
+		new_centering = fmod(last_ev + .5*sweep , sweep);
+	} else 
+		new_centering = 0;
+	if(w->current_snapshot == 0)
+		w->trace_centering = new_centering;
+	snst->trace_centering = new_centering;
 	redraw(w);
 }
 
@@ -892,22 +877,30 @@ void handle_calibrate(GtkToggleButton *b, struct main_window *w)
 	int button_state = gtk_toggle_button_get_active(b) == TRUE;
 	if(button_state != w->calibrate) {
 		w->calibrate = button_state;
-		pthread_mutex_lock(&w->recompute_mutex);
-		if(w->recompute >= 0) w->recompute = 1;
-		pthread_cond_signal(&w->recompute_cond);
-		pthread_mutex_unlock(&w->recompute_mutex);
-		g_source_remove(w->computer_kicker);
-		w->computer_kicker = g_timeout_add_full(G_PRIORITY_LOW,
-				w->calibrate?1000:100,(GSourceFunc)kick_computer,w,NULL);
+		recompute(w);
 	}
+}
+
+guint close_main_window(struct main_window *w)
+{
+	debug("Closing main window\n");
+	gtk_widget_destroy(w->window);
+	gtk_main_quit();
+	return FALSE;
+}
+
+void computer_quit(void *w)
+{
+	gdk_threads_add_idle((GSourceFunc)close_main_window,w);
 }
 
 gboolean quit(struct main_window *w)
 {
-	pthread_mutex_lock(&w->recompute_mutex);
-	w->recompute = -1;
-	pthread_cond_signal(&w->recompute_cond);
-	pthread_mutex_unlock(&w->recompute_mutex);
+	lock_computer(w->computer);
+	w->computer->recompute = -1;
+	w->computer->callback = computer_quit;
+	w->computer->callback_data = w;
+	unlock_computer(w->computer);
 	return FALSE;
 }
 
@@ -921,16 +914,6 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 /* Set up the main window and populate with widgets */
 void init_main_window(struct main_window *w)
 {
-	w->signal = 0;
-
-	w->events = malloc(EVENTS_COUNT * sizeof(uint64_t));
-	memset(w->events,0,EVENTS_COUNT * sizeof(uint64_t));
-	w->events_wp = 0;
-	w->events_from = 0;
-	w->trace_centering = 0;
-
-	w->guessed_bph = w->last_bph = w->bph ? w->bph : DEFAULT_BPH;
-
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
 	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
@@ -1090,108 +1073,41 @@ void init_main_window(struct main_window *w)
 	gtk_window_set_focus(GTK_WINDOW(w->window), NULL);
 }
 
-guint refresh(struct main_window *w)
-{
-	redraw(w);
-	return FALSE;
-}
-
-guint close_main_window(struct main_window *w)
-{
-	debug("Closing main window\n");
-	gtk_widget_destroy(w->window);
-	gtk_main_quit();
-	return FALSE;
-}
-
-void *computing_thread(void *void_w)
-{
-	struct main_window *w = void_w;
-	for(;;) {
-		pthread_mutex_lock(&w->recompute_mutex);
-		while(!w->recompute)
-			pthread_cond_wait(&w->recompute_cond, &w->recompute_mutex);
-		if(w->recompute > 0) w->recompute = 0;
-		pthread_mutex_unlock(&w->recompute_mutex);
-
-		if(w->recompute < 0) {
-			debug("Terminating computation thread\n");
-			gdk_threads_add_idle((GSourceFunc)close_main_window,w);
-			return NULL;
-		}
-
-		gdk_threads_enter();
-		int calibrate = w->calibrate;
-		int bph = w->bph;
-		double la = w->la;
-		uint64_t events_from = w->events_from;
-		gdk_threads_leave();
-
-		if(calibrate && !w->calibrating) {
-			w->cdata->wp = 0;
-			w->cdata->state = 0;
-			w->cal_updated = 0;
-		}
-
-		int signal = calibrate ?
-			analyze_pa_data_cal(w->pdata, w->cdata) :
-			analyze_pa_data(w->pdata, bph, la, events_from);
-
-		gdk_threads_enter();
-
-		if(calibrate != w->calibrating)
-			memset(w->events,0,EVENTS_COUNT*sizeof(uint64_t));
-
-		w->calibrating = calibrate;
-
-		if(calibrate) {
-			w->signal = signal;
-			if(w->old) {
-				pb_destroy_clone(w->old);
-				w->old = NULL;
-				w->is_old = signal < NSTEPS;
-			}
-			if(w->cdata->state == 1 && !w->cal_updated) {
-				w->cal_updated = 1;
-				w->cal = round(10 * w->cdata->calibration);
-				gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), w->cal);
-			}
-		} else {
-			struct processing_buffers *p = w->pdata->buffers;
-			int i;
-			for(i=0; i<NSTEPS && p[i].ready; i++);
-			for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
-			if(i>=0) {
-				if(w->old) pb_destroy_clone(w->old);
-				w->old = pb_clone(&p[i]);
-				w->is_old = 0;
-				w->signal = i == NSTEPS-1 && p[i].amp < 0 ? signal-1 : signal;
-			} else {
-				w->is_old = 1;
-				w->signal = -signal;
-			}
-		}
-
-		gdk_threads_leave();
-
-		gdk_threads_add_idle((GSourceFunc)refresh,w);
-	}
-}
-
-guint kick_computer(struct main_window *w)
-{
-	pthread_mutex_lock(&w->recompute_mutex);
-	if(w->recompute >= 0) w->recompute = 1;
-	pthread_cond_signal(&w->recompute_cond);
-	pthread_mutex_unlock(&w->recompute_mutex);
-
-	return TRUE;
-}
-
 guint save_on_change_timer(struct main_window *w)
 {
 	save_on_change(w);
 	return TRUE;
+}
+
+guint refresh(struct main_window *w)
+{
+	lock_computer(w->computer);
+	struct snapshot *s = w->computer->curr;
+	if(s) {
+		if(w->snapshots[0])
+			snapshot_destroy(w->snapshots[0]);
+		w->snapshots[0] = s;
+		w->computer->curr = NULL;
+		if(w->computer->clear_trace)
+			memset(s->events,0,EVENTS_COUNT*sizeof(uint64_t));
+		if(s->calibrate && s->cal_state == 1 && s->cal_result != w->cal) {
+			w->cal = s->cal_result;
+			gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), s->cal_result);
+		}
+	}
+	unlock_computer(w->computer);
+	w->snapshots[0]->bph = w->bph;
+	w->snapshots[0]->la = w->la;
+	w->snapshots[0]->cal = w->cal;
+	compute_results(w->snapshots[0]);
+	w->snapshots[w->current_snapshot]->trace_centering = w->trace_centering;
+	redraw(w);
+	return FALSE;
+}
+
+void computer_callback(void *w)
+{
+	gdk_threads_add_idle((GSourceFunc)refresh,w);
 }
 
 int run_interface()
@@ -1201,34 +1117,12 @@ int run_interface()
 
 	if(start_portaudio(&nominal_sr, &real_sr)) return 1;
 
-	struct processing_buffers p[NSTEPS];
-	int i;
-	for(i=0; i<NSTEPS; i++) {
-		p[i].sample_rate = nominal_sr;
-		p[i].sample_count = nominal_sr * (1<<(i+FIRST_STEP));
-		setup_buffers(&p[i]);
-		p[i].period = -1;
-	}
-
-	struct processing_data pd;
-	pd.buffers = p;
-	pd.last_tic = 0;
-
-	struct calibration_data cd;
-	setup_cal_data(&cd);
-
 	struct main_window w;
-	w.nominal_sr = nominal_sr;
+
 	w.cal = MIN_CAL - 1;
 	w.bph = 0;
 	w.la = DEFAULT_LA;
-	w.pdata = &pd;
-	w.cdata = &cd;
-	w.old = NULL;
-	w.is_old = 1;
-	w.recompute = 0;
 	w.calibrate = 0;
-	w.calibrating = 0;
 
 	load_config(&w);
 
@@ -1236,18 +1130,23 @@ int run_interface()
 	if(w.bph < MIN_BPH || w.bph > MAX_BPH) w.bph = 0;
 	if(w.cal < MIN_CAL || w.cal > MAX_CAL)
 		w.cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
-	update_sample_rate(&w);
+
+	w.snapshots = malloc(sizeof(struct snapshot));
+	w.current_snapshot = 0;
+	w.computer_timeout = 0;
+
+	w.computer = start_computer(nominal_sr, w.bph, w.la, w.cal);
+	if(!w.computer) return 2;
+	w.computer->callback = computer_callback;
+	w.computer->callback_data = &w;
+
+	w.snapshots[0] = w.computer->curr;
+	w.computer->curr = NULL;
+	compute_results(w.snapshots[0]);
 
 	init_main_window(&w);
 
-	if(    pthread_mutex_init(&w.recompute_mutex, NULL)
-	    || pthread_cond_init(&w.recompute_cond, NULL)
-	    || pthread_create(&w.computing_thread, NULL, computing_thread, &w)) {
-		error("Unable to initialize computational thread");
-		return 1;
-	}
-
-	w.computer_kicker = g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,&w,NULL);
+	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,&w,NULL);
 	g_timeout_add_full(G_PRIORITY_LOW,10000,(GSourceFunc)save_on_change_timer,&w,NULL);
 #ifdef DEBUG
 	if(testing)
@@ -1260,7 +1159,7 @@ int run_interface()
 	save_config(&w);
 
 	// We leak the processing buffers, program is terminating anyway
-	return terminate_portaudio();
+	return 10*terminate_portaudio();
 }
 
 int main(int argc, char **argv)

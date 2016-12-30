@@ -123,6 +123,65 @@ uint64_t get_timestamp();
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 
+/* computer.c */
+struct snapshot {
+	struct processing_buffers *pb;
+	int is_old;
+
+	int nominal_sr;
+	int calibrate;
+	int bph;
+	double la; // deg
+	int cal; // 0.1 s/d
+
+	uint64_t *events; // used in cal+timegrapher mode
+	int events_wp; // used in cal+timegrapher mode
+	uint64_t events_from; // used only in timegrapher mode
+
+	int signal;
+
+	int cal_state;
+	int cal_percent;
+	int cal_result; // 0.1 s/d
+
+	// data dependent on bph, la, cal
+	double sample_rate;
+	int guessed_bph;
+	double rate;
+	double be;
+	double amp;
+
+	double trace_centering;
+};
+
+struct computer {
+	pthread_t thread;
+	pthread_mutex_t mutex;
+	pthread_cond_t cond;
+
+// controlled by interface
+	int recompute;
+	int calibrate;
+	int bph;
+	double la; // deg
+	int clear_trace;
+	void (*callback)(void *);
+	void *callback_data;
+
+	struct processing_data *pdata;
+	struct calibration_data *cdata;
+
+	struct snapshot *actv;
+	struct snapshot *curr;
+};
+
+struct snapshot *snapshot_clone(struct snapshot *s);
+void snapshot_destroy(struct snapshot *s);
+struct computer *start_computer(int nominal_sr, int bph, double la, int cal);
+void lock_computer(struct computer *c);
+void unlock_computer(struct computer *c);
+void compute_results(struct snapshot *s);
+
 /* interface.c */
 struct main_window {
 	GtkWidget *window;
@@ -136,40 +195,23 @@ struct main_window {
 	GtkWidget *debug_drawing_area;
 #endif
 
-	pthread_t computing_thread;
-	pthread_mutex_t recompute_mutex;
-	pthread_cond_t recompute_cond;
-	int recompute;
-	guint computer_kicker;
+	struct computer *computer;
+	struct snapshot **snapshots;
+	int current_snapshot;
+	int computer_timeout;
 
 	int calibrate;
-	int calibrating;
-	int cal_updated;
-
-	struct processing_data *pdata;
-	struct processing_buffers *old;
-	struct calibration_data *cdata;
-	int is_old;
-
 	int bph;
-	int guessed_bph;
-	int last_bph;
 	double la; // deg
 	int cal; // 0.1 s/d
-	double sample_rate;
-	int nominal_sr;
-
-	uint64_t *events;
-	int events_wp;
-	uint64_t events_from;
 	double trace_centering;
-
-	int signal;
 
 	GKeyFile *config_file;
 	gchar *config_file_name;
 	struct conf_data *conf_data;
 };
+
+extern int preset_bph[];
 
 #ifdef DEBUG
 extern int testing;
@@ -178,7 +220,7 @@ extern int testing;
 void print_debug(char *format,...);
 void error(char *format,...);
 
-// config.c
+/* config.c */
 #define CONFIG_FIELDS(OP) \
 	OP(bph, bph, int) \
 	OP(lift_angle, la, double) \

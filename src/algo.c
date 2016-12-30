@@ -630,15 +630,17 @@ void compute_amplitude(struct processing_buffers *p, double la)
 			} else
 				goto next_threshold;
 		}
-		double tic_amp = la * .5 / sin(M_PI * tic_pulse / p->period);
-		double toc_amp = la * .5 / sin(M_PI * toc_pulse / p->period);
+		double tic_amp_abs = .5 / sin(M_PI * tic_pulse / p->period);
+		double toc_amp_abs = .5 / sin(M_PI * toc_pulse / p->period);
+		double tic_amp = la * tic_amp_abs;
+		double toc_amp = la * toc_amp_abs;
 		if(135 < tic_amp && tic_amp < 360 && 135 < toc_amp && toc_amp < 360 && fabs(tic_amp - toc_amp) < 60) {
-			p->amp = (tic_amp + toc_amp) / 2;
+			p->amp = (tic_amp_abs + toc_amp_abs) / 2;
 			p->tic_pulse = tic_pulse;
 			p->toc_pulse = toc_pulse;
 			p->be = p->period/2 - fabs(p->toc - p->tic + p->tic_pulse - p->toc_pulse);
 			debug("amp: be = %.1f\n",fabs(p->be)*1000/p->sample_rate);
-			debug("amp = %f\n", p->amp);
+			debug("amp = %f\n", la * p->amp);
 			break;
 		} else
 			debug("amp rejected\n");
