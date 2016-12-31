@@ -89,8 +89,8 @@ void compute_events_cal(struct computer *c)
 	struct calibration_data *d = c->cdata;
 	struct snapshot *s = c->actv;
 	int i;
-	for(i=d->wp-1; i >= 0 && // PIPPO !
-		d->events[i] / s->nominal_sr > s->events[s->events_wp] / s->nominal_sr;
+	for(i=d->wp-1; i >= 0 &&
+		d->events[i] > s->events[s->events_wp];
 		i--);
 	for(i++; i<d->wp; i++) {
 		if(d->events[i] / s->nominal_sr <= s->events[s->events_wp] / s->nominal_sr)
@@ -160,8 +160,9 @@ void *computing_thread(void *void_computer)
 			c->cdata->state = 0;
 			c->actv->cal_state = 0;
 			c->actv->cal_percent = 0;
-			memset(c->actv->events,0,EVENTS_COUNT*sizeof(uint64_t));
 		}
+		if(calibrate != c->actv->calibrate)
+			memset(c->actv->events,0,EVENTS_COUNT*sizeof(uint64_t));
 		c->actv->calibrate = calibrate;
 
 		if(c->actv->calibrate) {
@@ -197,7 +198,6 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal)
 		p[i].sample_rate = nominal_sr;
 		p[i].sample_count = nominal_sr * (1<<(i+FIRST_STEP));
 		setup_buffers(&p[i]);
-		p[i].period = -1; // PIPPO Why?
 	}
 
 	struct processing_data *pd = malloc(sizeof(struct processing_data));

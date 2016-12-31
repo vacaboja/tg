@@ -182,18 +182,31 @@ void lock_computer(struct computer *c);
 void unlock_computer(struct computer *c);
 void compute_results(struct snapshot *s);
 
-/* interface.c */
-struct main_window {
-	GtkWidget *window;
+/* output_panel.c */
+struct output_panel {
+	GtkWidget *panel;
+
 	GtkWidget *output_drawing_area;
 	GtkWidget *tic_drawing_area;
 	GtkWidget *toc_drawing_area;
 	GtkWidget *period_drawing_area;
 	GtkWidget *paperstrip_drawing_area;
-	GtkWidget *cal_spin_button;
 #ifdef DEBUG
 	GtkWidget *debug_drawing_area;
 #endif
+	struct computer *computer;
+	struct snapshot *snst;
+};
+
+void initialize_palette();
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst);
+void redraw_op(struct output_panel *op);
+
+/* interface.c */
+struct main_window {
+	GtkWidget *window;
+	GtkWidget *cal_spin_button;
+	struct output_panel *op;
 
 	struct computer *computer;
 	struct snapshot **snapshots;
@@ -204,7 +217,6 @@ struct main_window {
 	int bph;
 	double la; // deg
 	int cal; // 0.1 s/d
-	double trace_centering;
 
 	GKeyFile *config_file;
 	gchar *config_file_name;
