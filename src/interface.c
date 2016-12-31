@@ -120,7 +120,7 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 
 void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 {
-	int cal = gtk_spin_button_get_value(b);;
+	int cal = gtk_spin_button_get_value(b);
 	w->cal = cal;
 	refresh_results(w);
 	redraw_op(w->op);
@@ -296,7 +296,7 @@ guint refresh(struct main_window *w)
 		w->snapshots[0] = s;
 		w->computer->curr = NULL;
 		s->trace_centering = trace_centering;
-		if(w->computer->clear_trace)
+		if(w->computer->clear_trace && !s->calibrate)
 			memset(s->events,0,EVENTS_COUNT*sizeof(uint64_t));
 		if(s->calibrate && s->cal_state == 1 && s->cal_result != w->cal) {
 			w->cal = s->cal_result;

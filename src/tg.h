@@ -191,6 +191,7 @@ struct output_panel {
 	GtkWidget *toc_drawing_area;
 	GtkWidget *period_drawing_area;
 	GtkWidget *paperstrip_drawing_area;
+	GtkWidget *clear_button;
 #ifdef DEBUG
 	GtkWidget *debug_drawing_area;
 #endif

@@ -38,6 +38,7 @@ void initialize_palette()
 
 void redraw_op(struct output_panel *op)
 {
+	gtk_widget_set_sensitive(op->clear_button, !op->snst->calibrate);
 	gtk_widget_queue_draw(op->output_drawing_area);
 	gtk_widget_queue_draw(op->tic_drawing_area);
 	gtk_widget_queue_draw(op->toc_drawing_area);
@@ -712,11 +713,13 @@ void handle_clear_trace(GtkButton *b, struct output_panel *op)
 {
 	if(op->computer) {
 		lock_computer(op->computer);
-		memset(op->snst->events,0,EVENTS_COUNT*sizeof(uint64_t));
-		op->computer->clear_trace = 1;
+		if(!op->snst->calibrate) {
+			memset(op->snst->events,0,EVENTS_COUNT*sizeof(uint64_t));
+			op->computer->clear_trace = 1;
+		}
 		unlock_computer(op->computer);
+		gtk_widget_queue_draw(op->paperstrip_drawing_area);
 	}
-	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
 void handle_center_trace(GtkButton *b, struct output_panel *op)
@@ -776,10 +779,10 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_widget_show(hbox3);
 
 	// CLEAR button
-	GtkWidget *clear_button = gtk_button_new_with_label("Clear");
-	gtk_box_pack_start(GTK_BOX(hbox3), clear_button, TRUE, TRUE, 0);
-	g_signal_connect (clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
-	gtk_widget_show(clear_button);
+	op->clear_button = gtk_button_new_with_label("Clear");
+	gtk_box_pack_start(GTK_BOX(hbox3), op->clear_button, TRUE, TRUE, 0);
+	g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
+	gtk_widget_show(op->clear_button);
 
 	// CENTER button
 	GtkWidget *center_button = gtk_button_new_with_label("Center");

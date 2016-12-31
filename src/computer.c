@@ -177,7 +177,8 @@ void *computing_thread(void *void_computer)
 			if(c->curr)
 				snapshot_destroy(c->curr);
 			if(c->clear_trace) {
-				memset(c->actv->events,0,EVENTS_COUNT*sizeof(uint64_t));
+				if(!calibrate)
+					memset(c->actv->events,0,EVENTS_COUNT*sizeof(uint64_t));
 				c->clear_trace = 0;
 			}
 			c->curr = snapshot_clone(c->actv);
