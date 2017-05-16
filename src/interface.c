@@ -87,10 +87,16 @@ guint kick_computer(struct main_window *w)
 
 void refresh_results(struct main_window *w)
 {
-	w->snapshots[0]->bph = w->bph;
-	w->snapshots[0]->la = w->la;
-	w->snapshots[0]->cal = w->cal;
-	compute_results(w->snapshots[0]);
+	w->active_snapshot->bph = w->bph;
+	w->active_snapshot->la = w->la;
+	w->active_snapshot->cal = w->cal;
+	compute_results(w->active_snapshot);
+}
+
+void redraw_if_necessary(struct main_window *w)
+{
+	// TODO: if necessary
+	gtk_widget_queue_draw(w->notebook);
 }
 
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
@@ -105,7 +111,7 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 		g_free(s);
 		w->bph = bph;
 		refresh_results(w);
-		redraw_op(w->op);
+		redraw_if_necessary(w);
 	}
 }
 
@@ -115,7 +121,7 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
 	w->la = la;
 	refresh_results(w);
-	redraw_op(w->op);
+	redraw_if_necessary(w);
 }
 
 void handle_cal_change(GtkSpinButton *b, struct main_window *w)
@@ -123,7 +129,7 @@ void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 	int cal = gtk_spin_button_get_value(b);
 	w->cal = cal;
 	refresh_results(w);
-	redraw_op(w->op);
+	redraw_if_necessary(w);
 }
 
 gboolean output_cal(GtkSpinButton *spin, gpointer data)
@@ -158,6 +164,7 @@ void handle_calibrate(GtkToggleButton *b, struct main_window *w)
 	int button_state = gtk_toggle_button_get_active(b) == TRUE;
 	if(button_state != w->calibrate) {
 		w->calibrate = button_state;
+		gtk_widget_set_sensitive(w->snapshot_button, !button_state);
 		recompute(w);
 	}
 }
@@ -190,6 +197,19 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 	debug("Received delete event\n");
 	quit((struct main_window *)w);
 	return TRUE;
+}
+
+void handle_snapshot(GtkButton *b, struct main_window *w)
+{
+	if(w->active_snapshot->calibrate) return;
+
+	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), 1);
+
+	struct snapshot *s = snapshot_clone(w->active_snapshot);
+	s->timestamp = get_timestamp();
+	struct output_panel *op = init_output_panel(NULL, s, 0);
+	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), op->panel, NULL);
+	gtk_widget_show(op->panel);
 }
 
 /* Set up the main window and populate with widgets */
@@ -266,14 +286,38 @@ void init_main_window(struct main_window *w)
 	g_signal_connect(w->cal_spin_button, "input", G_CALLBACK(input_cal), NULL);
 	gtk_widget_show(w->cal_spin_button);
 
+	// Is there a more elegant way?
+	GtkWidget *empty = gtk_label_new("");
+	gtk_box_pack_start(GTK_BOX(hbox), empty, TRUE, FALSE, 0);
+	gtk_widget_show(empty);
+
+	// Snapshot button
+	w->snapshot_button = gtk_button_new_with_label("Take Snapshot");
+	gtk_box_pack_start(GTK_BOX(hbox), w->snapshot_button, FALSE, FALSE, 0);
+	g_signal_connect(w->snapshot_button, "clicked", G_CALLBACK(handle_snapshot), w);
+	gtk_widget_show(w->snapshot_button);
+
+	empty = gtk_label_new("");
+	gtk_box_pack_start(GTK_BOX(hbox), empty, TRUE, FALSE, 0);
+	gtk_widget_show(empty);
+
 	// CALIBRATE button
 	GtkWidget *cal_button = gtk_toggle_button_new_with_label("Calibrate");
 	gtk_box_pack_end(GTK_BOX(hbox), cal_button, FALSE, FALSE, 0);
 	g_signal_connect(cal_button, "toggled", G_CALLBACK(handle_calibrate), w);
 	gtk_widget_show(cal_button);
 
-	gtk_box_pack_start(GTK_BOX(vbox), w->op->panel, TRUE, TRUE, 0);
-	gtk_widget_show(w->op->panel);
+
+	// The tabs' container
+	w->notebook = gtk_notebook_new();
+	gtk_box_pack_start(GTK_BOX(vbox), w->notebook, TRUE, TRUE, 0);
+	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), 0);
+	gtk_notebook_set_show_border(GTK_NOTEBOOK(w->notebook), 0);
+	gtk_widget_show(w->notebook);
+
+	// The main tab
+	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, NULL);
+	gtk_widget_show(w->active_panel->panel);
 
 	gtk_window_maximize(GTK_WINDOW(w->window));
 	gtk_widget_show(w->window);
@@ -291,9 +335,9 @@ guint refresh(struct main_window *w)
 	lock_computer(w->computer);
 	struct snapshot *s = w->computer->curr;
 	if(s) {
-		double trace_centering = w->snapshots[0]->trace_centering;
-		snapshot_destroy(w->snapshots[0]);
-		w->snapshots[0] = s;
+		double trace_centering = w->active_snapshot->trace_centering;
+		snapshot_destroy(w->active_snapshot);
+		w->active_snapshot = s;
 		w->computer->curr = NULL;
 		s->trace_centering = trace_centering;
 		if(w->computer->clear_trace && !s->calibrate)
@@ -304,13 +348,12 @@ guint refresh(struct main_window *w)
 		}
 	}
 	unlock_computer(w->computer);
-	w->snapshots[0]->bph = w->bph;
-	w->snapshots[0]->la = w->la;
-	w->snapshots[0]->cal = w->cal;
-	compute_results(w->snapshots[0]);
-	w->op->computer = w->current_snapshot ? NULL : w->computer;
-	w->op->snst = w->snapshots[w->current_snapshot];
-	redraw_op(w->op);
+	w->active_snapshot->bph = w->bph;
+	w->active_snapshot->la = w->la;
+	w->active_snapshot->cal = w->cal;
+	compute_results(w->active_snapshot);
+	op_set_snapshot(w->active_panel, w->active_snapshot);
+	redraw_if_necessary(w);
 	return FALSE;
 }
 
@@ -340,8 +383,6 @@ int run_interface()
 	if(w.cal < MIN_CAL || w.cal > MAX_CAL)
 		w.cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
 
-	w.snapshots = malloc(sizeof(struct snapshot));
-	w.current_snapshot = 0;
 	w.computer_timeout = 0;
 
 	w.computer = start_computer(nominal_sr, w.bph, w.la, w.cal);
@@ -349,11 +390,11 @@ int run_interface()
 	w.computer->callback = computer_callback;
 	w.computer->callback_data = &w;
 
-	w.snapshots[0] = w.computer->curr;
+	w.active_snapshot = w.computer->curr;
 	w.computer->curr = NULL;
-	compute_results(w.snapshots[0]);
+	compute_results(w.active_snapshot);
 
-	w.op = init_output_panel(w.computer, w.snapshots[0]);
+	w.active_panel = init_output_panel(w.computer, w.active_snapshot, 1);
 
 	init_main_window(&w);
 

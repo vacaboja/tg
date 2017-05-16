@@ -36,9 +36,11 @@ void initialize_palette()
 	define_color(&yellow,1,1,0);
 }
 
+/*
 void redraw_op(struct output_panel *op)
 {
 	gtk_widget_set_sensitive(op->clear_button, !op->snst->calibrate);
+
 	gtk_widget_queue_draw(op->output_drawing_area);
 	gtk_widget_queue_draw(op->tic_drawing_area);
 	gtk_widget_queue_draw(op->toc_drawing_area);
@@ -48,6 +50,7 @@ void redraw_op(struct output_panel *op)
 	gtk_widget_queue_draw(op->debug_drawing_area);
 #endif
 }
+*/
 
 void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
@@ -530,8 +533,8 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct output_p
 gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct output_panel *op)
 {
 	int i;
-	uint64_t time = get_timestamp();
 	struct snapshot *snst = op->snst;
+	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp();
 	struct processing_buffers *p = snst->pb;
 	double sweep;
 	int zoom_factor;
@@ -740,7 +743,35 @@ void handle_center_trace(GtkButton *b, struct output_panel *op)
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst)
+void shift_trace(struct output_panel *op, double direction)
+{
+	struct snapshot *snst = op->snst;
+	double sweep;
+	if(snst->calibrate)
+		sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
+	else
+		sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
+	snst->trace_centering = fmod(snst->trace_centering + sweep * (1.+.1*direction), sweep);
+	gtk_widget_queue_draw(op->paperstrip_drawing_area);
+}
+
+void handle_left(GtkButton *b, struct output_panel *op)
+{
+	shift_trace(op,-1);
+}
+
+void handle_right(GtkButton *b, struct output_panel *op)
+{
+	shift_trace(op,1);
+}
+
+void op_set_snapshot(struct output_panel *op, struct snapshot *snst)
+{
+	op->snst = snst;
+	gtk_widget_set_sensitive(op->clear_button, !snst->calibrate);
+}
+
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active)
 {
 	struct output_panel *op = malloc(sizeof(struct output_panel));
 
@@ -778,17 +809,32 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
 	gtk_widget_show(hbox3);
 
+	// < button
+	GtkWidget *left_button = gtk_button_new_with_label("<");
+	gtk_box_pack_start(GTK_BOX(hbox3), left_button, TRUE, TRUE, 0);
+	g_signal_connect (left_button, "clicked", G_CALLBACK(handle_left), op);
+	gtk_widget_show(left_button);
+
 	// CLEAR button
-	op->clear_button = gtk_button_new_with_label("Clear");
-	gtk_box_pack_start(GTK_BOX(hbox3), op->clear_button, TRUE, TRUE, 0);
-	g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
-	gtk_widget_show(op->clear_button);
+	if(active) {
+		op->clear_button = gtk_button_new_with_label("Clear");
+		gtk_box_pack_start(GTK_BOX(hbox3), op->clear_button, TRUE, TRUE, 0);
+		g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
+		gtk_widget_set_sensitive(op->clear_button, !snst->calibrate);
+		gtk_widget_show(op->clear_button);
+	}
 
 	// CENTER button
 	GtkWidget *center_button = gtk_button_new_with_label("Center");
 	gtk_box_pack_start(GTK_BOX(hbox3), center_button, TRUE, TRUE, 0);
 	g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), op);
 	gtk_widget_show(center_button);
+
+	// > button
+	GtkWidget *right_button = gtk_button_new_with_label(">");
+	gtk_box_pack_start(GTK_BOX(hbox3), right_button, TRUE, TRUE, 0);
+	g_signal_connect (right_button, "clicked", G_CALLBACK(handle_right), op);
+	gtk_widget_show(right_button);
 
 	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);

@@ -209,6 +209,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal)
 	setup_cal_data(cd);
 
 	struct snapshot *s = malloc(sizeof(struct snapshot));
+	s->timestamp = 0;
 	s->nominal_sr = nominal_sr;
 	s->pb = NULL;
 	s->is_old = 1;

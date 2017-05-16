@@ -127,6 +127,7 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 struct snapshot {
 	struct processing_buffers *pb;
 	int is_old;
+	uint64_t timestamp;
 
 	int nominal_sr;
 	int calibrate;
@@ -200,17 +201,20 @@ struct output_panel {
 };
 
 void initialize_palette();
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst);
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active);
 void redraw_op(struct output_panel *op);
+void op_set_snapshot(struct output_panel *op, struct snapshot *snst);
 
 /* interface.c */
 struct main_window {
 	GtkWidget *window;
 	GtkWidget *cal_spin_button;
-	struct output_panel *op;
+	GtkWidget *snapshot_button;
+	GtkWidget *notebook;
+	struct output_panel *active_panel;
 
 	struct computer *computer;
-	struct snapshot **snapshots;
+	struct snapshot *active_snapshot;
 	int current_snapshot;
 	int computer_timeout;
 
