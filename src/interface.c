@@ -301,7 +301,7 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 	op_set_border(w->active_panel, 5);
 	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), 1);
 	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), op->panel, label);
-	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, TRUE);
+	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), op->panel, TRUE);
 }
 
 /* Set up the main window and populate with widgets */
