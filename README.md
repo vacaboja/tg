@@ -69,4 +69,3 @@ To compile tg on Fedora (accurate as of Fedora 25)
 	git clone https://github.com/vacaboja/tg.git
 	cd tg
 	make
-
