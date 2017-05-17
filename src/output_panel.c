@@ -36,22 +36,6 @@ void initialize_palette()
 	define_color(&yellow,1,1,0);
 }
 
-/*
-void redraw_op(struct output_panel *op)
-{
-	gtk_widget_set_sensitive(op->clear_button, !op->snst->calibrate);
-
-	gtk_widget_queue_draw(op->output_drawing_area);
-	gtk_widget_queue_draw(op->tic_drawing_area);
-	gtk_widget_queue_draw(op->toc_drawing_area);
-	gtk_widget_queue_draw(op->period_drawing_area);
-	gtk_widget_queue_draw(op->paperstrip_drawing_area);
-#ifdef DEBUG
-	gtk_widget_queue_draw(op->debug_drawing_area);
-#endif
-}
-*/
-
 void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
 	GtkAllocation temp;
@@ -771,15 +755,28 @@ void op_set_snapshot(struct output_panel *op, struct snapshot *snst)
 	gtk_widget_set_sensitive(op->clear_button, !snst->calibrate);
 }
 
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active)
+void op_set_border(struct output_panel *op, int i)
+{
+	gtk_container_set_border_width(GTK_CONTAINER(op->panel), i);
+}
+
+void op_destroy(struct output_panel *op)
+{
+	snapshot_destroy(op->snst);
+	free(op);
+}
+
+//TODO: computer->active?
+
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active, int border)
 {
 	struct output_panel *op = malloc(sizeof(struct output_panel));
 
 	op->computer = comp;
 	op->snst = snst;
 
-	op->panel = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
-	gtk_widget_show(op->panel);
+	op->panel = gtk_vbox_new(FALSE, 10);
+	gtk_container_set_border_width(GTK_CONTAINER(op->panel), border);
 
 	// Info area on top
 	op->output_drawing_area = gtk_drawing_area_new();
@@ -787,15 +784,12 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(op->panel),op->output_drawing_area, FALSE, TRUE, 0);
 	g_signal_connect (op->output_drawing_area, "expose_event", G_CALLBACK(output_expose_event), op);
 	gtk_widget_set_events(op->output_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(op->output_drawing_area);
 
 	GtkWidget *hbox2 = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(op->panel), hbox2, TRUE, TRUE, 0);
-	gtk_widget_show(hbox2);
 
 	GtkWidget *vbox2 = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox2, FALSE, TRUE, 0);
-	gtk_widget_show(vbox2);
 
 	// Paperstrip
 	op->paperstrip_drawing_area = gtk_drawing_area_new();
@@ -803,17 +797,14 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(vbox2), op->paperstrip_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->paperstrip_drawing_area, "expose_event", G_CALLBACK(paperstrip_expose_event), op);
 	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(op->paperstrip_drawing_area);
 
 	GtkWidget *hbox3 = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
-	gtk_widget_show(hbox3);
 
 	// < button
 	GtkWidget *left_button = gtk_button_new_with_label("<");
 	gtk_box_pack_start(GTK_BOX(hbox3), left_button, TRUE, TRUE, 0);
 	g_signal_connect (left_button, "clicked", G_CALLBACK(handle_left), op);
-	gtk_widget_show(left_button);
 
 	// CLEAR button
 	if(active) {
@@ -821,24 +812,20 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 		gtk_box_pack_start(GTK_BOX(hbox3), op->clear_button, TRUE, TRUE, 0);
 		g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
 		gtk_widget_set_sensitive(op->clear_button, !snst->calibrate);
-		gtk_widget_show(op->clear_button);
 	}
 
 	// CENTER button
 	GtkWidget *center_button = gtk_button_new_with_label("Center");
 	gtk_box_pack_start(GTK_BOX(hbox3), center_button, TRUE, TRUE, 0);
 	g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), op);
-	gtk_widget_show(center_button);
 
 	// > button
 	GtkWidget *right_button = gtk_button_new_with_label(">");
 	gtk_box_pack_start(GTK_BOX(hbox3), right_button, TRUE, TRUE, 0);
 	g_signal_connect (right_button, "clicked", G_CALLBACK(handle_right), op);
-	gtk_widget_show(right_button);
 
 	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);
-	gtk_widget_show(vbox3);
 
 	// Tic waveform area
 	op->tic_drawing_area = gtk_drawing_area_new();
@@ -846,7 +833,6 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(vbox3), op->tic_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->tic_drawing_area, "expose_event", G_CALLBACK(tic_expose_event), op);
 	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(op->tic_drawing_area);
 
 	// Toc waveform area
 	op->toc_drawing_area = gtk_drawing_area_new();
@@ -854,7 +840,6 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(vbox3), op->toc_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->toc_drawing_area, "expose_event", G_CALLBACK(toc_expose_event), op);
 	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(op->toc_drawing_area);
 
 	// Period waveform area
 	op->period_drawing_area = gtk_drawing_area_new();
@@ -862,7 +847,6 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(vbox3), op->period_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->period_drawing_area, "expose_event", G_CALLBACK(period_expose_event), op);
 	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(op->period_drawing_area);
 
 #ifdef DEBUG
 	op->debug_drawing_area = gtk_drawing_area_new();
@@ -870,7 +854,6 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(vbox3), op->debug_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->debug_drawing_area, "expose_event", G_CALLBACK(debug_expose_event), op);
 	gtk_widget_set_events(op->debug_drawing_area, GDK_EXPOSURE_MASK);
-	gtk_widget_show(op->debug_drawing_area);
 #endif
 
 	return op;

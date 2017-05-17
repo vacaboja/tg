@@ -201,13 +201,17 @@ struct output_panel {
 };
 
 void initialize_palette();
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active);
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active, int border);
 void redraw_op(struct output_panel *op);
 void op_set_snapshot(struct output_panel *op, struct snapshot *snst);
+void op_set_border(struct output_panel *op, int i);
+void op_destroy(struct output_panel *op);
 
 /* interface.c */
 struct main_window {
 	GtkWidget *window;
+	GtkWidget *bph_combo_box;
+	GtkWidget *la_spin_button;
 	GtkWidget *cal_spin_button;
 	GtkWidget *snapshot_button;
 	GtkWidget *notebook;
@@ -218,6 +222,7 @@ struct main_window {
 	int current_snapshot;
 	int computer_timeout;
 
+	int controls_active;
 	int calibrate;
 	int bph;
 	double la; // deg

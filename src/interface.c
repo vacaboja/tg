@@ -101,6 +101,7 @@ void redraw_if_necessary(struct main_window *w)
 
 void handle_bph_change(GtkComboBox *b, struct main_window *w)
 {
+	if(!w->controls_active) return;
 	char *s = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(b));
 	if(s) {
 		int bph;
@@ -117,6 +118,7 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 
 void handle_la_change(GtkSpinButton *b, struct main_window *w)
 {
+	if(!w->controls_active) return;
 	double la = gtk_spin_button_get_value(b);
 	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
 	w->la = la;
@@ -126,6 +128,7 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 
 void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 {
+	if(!w->controls_active) return;
 	int cal = gtk_spin_button_get_value(b);
 	w->cal = cal;
 	refresh_results(w);
@@ -199,17 +202,106 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 	return TRUE;
 }
 
+void controls_active(struct main_window *w, int active)
+{
+	w->controls_active = active;
+	gtk_widget_set_sensitive(w->bph_combo_box, active);
+	gtk_widget_set_sensitive(w->la_spin_button, active);
+	gtk_widget_set_sensitive(w->cal_spin_button, active);
+}
+
+void handle_tab_closed(GtkNotebook *nbk, GtkWidget *panel, guint x, void *p)
+{
+	if(gtk_notebook_get_n_pages(nbk) == 1)
+		gtk_notebook_set_show_tabs(GTK_NOTEBOOK(nbk), FALSE);
+	// Now, are we sure that we are not going to segfault?
+	struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
+	if(op) op_destroy(op);
+}
+
+void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_window *w)
+{
+	struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
+	controls_active(w, !op);
+
+	int bph, cal;
+	double la;
+	if(op) {
+		bph = op->snst->bph;
+		cal = op->snst->cal;
+		la = op->snst->la;
+	} else {
+		bph = w->bph;
+		cal = w->cal;
+		la = w->la;
+	}
+	// you never know where this snapshot has been loaded from...
+	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
+	if(bph < MIN_BPH || bph > MAX_BPH) bph = 0;
+	if(cal < MIN_CAL || cal > MAX_CAL) cal = 0;
+
+	int i,current = 0;
+	for(i = 0; preset_bph[i]; i++) {
+		if(bph == preset_bph[i]) {
+			current = i+1;
+			break;
+		}
+	}
+	if(current || bph == 0)
+		gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), current);
+	else {
+		char s[32];
+		sprintf(s,"%d",bph);
+		GtkEntry *e = GTK_ENTRY(gtk_bin_get_child(GTK_BIN(w->bph_combo_box)));
+		gtk_entry_set_text(e,s);
+	}
+
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), la);
+
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), cal);
+}
+
+void handle_close_tab(GtkButton *b, struct output_panel *p)
+{
+	gtk_widget_destroy(p->panel);
+}
+
+GtkWidget *make_tab_label(char *s, struct output_panel *panel_to_close)
+{
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 0);
+
+	GtkWidget *label = gtk_label_new(s);
+	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 5);
+
+	if(panel_to_close) {
+		GtkWidget *image = gtk_image_new_from_stock(GTK_STOCK_CLOSE, GTK_ICON_SIZE_MENU);
+		GtkWidget *button = gtk_button_new();
+		gtk_button_set_image(GTK_BUTTON(button), image);
+		gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
+		g_signal_connect(button, "clicked", G_CALLBACK(handle_close_tab), panel_to_close);
+		gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 0);
+		g_object_set_data(G_OBJECT(panel_to_close->panel), "op-pointer", panel_to_close);
+	}
+
+	gtk_widget_show_all(hbox);
+
+	return hbox;
+}
+
 void handle_snapshot(GtkButton *b, struct main_window *w)
 {
 	if(w->active_snapshot->calibrate) return;
 
-	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), 1);
-
 	struct snapshot *s = snapshot_clone(w->active_snapshot);
 	s->timestamp = get_timestamp();
-	struct output_panel *op = init_output_panel(NULL, s, 0);
-	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), op->panel, NULL);
-	gtk_widget_show(op->panel);
+	struct output_panel *op = init_output_panel(NULL, s, 0, 5);
+	GtkWidget *label = make_tab_label("Snapshot", op);
+	gtk_widget_show_all(op->panel);
+
+	op_set_border(w->active_panel, 5);
+	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), 1);
+	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), op->panel, label);
+	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, TRUE);
 }
 
 /* Set up the main window and populate with widgets */
@@ -217,63 +309,56 @@ void init_main_window(struct main_window *w)
 {
 	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
-	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10); // Border around the window
+	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10);
 	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), w);
 
 	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
 
-	GtkWidget *vbox = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *vbox = gtk_vbox_new(FALSE, 10);
 	gtk_container_add(GTK_CONTAINER(w->window), vbox);
-	gtk_widget_show(vbox);
 
-	GtkWidget *hbox = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *hbox = gtk_hbox_new(FALSE, 10);
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, TRUE, 0);
-	gtk_widget_show(hbox);
 
 	// BPH label
 	GtkWidget *label = gtk_label_new("bph");
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
-	gtk_widget_show(label);
 
 	// BPH combo box
-	GtkWidget *bph_combo_box = gtk_combo_box_text_new_with_entry();
-	gtk_box_pack_start(GTK_BOX(hbox), bph_combo_box, FALSE, TRUE, 0);
+	w->bph_combo_box = gtk_combo_box_text_new_with_entry();
+	gtk_box_pack_start(GTK_BOX(hbox), w->bph_combo_box, FALSE, TRUE, 0);
 	// Fill in pre-defined values
-	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(bph_combo_box), "guess");
+	gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), "guess");
 	int i,current = 0;
 	for(i = 0; preset_bph[i]; i++) {
 		char s[100];
 		sprintf(s,"%d", preset_bph[i]);
-		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(bph_combo_box), s);
+		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(w->bph_combo_box), s);
 		if(w->bph == preset_bph[i]) current = i+1;
 	}
 	if(current || w->bph == 0)
-		gtk_combo_box_set_active(GTK_COMBO_BOX(bph_combo_box), current);
+		gtk_combo_box_set_active(GTK_COMBO_BOX(w->bph_combo_box), current);
 	else {
 		char s[32];
 		sprintf(s,"%d",w->bph);
-		GtkEntry *e = GTK_ENTRY(gtk_bin_get_child(GTK_BIN(bph_combo_box)));
+		GtkEntry *e = GTK_ENTRY(gtk_bin_get_child(GTK_BIN(w->bph_combo_box)));
 		gtk_entry_set_text(e,s);
 	}
-	g_signal_connect (bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
-	gtk_widget_show(bph_combo_box);
+	g_signal_connect (w->bph_combo_box, "changed", G_CALLBACK(handle_bph_change), w);
 
 	// Lift angle label
 	label = gtk_label_new("lift angle");
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
-	gtk_widget_show(label);
 
 	// Lift angle spin button
-	GtkWidget *la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
-	gtk_box_pack_start(GTK_BOX(hbox), la_spin_button, FALSE, TRUE, 0);
-	gtk_spin_button_set_value(GTK_SPIN_BUTTON(la_spin_button), w->la);
-	g_signal_connect(la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
-	gtk_widget_show(la_spin_button);
+	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
+	gtk_box_pack_start(GTK_BOX(hbox), w->la_spin_button, FALSE, TRUE, 0);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), w->la);
+	g_signal_connect(w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
 
-	// Lift angle label
+	// Calibration label
 	label = gtk_label_new("cal");
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
-	gtk_widget_show(label);
 
 	// Calibration spin button
 	w->cal_spin_button = gtk_spin_button_new_with_range(MIN_CAL, MAX_CAL, 1);
@@ -284,43 +369,40 @@ void init_main_window(struct main_window *w)
 	g_signal_connect(w->cal_spin_button, "value_changed", G_CALLBACK(handle_cal_change), w);
 	g_signal_connect(w->cal_spin_button, "output", G_CALLBACK(output_cal), NULL);
 	g_signal_connect(w->cal_spin_button, "input", G_CALLBACK(input_cal), NULL);
-	gtk_widget_show(w->cal_spin_button);
 
 	// Is there a more elegant way?
 	GtkWidget *empty = gtk_label_new("");
 	gtk_box_pack_start(GTK_BOX(hbox), empty, TRUE, FALSE, 0);
-	gtk_widget_show(empty);
 
 	// Snapshot button
 	w->snapshot_button = gtk_button_new_with_label("Take Snapshot");
 	gtk_box_pack_start(GTK_BOX(hbox), w->snapshot_button, FALSE, FALSE, 0);
 	g_signal_connect(w->snapshot_button, "clicked", G_CALLBACK(handle_snapshot), w);
-	gtk_widget_show(w->snapshot_button);
 
 	empty = gtk_label_new("");
 	gtk_box_pack_start(GTK_BOX(hbox), empty, TRUE, FALSE, 0);
-	gtk_widget_show(empty);
 
 	// CALIBRATE button
 	GtkWidget *cal_button = gtk_toggle_button_new_with_label("Calibrate");
 	gtk_box_pack_end(GTK_BOX(hbox), cal_button, FALSE, FALSE, 0);
 	g_signal_connect(cal_button, "toggled", G_CALLBACK(handle_calibrate), w);
-	gtk_widget_show(cal_button);
-
 
 	// The tabs' container
 	w->notebook = gtk_notebook_new();
 	gtk_box_pack_start(GTK_BOX(vbox), w->notebook, TRUE, TRUE, 0);
-	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), 0);
-	gtk_notebook_set_show_border(GTK_NOTEBOOK(w->notebook), 0);
-	gtk_widget_show(w->notebook);
+	gtk_notebook_set_scrollable(GTK_NOTEBOOK(w->notebook), TRUE);
+	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), FALSE);
+	gtk_notebook_set_show_border(GTK_NOTEBOOK(w->notebook), FALSE);
+	g_signal_connect(w->notebook, "page-removed", G_CALLBACK(handle_tab_closed), NULL);
+	g_signal_connect(w->notebook, "switch-page", G_CALLBACK(handle_tab_changed), w);
 
 	// The main tab
-	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, NULL);
-	gtk_widget_show(w->active_panel->panel);
+	GtkWidget *tab_label = make_tab_label("Real time", NULL);
+	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, tab_label);
+	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, TRUE);
 
 	gtk_window_maximize(GTK_WINDOW(w->window));
-	gtk_widget_show(w->window);
+	gtk_widget_show_all(w->window);
 	gtk_window_set_focus(GTK_WINDOW(w->window), NULL);
 }
 
@@ -371,6 +453,7 @@ int run_interface()
 
 	struct main_window w;
 
+	w.controls_active = 1;
 	w.cal = MIN_CAL - 1;
 	w.bph = 0;
 	w.la = DEFAULT_LA;
@@ -394,7 +477,7 @@ int run_interface()
 	w.computer->curr = NULL;
 	compute_results(w.active_snapshot);
 
-	w.active_panel = init_output_panel(w.computer, w.active_snapshot, 1);
+	w.active_panel = init_output_panel(w.computer, w.active_snapshot, 1, 0);
 
 	init_main_window(&w);
 
