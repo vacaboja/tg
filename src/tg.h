@@ -201,7 +201,7 @@ struct output_panel {
 };
 
 void initialize_palette();
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active, int border);
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border);
 void redraw_op(struct output_panel *op);
 void op_set_snapshot(struct output_panel *op, struct snapshot *snst);
 void op_set_border(struct output_panel *op, int i);
@@ -214,6 +214,9 @@ struct main_window {
 	GtkWidget *la_spin_button;
 	GtkWidget *cal_spin_button;
 	GtkWidget *snapshot_button;
+	GtkWidget *snapshot_name;
+	GtkWidget *snapshot_name_entry;
+	GtkWidget *cal_button;
 	GtkWidget *notebook;
 	struct output_panel *active_panel;
 

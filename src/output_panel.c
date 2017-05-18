@@ -766,9 +766,7 @@ void op_destroy(struct output_panel *op)
 	free(op);
 }
 
-//TODO: computer->active?
-
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int active, int border)
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border)
 {
 	struct output_panel *op = malloc(sizeof(struct output_panel));
 
@@ -807,7 +805,7 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	g_signal_connect (left_button, "clicked", G_CALLBACK(handle_left), op);
 
 	// CLEAR button
-	if(active) {
+	if(comp) {
 		op->clear_button = gtk_button_new_with_label("Clear");
 		gtk_box_pack_start(GTK_BOX(hbox3), op->clear_button, TRUE, TRUE, 0);
 		g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
