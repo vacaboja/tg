@@ -8,7 +8,7 @@ ifneq ($(shell uname -s),Darwin)
 	LDFLAGS += -Wl,--as-needed
 endif
 
-PACKAGES := gtk+-2.0 gthread-2.0 portaudio-2.0 fftw3f
+PACKAGES := gtk+-3.0 portaudio-2.0 fftw3f
 CFLAGS += -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
 LDFLAGS += -lm -lpthread `pkg-config --libs $(PACKAGES)`
 

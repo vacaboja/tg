@@ -135,15 +135,12 @@ double draw_watch_icon(cairo_t *c, int signal, int happy)
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
-cairo_t *cairo_init(GtkWidget *widget)
+void cairo_init(cairo_t *c)
 {
-	cairo_t *c = gdk_cairo_create(gtk_widget_get_window(widget));
 	cairo_set_line_width(c,1);
 
 	cairo_set_source(c,black);
 	cairo_paint(c);
-
-	return c;
 }
 
 double print_s(cairo_t *c, double x, double y, char *s)
@@ -172,9 +169,9 @@ double print_number(cairo_t *c, double x, double y, char *s)
 	return x;
 }
 
-gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct output_panel *op)
+gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
-	cairo_t *c = cairo_init(widget);
+	cairo_init(c);
 
 	struct snapshot *snst = op->snst;
 	struct processing_buffers *p = snst->pb;
@@ -290,18 +287,17 @@ gboolean output_expose_event(GtkWidget *widget, GdkEvent *event, struct output_p
 	}
 #endif
 
-	cairo_destroy(c);
-
 	return FALSE;
 }
 
 void expose_waveform(
 		struct output_panel *op,
 		GtkWidget *da,
+		cairo_t *c,
 		int (*get_offset)(struct processing_buffers*),
 		double (*get_pulse)(struct processing_buffers*))
 {
-	cairo_t *c = cairo_init(da);
+	cairo_init(c);
 
 	GtkAllocation temp;
 	gtk_widget_get_allocation(da, &temp);
@@ -412,8 +408,6 @@ void expose_waveform(
 		cairo_set_source(c,yellow);
 		cairo_stroke(c);
 	}
-
-	cairo_destroy(c);
 }
 
 int get_tic(struct processing_buffers *p)
@@ -436,21 +430,21 @@ double get_toc_pulse(struct processing_buffers *p)
 	return p->toc_pulse;
 }
 
-gboolean tic_expose_event(GtkWidget *widget, GdkEvent *event, struct output_panel *op)
+gboolean tic_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
-	expose_waveform(op, op->tic_drawing_area, get_tic, get_tic_pulse);
+	expose_waveform(op, op->tic_drawing_area, c, get_tic, get_tic_pulse);
 	return FALSE;
 }
 
-gboolean toc_expose_event(GtkWidget *widget, GdkEvent *event, struct output_panel *op)
+gboolean toc_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
-	expose_waveform(op, op->toc_drawing_area, get_toc, get_toc_pulse);
+	expose_waveform(op, op->toc_drawing_area, c, get_toc, get_toc_pulse);
 	return FALSE;
 }
 
-gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct output_panel *op)
+gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
-	cairo_t *c = cairo_init(widget);
+	cairo_init(c);
 
 	GtkAllocation temp;
 	gtk_widget_get_allocation (op->period_drawing_area, &temp);
@@ -509,12 +503,10 @@ gboolean period_expose_event(GtkWidget *widget, GdkEvent *event, struct output_p
 		cairo_stroke(c);
 	}
 
-	cairo_destroy(c);
-
 	return FALSE;
 }
 
-gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct output_panel *op)
+gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	int i;
 	struct snapshot *snst = op->snst;
@@ -533,7 +525,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct outp
 			slope = - snst->rate * zoom_factor / (3600. * 24.);
 	}
 
-	cairo_t *c = cairo_init(widget);
+	cairo_init(c);
 
 	GtkAllocation temp;
 	gtk_widget_get_allocation (op->paperstrip_drawing_area, &temp);
@@ -662,15 +654,13 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct outp
 	cairo_move_to(c, (width - extents.x_advance)/2, height - 30);
 	cairo_show_text(c,s);
 
-	cairo_destroy(c);
-
 	return FALSE;
 }
 
 #ifdef DEBUG
-gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct output_panel *op)
+gboolean debug_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
-	cairo_t *c = cairo_init(widget);
+	cairo_init(c);
 
 	struct snapshot *snst = op->snst;
 	struct processing_buffers *p;
@@ -688,8 +678,6 @@ gboolean debug_expose_event(GtkWidget *widget, GdkEvent *event, struct output_pa
 		cairo_set_source(c,snst->is_old?yellow:white);
 		cairo_stroke(c);
 	}
-
-	cairo_destroy(c);
 
 	return FALSE;
 }
@@ -772,30 +760,30 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	op->computer = comp;
 	op->snst = snst;
 
-	op->panel = gtk_vbox_new(FALSE, 10);
+	op->panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 	gtk_container_set_border_width(GTK_CONTAINER(op->panel), border);
 
 	// Info area on top
 	op->output_drawing_area = gtk_drawing_area_new();
 	gtk_widget_set_size_request(op->output_drawing_area, 700, OUTPUT_WINDOW_HEIGHT);
 	gtk_box_pack_start(GTK_BOX(op->panel),op->output_drawing_area, FALSE, TRUE, 0);
-	g_signal_connect (op->output_drawing_area, "expose_event", G_CALLBACK(output_expose_event), op);
+	g_signal_connect (op->output_drawing_area, "draw", G_CALLBACK(output_draw_event), op);
 	gtk_widget_set_events(op->output_drawing_area, GDK_EXPOSURE_MASK);
 
-	GtkWidget *hbox2 = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(op->panel), hbox2, TRUE, TRUE, 0);
 
-	GtkWidget *vbox2 = gtk_vbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *vbox2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox2, FALSE, TRUE, 0);
 
 	// Paperstrip
 	op->paperstrip_drawing_area = gtk_drawing_area_new();
 	gtk_widget_set_size_request(op->paperstrip_drawing_area, 200, 400);
 	gtk_box_pack_start(GTK_BOX(vbox2), op->paperstrip_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->paperstrip_drawing_area, "expose_event", G_CALLBACK(paperstrip_expose_event), op);
+	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
 	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 
-	GtkWidget *hbox3 = gtk_hbox_new(FALSE, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *hbox3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
 
 	// < button
@@ -821,35 +809,35 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(hbox3), right_button, TRUE, TRUE, 0);
 	g_signal_connect (right_button, "clicked", G_CALLBACK(handle_right), op);
 
-	GtkWidget *vbox3 = gtk_vbox_new(FALSE,10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *vbox3 = gtk_box_new(GTK_ORIENTATION_VERTICAL,10); // Replaced by GtkGrid in GTK+ 3.2
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);
 
 	// Tic waveform area
 	op->tic_drawing_area = gtk_drawing_area_new();
 	gtk_widget_set_size_request(op->tic_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->tic_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->tic_drawing_area, "expose_event", G_CALLBACK(tic_expose_event), op);
+	g_signal_connect (op->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), op);
 	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
 
 	// Toc waveform area
 	op->toc_drawing_area = gtk_drawing_area_new();
 	gtk_widget_set_size_request(op->toc_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->toc_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->toc_drawing_area, "expose_event", G_CALLBACK(toc_expose_event), op);
+	g_signal_connect (op->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), op);
 	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
 
 	// Period waveform area
 	op->period_drawing_area = gtk_drawing_area_new();
 	gtk_widget_set_size_request(op->period_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->period_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->period_drawing_area, "expose_event", G_CALLBACK(period_expose_event), op);
+	g_signal_connect (op->period_drawing_area, "draw", G_CALLBACK(period_draw_event), op);
 	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
 
 #ifdef DEBUG
 	op->debug_drawing_area = gtk_drawing_area_new();
 	gtk_widget_set_size_request(op->debug_drawing_area, 500, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->debug_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->debug_drawing_area, "expose_event", G_CALLBACK(debug_expose_event), op);
+	g_signal_connect (op->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), op);
 	gtk_widget_set_events(op->debug_drawing_area, GDK_EXPOSURE_MASK);
 #endif
 

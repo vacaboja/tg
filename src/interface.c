@@ -282,13 +282,13 @@ void handle_name_change(GtkEntry *e, struct main_window *w)
 
 GtkWidget *make_tab_label(char *s, struct output_panel *panel_to_close)
 {
-	GtkWidget *hbox = gtk_hbox_new(FALSE, 0);
+	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
 	GtkWidget *label = gtk_label_new(s);
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 5);
 
 	if(panel_to_close) {
-		GtkWidget *image = gtk_image_new_from_stock(GTK_STOCK_CLOSE, GTK_ICON_SIZE_MENU);
+		GtkWidget *image = gtk_image_new_from_icon_name("window-close", GTK_ICON_SIZE_MENU);
 		GtkWidget *button = gtk_button_new();
 		gtk_button_set_image(GTK_BUTTON(button), image);
 		gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
@@ -329,10 +329,10 @@ void init_main_window(struct main_window *w)
 
 	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
 
-	GtkWidget *vbox = gtk_vbox_new(FALSE, 10);
+	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 	gtk_container_add(GTK_CONTAINER(w->window), vbox);
 
-	GtkWidget *hbox = gtk_hbox_new(FALSE, 10);
+	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 
 	// BPH label
@@ -397,7 +397,7 @@ void init_main_window(struct main_window *w)
 	// Snapshot name field
 	GtkWidget *name_label = gtk_label_new("Current snapshot");
 	w->snapshot_name_entry = gtk_entry_new();
-	w->snapshot_name = gtk_hbox_new(FALSE, 10);
+	w->snapshot_name = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
 	gtk_box_pack_start(GTK_BOX(w->snapshot_name), name_label, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(w->snapshot_name), w->snapshot_name_entry, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(hbox), w->snapshot_name, FALSE, FALSE, 0);
@@ -521,12 +521,6 @@ int run_interface()
 
 int main(int argc, char **argv)
 {
-#if !GLIB_CHECK_VERSION(2,31,0)
-	g_thread_init(NULL);
-#endif
-	gdk_threads_init();
-	gdk_threads_enter();
-
 	gtk_init(&argc, &argv);
 #ifdef DEBUG
 	if(argc > 1 && !strcmp("test",argv[1]))
@@ -536,8 +530,6 @@ int main(int argc, char **argv)
 
 	int ret = run_interface();
 	debug("Interface exited with status %d\n",ret);
-
-	gdk_threads_leave();
 
 	return ret;
 }
