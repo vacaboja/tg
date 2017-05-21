@@ -455,10 +455,7 @@ guint refresh(struct main_window *w)
 		}
 	}
 	unlock_computer(w->computer);
-	w->active_snapshot->bph = w->bph;
-	w->active_snapshot->la = w->la;
-	w->active_snapshot->cal = w->cal;
-	compute_results(w->active_snapshot);
+	refresh_results(w);
 	op_set_snapshot(w->active_panel, w->active_snapshot);
 	gtk_widget_queue_draw(w->notebook);
 	return FALSE;

@@ -519,7 +519,6 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct outp
 	int i;
 	struct snapshot *snst = op->snst;
 	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp();
-	struct processing_buffers *p = snst->pb;
 	double sweep;
 	int zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display
@@ -530,7 +529,7 @@ gboolean paperstrip_expose_event(GtkWidget *widget, GdkEvent *event, struct outp
 	} else {
 		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
 		zoom_factor = PAPERSTRIP_ZOOM;
-		if(p && snst->events[snst->events_wp])
+		if(snst->events[snst->events_wp])
 			slope = - snst->rate * zoom_factor / (3600. * 24.);
 	}
 
