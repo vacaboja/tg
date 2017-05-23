@@ -70,8 +70,10 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 #ifdef DEBUG
 void draw_debug_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
-	int width = da->allocation.width;
-	int height = da->allocation.height;
+	GtkAllocation temp;
+	gtk_widget_get_allocation (da, &temp);
+	int width = temp.width;
+	int height = temp.height;
 
 	int i;
 	float max = 0;

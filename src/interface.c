@@ -170,7 +170,6 @@ guint close_main_window(struct main_window *w)
 {
 	debug("Closing main window\n");
 	gtk_widget_destroy(w->window);
-	gtk_main_quit();
 	return FALSE;
 }
 
@@ -322,7 +321,7 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 /* Set up the main window and populate with widgets */
 void init_main_window(struct main_window *w)
 {
-	w->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	w->window = gtk_application_window_new(w->app);
 
 	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10);
 	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), w);
@@ -466,69 +465,86 @@ void computer_callback(void *w)
 	gdk_threads_add_idle((GSourceFunc)refresh,w);
 }
 
-int run_interface()
+int start_interface(GtkApplication* app, void *p)
 {
+	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
+	if(w) {
+		debug("Application already active\n");
+		gtk_window_present(GTK_WINDOW(w->window));
+		return 0;
+	}
+
 	int nominal_sr;
 	double real_sr;
 
+	initialize_palette();
 	if(start_portaudio(&nominal_sr, &real_sr)) return 1;
 
-	struct main_window w;
+	w = malloc(sizeof(struct main_window));
 
-	w.controls_active = 1;
-	w.cal = MIN_CAL - 1;
-	w.bph = 0;
-	w.la = DEFAULT_LA;
-	w.calibrate = 0;
+	w->app = app;
 
-	load_config(&w);
+	w->controls_active = 1;
+	w->cal = MIN_CAL - 1;
+	w->bph = 0;
+	w->la = DEFAULT_LA;
+	w->calibrate = 0;
 
-	if(w.la < MIN_LA || w.la > MAX_LA) w.la = DEFAULT_LA;
-	if(w.bph < MIN_BPH || w.bph > MAX_BPH) w.bph = 0;
-	if(w.cal < MIN_CAL || w.cal > MAX_CAL)
-		w.cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
+	load_config(w);
 
-	w.computer_timeout = 0;
+	if(w->la < MIN_LA || w->la > MAX_LA) w->la = DEFAULT_LA;
+	if(w->bph < MIN_BPH || w->bph > MAX_BPH) w->bph = 0;
+	if(w->cal < MIN_CAL || w->cal > MAX_CAL)
+		w->cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
 
-	w.computer = start_computer(nominal_sr, w.bph, w.la, w.cal);
-	if(!w.computer) return 2;
-	w.computer->callback = computer_callback;
-	w.computer->callback_data = &w;
+	w->computer_timeout = 0;
 
-	w.active_snapshot = w.computer->curr;
-	w.computer->curr = NULL;
-	compute_results(w.active_snapshot);
+	w->computer = start_computer(nominal_sr, w->bph, w->la, w->cal);
+	if(!w->computer) return 2;
+	w->computer->callback = computer_callback;
+	w->computer->callback_data = w;
 
-	w.active_panel = init_output_panel(w.computer, w.active_snapshot, 0);
+	w->active_snapshot = w->computer->curr;
+	w->computer->curr = NULL;
+	compute_results(w->active_snapshot);
 
-	init_main_window(&w);
+	w->active_panel = init_output_panel(w->computer, w->active_snapshot, 0);
 
-	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,&w,NULL);
-	g_timeout_add_full(G_PRIORITY_LOW,10000,(GSourceFunc)save_on_change_timer,&w,NULL);
+	init_main_window(w);
+
+	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,w,NULL);
+	g_timeout_add_full(G_PRIORITY_LOW,10000,(GSourceFunc)save_on_change_timer,w,NULL);
 #ifdef DEBUG
 	if(testing)
-		g_timeout_add_full(G_PRIORITY_LOW,3000,(GSourceFunc)quit,&w,NULL);
+		g_timeout_add_full(G_PRIORITY_LOW,3000,(GSourceFunc)quit,w,NULL);
 #endif
 
-	gtk_main();
+	g_object_set_data(G_OBJECT(app), "main-window", w);
+
+	return 0;
+}
+
+void on_shutdown(GApplication *app, void *p)
+{
 	debug("Main loop has terminated\n");
-
-	save_config(&w);
-
-	// We leak the processing buffers, program is terminating anyway
-	return 10*terminate_portaudio();
+	save_config(g_object_get_data(G_OBJECT(app), "main-window"));
+	terminate_portaudio();
+	// We leak the main_window structure
 }
 
 int main(int argc, char **argv)
 {
-	gtk_init(&argc, &argv);
 #ifdef DEBUG
 	if(argc > 1 && !strcmp("test",argv[1]))
 		testing = 1;
 #endif
-	initialize_palette();
 
-	int ret = run_interface();
+	GtkApplication *app = gtk_application_new ("li.ciovil.tg", G_APPLICATION_FLAGS_NONE);
+	g_signal_connect (app, "activate", G_CALLBACK (start_interface), NULL);
+	g_signal_connect (app, "shutdown", G_CALLBACK (on_shutdown), NULL);
+	int ret = g_application_run (G_APPLICATION (app), argc, argv);
+	g_object_unref (app);
+
 	debug("Interface exited with status %d\n",ret);
 
 	return ret;

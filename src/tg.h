@@ -209,6 +209,8 @@ void op_destroy(struct output_panel *op);
 
 /* interface.c */
 struct main_window {
+	GtkApplication *app;
+
 	GtkWidget *window;
 	GtkWidget *bph_combo_box;
 	GtkWidget *la_spin_button;
