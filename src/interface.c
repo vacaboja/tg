@@ -156,9 +156,9 @@ gboolean input_cal(GtkSpinButton *spin, double *val, gpointer data)
 	return TRUE;
 }
 
-void handle_calibrate(GtkToggleButton *b, struct main_window *w)
+void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
 {
-	int button_state = gtk_toggle_button_get_active(b) == TRUE;
+	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
 	if(button_state != w->calibrate) {
 		w->calibrate = button_state;
 		gtk_widget_set_sensitive(w->snapshot_button, !button_state);
@@ -213,8 +213,10 @@ void controls_active(struct main_window *w, int active)
 
 void handle_tab_closed(GtkNotebook *nbk, GtkWidget *panel, guint x, void *p)
 {
-	if(gtk_notebook_get_n_pages(nbk) == 1)
+	if(gtk_notebook_get_n_pages(nbk) == 1) {
 		gtk_notebook_set_show_tabs(GTK_NOTEBOOK(nbk), FALSE);
+		gtk_notebook_set_show_border(GTK_NOTEBOOK(nbk), FALSE);
+	}
 	// Now, are we sure that we are not going to segfault?
 	struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
 	if(op) op_destroy(op);
@@ -287,7 +289,7 @@ GtkWidget *make_tab_label(char *s, struct output_panel *panel_to_close)
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 5);
 
 	if(panel_to_close) {
-		GtkWidget *image = gtk_image_new_from_icon_name("window-close", GTK_ICON_SIZE_MENU);
+		GtkWidget *image = gtk_image_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
 		GtkWidget *button = gtk_button_new();
 		gtk_button_set_image(GTK_BUTTON(button), image);
 		gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
@@ -313,7 +315,8 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 	gtk_widget_show_all(op->panel);
 
 	op_set_border(w->active_panel, 5);
-	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), 1);
+	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), TRUE);
+	gtk_notebook_set_show_border(GTK_NOTEBOOK(w->notebook), TRUE);
 	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), op->panel, label);
 	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), op->panel, TRUE);
 }
@@ -322,6 +325,8 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 void init_main_window(struct main_window *w)
 {
 	w->window = gtk_application_window_new(w->app);
+
+	gtk_widget_set_size_request(w->window, 950, 700);
 
 	gtk_container_set_border_width(GTK_CONTAINER(w->window), 10);
 	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), w);
@@ -405,10 +410,22 @@ void init_main_window(struct main_window *w)
 	empty = gtk_label_new("");
 	gtk_box_pack_start(GTK_BOX(hbox), empty, TRUE, FALSE, 0);
 
-	// CALIBRATE button
-	w->cal_button = gtk_toggle_button_new_with_label("Calibrate");
-	gtk_box_pack_end(GTK_BOX(hbox), w->cal_button, FALSE, FALSE, 0);
+	// Command menu
+	GtkWidget *command_menu = gtk_menu_new();
+	GtkWidget *command_menu_button = gtk_menu_button_new();
+	GtkWidget *image = gtk_image_new_from_icon_name("open-menu-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
+	gtk_button_set_image(GTK_BUTTON(command_menu_button), image);
+	g_object_set(G_OBJECT(command_menu_button), "direction", GTK_ARROW_DOWN, NULL);
+	g_object_set(G_OBJECT(command_menu), "halign", GTK_ALIGN_END, NULL);
+	gtk_menu_button_set_popup(GTK_MENU_BUTTON(command_menu_button), command_menu);
+	gtk_box_pack_end(GTK_BOX(hbox), command_menu_button, FALSE, FALSE, 0);
+
+	// Calibrate checkbox
+	w->cal_button = gtk_check_menu_item_new_with_label("Calibrate");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->cal_button);
 	g_signal_connect(w->cal_button, "toggled", G_CALLBACK(handle_calibrate), w);
+
+	gtk_widget_show_all(command_menu);
 
 	// The tabs' container
 	w->notebook = gtk_notebook_new();

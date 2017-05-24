@@ -767,25 +767,25 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 
 	// Info area on top
 	op->output_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->output_drawing_area, 700, OUTPUT_WINDOW_HEIGHT);
+	gtk_widget_set_size_request(op->output_drawing_area, 0, OUTPUT_WINDOW_HEIGHT);
 	gtk_box_pack_start(GTK_BOX(op->panel),op->output_drawing_area, FALSE, TRUE, 0);
 	g_signal_connect (op->output_drawing_area, "draw", G_CALLBACK(output_draw_event), op);
 	gtk_widget_set_events(op->output_drawing_area, GDK_EXPOSURE_MASK);
 
-	GtkWidget *hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
 	gtk_box_pack_start(GTK_BOX(op->panel), hbox2, TRUE, TRUE, 0);
 
-	GtkWidget *vbox2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *vbox2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox2, FALSE, TRUE, 0);
 
 	// Paperstrip
 	op->paperstrip_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->paperstrip_drawing_area, 200, 400);
+	gtk_widget_set_size_request(op->paperstrip_drawing_area, 300, 0);
 	gtk_box_pack_start(GTK_BOX(vbox2), op->paperstrip_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
 	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 
-	GtkWidget *hbox3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *hbox3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
 	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
 
 	// < button
@@ -811,33 +811,29 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	gtk_box_pack_start(GTK_BOX(hbox3), right_button, TRUE, TRUE, 0);
 	g_signal_connect (right_button, "clicked", G_CALLBACK(handle_right), op);
 
-	GtkWidget *vbox3 = gtk_box_new(GTK_ORIENTATION_VERTICAL,10); // Replaced by GtkGrid in GTK+ 3.2
+	GtkWidget *vbox3 = gtk_box_new(GTK_ORIENTATION_VERTICAL,10);
 	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);
 
 	// Tic waveform area
 	op->tic_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->tic_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->tic_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), op);
 	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
 
 	// Toc waveform area
 	op->toc_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->toc_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->toc_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), op);
 	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
 
 	// Period waveform area
 	op->period_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->period_drawing_area, 700, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->period_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->period_drawing_area, "draw", G_CALLBACK(period_draw_event), op);
 	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
 
 #ifdef DEBUG
 	op->debug_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->debug_drawing_area, 500, 100);
 	gtk_box_pack_start(GTK_BOX(vbox3), op->debug_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), op);
 	gtk_widget_set_events(op->debug_drawing_area, GDK_EXPOSURE_MASK);
