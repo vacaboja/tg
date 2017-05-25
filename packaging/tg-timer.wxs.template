@@ -60,6 +60,7 @@
       <ComponentRef Id='License' />
       <ComponentRef Id='Readme' />
       <ComponentGroupRef Id='Dlls' />
+      <ComponentGroupRef Id='Images' />
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
 

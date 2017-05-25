@@ -28,9 +28,11 @@ cp "$ABSDIR/../LICENSE" "$TARGET"
 cp "$ABSDIR/../build/tg.exe" "$TARGET"
 cp "$ABSDIR/../build/tg-lt.exe" "$TARGET"
 cp "$DLLS"/* "$TARGET"
+cp "$ABSDIR/../icons/stock"/* "$TARGET"
 heat dir "$DLLS" -srd -gg -sreg -dr INSTALLDIR -cg Dlls -out "$TARGET/Dlls.wxs"
+heat dir "$ABSDIR/../icons/stock" -srd -gg -sreg -dr INSTALLDIR -cg Images -out "$TARGET/Images.wxs"
 
 cd "$TARGET"
 
-candle tg-timer.wxs Dlls.wxs
-light -out tg-timer_${VERSION}.msi -ext WixUIExtension tg-timer.wixobj Dlls.wixobj
+candle tg-timer.wxs Dlls.wxs Images.wxs
+light -out tg-timer_${VERSION}.msi -ext WixUIExtension tg-timer.wixobj Dlls.wixobj Images.wixobj

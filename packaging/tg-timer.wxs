@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
-  <Product Name='Tg' Id='f4b9cf89-06fc-4c90-bdc8-24d2bcc77ef9' UpgradeCode='088fdac7-fc91-4881-a2db-eed04425a207'
+  <Product Name='Tg' Id='70c3f325-738a-4205-b214-4cf0b0976e01' UpgradeCode='088fdac7-fc91-4881-a2db-eed04425a207'
     Language='1033' Codepage='1252' Version='0.4.0' Manufacturer='Marcello Mamino'>
 
     <Package Id='*' Keywords='Installer'
@@ -17,25 +17,25 @@
       <Directory Id='ProgramFilesFolder' Name='PFiles'>
         <Directory Id='INSTALLDIR' Name='tg-timer'>
 
-          <Component Id='MainExecutable' Guid='fa5c0b97-a6ce-44a3-a917-90a644ea0f84'>
+          <Component Id='MainExecutable' Guid='42ab029b-bf54-44da-b8e6-a64759a3acb3'>
             <File Id='TgEXE' Name='tg.exe' DiskId='1' Source='tg.exe' KeyPath='yes'>
               <Shortcut Id='startmenuTg' Directory='ProgramMenuDir' Name='Tg 0.4.0' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
               <Shortcut Id='desktopTg' Directory='DesktopFolder' Name='Tg 0.4.0' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
           </Component>
 
-          <Component Id='LightExecutable' Guid='de7b2b2b-f7ed-434d-b182-a6d915783e2f'>
+          <Component Id='LightExecutable' Guid='78fac5b7-e981-412f-becc-5b03545473ee'>
             <File Id='TgLtEXE' Name='tg-lt.exe' DiskId='1' Source='tg-lt.exe' KeyPath='yes'>
               <Shortcut Id='startmenuTgLt' Directory='ProgramMenuDir' Name='Tg lt 0.4.0' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
               <Shortcut Id='desktopTgLt' Directory='DesktopFolder' Name='Tg lt 0.4.0' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
           </Component>
 
-          <Component Id='License' Guid='49fcd7cf-94ba-4192-a0ca-501a72b4ac33'>
+          <Component Id='License' Guid='5d55f812-5701-4d17-b5d3-cb8f0a2db09c'>
             <File Id='License' Name='LICENSE' DiskId='1' Source='LICENSE' KeyPath='yes' />
           </Component>
 
-          <Component Id='Readme' Guid='542ed91a-6411-4183-9926-301416309136'>
+          <Component Id='Readme' Guid='29739e3a-9ec4-430e-a382-2ea0d79d211c'>
             <File Id='Readme' Name='README.md' DiskId='1' Source='README.md' KeyPath='yes' />
           </Component>
 
@@ -44,7 +44,7 @@
 
       <Directory Id='ProgramMenuFolder' Name='Programs'>
         <Directory Id='ProgramMenuDir' Name='Tg 0.4.0'>
-          <Component Id='ProgramMenuDir' Guid='9f8a890f-71f7-4f4c-b596-4ec402c0dfe5'>
+          <Component Id='ProgramMenuDir' Guid='837fbfb1-2a1f-42ba-a295-92460bfa8bc4'>
             <RemoveFolder Id='ProgramMenuDir' On='uninstall' />
             <RegistryValue Root='HKCU' Key='Software\[Manufacturer]\[ProductName]' Type='string' Value='' KeyPath='yes' />
           </Component>
@@ -60,6 +60,7 @@
       <ComponentRef Id='License' />
       <ComponentRef Id='Readme' />
       <ComponentGroupRef Id='Dlls' />
+      <ComponentGroupRef Id='Images' />
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
 
