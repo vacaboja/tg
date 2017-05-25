@@ -161,7 +161,6 @@ void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
 	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
 	if(button_state != w->calibrate) {
 		w->calibrate = button_state;
-		gtk_widget_set_sensitive(w->snapshot_button, !button_state);
 		recompute(w);
 	}
 }
@@ -242,6 +241,7 @@ void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main
 		cal = w->cal;
 		la = w->la;
 	}
+	// TODO: move to serializer
 	// you never know where this snapshot has been loaded from...
 	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
 	if(bph < MIN_BPH || bph > MAX_BPH) bph = 0;
@@ -325,6 +325,33 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), op->panel, TRUE);
 }
 
+void serialize_test(GtkMenuItem *m, struct main_window *w)
+{
+	FILE *f = fopen("test.dat", "w");
+
+	serialize_struct_begin(f);
+	int i, tabs = gtk_notebook_get_n_pages(GTK_NOTEBOOK(w->notebook));
+	for(i = 0; i < tabs; i++) {
+		GtkWidget *tab = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), i);
+		struct output_panel *op = g_object_get_data(G_OBJECT(tab), "op-pointer");
+		if(!op) continue; // This one is the real-time tab
+		GtkLabel *label = g_object_get_data(G_OBJECT(tab), "tab-label");
+		serialize_snapshot(f, op->snst, (char *)gtk_label_get_text(label));
+	}
+	serialize_struct_end(f);
+
+	fclose(f);
+}
+
+void scan_test(GtkMenuItem *m, struct main_window *w)
+{
+	FILE *f = fopen("test.dat", "r");
+
+	printf("eat_file = %d\n", eat_object(f));
+
+	fclose(f);
+}
+
 /* Set up the main window and populate with widgets */
 void init_main_window(struct main_window *w)
 {
@@ -400,6 +427,7 @@ void init_main_window(struct main_window *w)
 	// Snapshot button
 	w->snapshot_button = gtk_button_new_with_label("Take Snapshot");
 	gtk_box_pack_start(GTK_BOX(hbox), w->snapshot_button, FALSE, FALSE, 0);
+	gtk_widget_set_sensitive(w->snapshot_button, FALSE);
 	g_signal_connect(w->snapshot_button, "clicked", G_CALLBACK(handle_snapshot), w);
 
 	// Snapshot name field
@@ -427,6 +455,16 @@ void init_main_window(struct main_window *w)
 	g_object_set(G_OBJECT(command_menu), "halign", GTK_ALIGN_END, NULL);
 	gtk_menu_button_set_popup(GTK_MENU_BUTTON(command_menu_button), command_menu);
 	gtk_box_pack_end(GTK_BOX(hbox), command_menu_button, FALSE, FALSE, 0);
+
+	// Serialize TODO: it's a test
+	GtkWidget *pippo = gtk_menu_item_new_with_label("Serialize");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), pippo);
+	g_signal_connect(pippo, "activate", G_CALLBACK(serialize_test), w);
+
+	// Scan TODO: it's a test
+	GtkWidget *pluto = gtk_menu_item_new_with_label("Scan");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), pluto);
+	g_signal_connect(pluto, "activate", G_CALLBACK(scan_test), w);
 
 	// Calibrate checkbox
 	w->cal_button = gtk_check_menu_item_new_with_label("Calibrate");
@@ -477,6 +515,7 @@ guint refresh(struct main_window *w)
 			w->cal = s->cal_result;
 			gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), s->cal_result);
 		}
+		gtk_widget_set_sensitive(w->snapshot_button, !s->calibrate && s->pb);
 	}
 	unlock_computer(w->computer);
 	refresh_results(w);

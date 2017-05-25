@@ -88,6 +88,7 @@ struct processing_buffers {
 	uint64_t timestamp, last_tic, last_toc, events_from;
 	uint64_t *events;
 #ifdef DEBUG
+	int debug_size;
 	float *debug;
 #endif
 };
@@ -224,7 +225,6 @@ struct main_window {
 
 	struct computer *computer;
 	struct snapshot *active_snapshot;
-	int current_snapshot;
 	int computer_timeout;
 
 	int controls_active;
@@ -261,3 +261,9 @@ struct conf_data {
 void load_config(struct main_window *w);
 void save_config(struct main_window *w);
 void save_on_change(struct main_window *w);
+
+/* serializer.c */
+int serialize_snapshot(FILE *f, struct snapshot *s, char *name);
+int eat_object(FILE *f);
+int serialize_struct_begin(FILE *f);
+int serialize_struct_end(FILE *f);

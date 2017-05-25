@@ -17,25 +17,34 @@
 */
 
 #include "tg.h"
+#include <inttypes.h>
+
+#define LABEL_SIZE 64
+
+#define XSTR(X) STR(X)
+#define STR(X) #X
+#define LABEL_SIZE_STR XSTR(LABEL_SIZE)
 
 int serialize_uint64_t(FILE *f, uint64_t x)
 {
-	return 0 > fprintf(f, "I%lu\n", x);
+	return 0 > fprintf(f, "I%"PRIu64";\n", x);
 }
 
 int scan_uint64_t(FILE *f, uint64_t *x)
 {
-	return 1 != fscanf(f, "I%lu\n", x);
+	int n = 0;
+	return 1 != fscanf(f, " I%"SCNu64";%n", x, &n) || !n;
 }
 
 int serialize_int64_t(FILE *f, int64_t x)
 {
-	return 0 > fprintf(f, "I%ld\n", x);
+	return 0 > fprintf(f, "I%"PRId64";\n", x);
 }
 
 int scan_int64_t(FILE *f, int64_t *x)
 {
-	return 1 != fscanf(f, "I%ld\n", x);
+	int n = 0;
+	return 1 != fscanf(f, " I%"SCNd64";%n", x, &n) || !n;
 }
 
 int serialize_int(FILE *f, int x)
@@ -53,12 +62,13 @@ int scan_int(FILE *f, int *x)
 
 int serialize_double(FILE *f, double x)
 {
-	return 0 > fprintf(f, "I%a\n", x);
+	return 0 > fprintf(f, "I%a;\n", x);
 }
 
 int scan_double(FILE *f, double *x)
 {
-	return 1 != fscanf(f, "I%la\n", x);
+	int n = 0;
+	return 1 != fscanf(f, " I%la;%n", x, &n) || !n;
 }
 
 int serialize_float(FILE *f, float x)
@@ -76,18 +86,19 @@ int scan_float(FILE *f, float *x)
 
 int serialize_string(FILE *f, char *s)
 {
-	if(0 > fprintf(f, "S%lu\n", (uint64_t)strlen(s))) return 1;
-	return 0 > fprintf(f, "%s\n", s);
+	if(0 > fprintf(f, "S%"PRIu64";", (uint64_t)strlen(s))) return 1;
+	return 0 > fprintf(f, "%s;\n", s);
 }
 
 int scan_string(FILE *f, char **s, uint64_t max_l, uint64_t *len)
 {
 	uint64_t l;
-	if(1 != fscanf(f, "S%lu\n", &l)) return 1;
+	int n = 0;
+	if(1 != fscanf(f, " S%"SCNu64";%n", &l, &n) || !n) return 1;
 	if(l >= max_l) return 1;
 	if(!*s) *s = malloc(l+1);
 	if(l+1 != fread(*s, 1, l+1, f)) return 1;
-	if(*s[l] != '\n') return 1;
+	if(*s[l] != ';') return 1;
 	*s[l] = 0;
 	if(len) *len = l;
 	return 0;
@@ -96,7 +107,7 @@ int scan_string(FILE *f, char **s, uint64_t max_l, uint64_t *len)
 int serialize_uint64_t_array(FILE *f, uint64_t *a, uint64_t len)
 {
 	uint64_t i;
-	if(0 > fprintf(f, "A%lu\n", len)) return 1;
+	if(0 > fprintf(f, "A%"PRIu64";\n", len)) return 1;
 	for(i = 0; i < len; i++)
 		if(serialize_uint64_t(f, a[i])) return 1;
 	return 0;
@@ -105,7 +116,8 @@ int serialize_uint64_t_array(FILE *f, uint64_t *a, uint64_t len)
 int scan_uint64_t_array(FILE *f, uint64_t **a, uint64_t max_l, uint64_t *len)
 {
 	uint64_t l,i;
-	if(1 != fscanf(f, "A%lu\n", &l)) return 1;
+	int n = 0;
+	if(1 != fscanf(f, " A%"SCNu64";%n", &l, &n) || !n) return 1;
 	if(l > max_l) return 1;
 	if(!*a) *a = malloc(l*sizeof(uint64_t));
 	for(i = 0; i < l; i++)
@@ -117,7 +129,7 @@ int scan_uint64_t_array(FILE *f, uint64_t **a, uint64_t max_l, uint64_t *len)
 int serialize_float_array(FILE *f, float *a, uint64_t len)
 {
 	uint64_t i;
-	if(0 > fprintf(f, "A%lu\n", len)) return 1;
+	if(0 > fprintf(f, "A%"PRIu64";\n", len)) return 1;
 	for(i = 0; i < len; i++)
 		if(serialize_float(f, a[i])) return 1;
 	return 0;
@@ -126,7 +138,8 @@ int serialize_float_array(FILE *f, float *a, uint64_t len)
 int scan_float_array(FILE *f, float **a, uint64_t max_l, uint64_t *len)
 {
 	uint64_t l,i;
-	if(1 != fscanf(f, "A%lu\n", &l)) return 1;
+	int n = 0;
+	if(1 != fscanf(f, " A%"SCNu64";%n", &l, &n) || !n) return 1;
 	if(l > max_l) return 1;
 	if(!*a) *a = malloc(l*sizeof(float));
 	for(i = 0; i < l; i++)
@@ -137,12 +150,55 @@ int scan_float_array(FILE *f, float **a, uint64_t max_l, uint64_t *len)
 
 int make_label(FILE *f, char *l)
 {
-	return 0 > fprintf(f, "L%s\n", l);
+	return 0 > fprintf(f, "L%s;\n", l);
 }
 
 int scan_label(FILE *f, char *l)
 {
-	return 1 != fscanf(f, "L%s\n", l);
+	int n = 0;
+	return 1 != fscanf(f, " L%" LABEL_SIZE_STR "[^;];%n", l, &n) || !n;
+}
+
+int eat_object(FILE *f)
+{
+	char c;
+	if(1 != fscanf(f, " %c", &c)) return 1;
+	uint64_t l;
+	int n = 0;
+	switch(c) {
+		case 'I':
+			fscanf(f, "%*[^;];%n", &n);
+			return !n;
+		case 'S':
+			if(1 != fscanf(f, "%"SCNu64";%n", &l, &n) || !n) return 1;
+			if(fseek(f, l, SEEK_CUR)) return 1;
+			return 1 != fscanf(f, "%c", &c) || c != ';';
+		case 'A':
+			if(1 != fscanf(f, "%"SCNu64";%n", &l, &n) || !n) return 1;
+			for(;l;l--) if(eat_object(f)) return 1;
+			return 0;
+		case 'T':
+			fscanf(f, "%c", &c);
+			if(c != ';') return 1;
+			for(;;) {
+				char b[LABEL_SIZE+1];
+				if(scan_label(f, b)) return 1;
+				if(!strcmp("__end__", b)) return 0;
+				if(eat_object(f)) return 1;
+			}
+		default:
+			return 1;
+	}
+}
+
+int serialize_struct_begin(FILE *f)
+{
+	return 0 > fprintf(f, "T;\n");
+}
+
+int serialize_struct_end(FILE *f)
+{
+	return make_label(f, "__end__");
 }
 
 #define SERIALIZE(T,A) {				\
@@ -150,23 +206,22 @@ int scan_label(FILE *f, char *l)
 	if(serialize_ ## T (f, s -> A)) return 1;	\
 	}
 
-int serialize_snapshot(FILE *f, struct snapshot *s)
+int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 {
-	if(s->pb) {
-		SERIALIZE(int,pb->sample_rate);
-		SERIALIZE(int,pb->sample_count);
-		SERIALIZE(double,pb->period);
-		SERIALIZE(double,pb->waveform_max);
-		SERIALIZE(int,pb->tic);
-		SERIALIZE(int,pb->toc);
-		SERIALIZE(double,pb->tic_pulse);
-		SERIALIZE(double,pb->toc_pulse);
-		if(make_label(f, "pb->waveform")) return 1;
-		if(serialize_float_array(f, s->pb->waveform, s->pb->sample_count)) return 1;
-	} else {
-		if(make_label(f, "pb-null")) return 1;
-		if(serialize_int(f, 0)) return 1;
-	}
+	if(make_label(f, "snapshot")) return 1;
+	if(serialize_struct_begin(f)) return 1;
+	if(make_label(f, "name")) return 1;
+	if(serialize_string(f, name)) return 1;
+	SERIALIZE(int,pb->sample_rate);
+	SERIALIZE(int,pb->sample_count);
+	SERIALIZE(double,pb->period);
+	SERIALIZE(double,pb->waveform_max);
+	SERIALIZE(int,pb->tic);
+	SERIALIZE(int,pb->toc);
+	SERIALIZE(double,pb->tic_pulse);
+	SERIALIZE(double,pb->toc_pulse);
+	if(make_label(f, "pb->waveform")) return 1;
+	if(serialize_float_array(f, s->pb->waveform, s->pb->sample_count)) return 1;
 	SERIALIZE(int,is_old);
 	SERIALIZE(uint64_t,timestamp);
 	SERIALIZE(int,nominal_sr);
@@ -183,5 +238,20 @@ int serialize_snapshot(FILE *f, struct snapshot *s)
 	SERIALIZE(double,trace_centering);
 	if(make_label(f, "events")) return 1;
 	if(serialize_uint64_t_array(f, s->events, EVENTS_COUNT)) return 1;
+	return serialize_struct_end(f);
+}
+
+int scan_snapshot(FILE *f, struct snapshot **s, char **name)
+{
+	char l[LABEL_SIZE+1];
+	if(scan_label(f,l) || strcmp("snapshot",l)) return 1;
+	int n = 0;
+	fscanf(f, " T;%n", &n);
+	if(!n) return 1;
+	for(;;) {
+		if(scan_label(f,l)) return 1;
+		if(!strcmp("__end__",l)) break;
+		if(eat_object(f)) return 1;
+	}
 	return 0;
 }

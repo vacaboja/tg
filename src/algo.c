@@ -98,25 +98,27 @@ void setup_buffers(struct processing_buffers *b)
 	b->events = malloc(EVENTS_MAX * sizeof(uint64_t));
 	b->ready = 0;
 #ifdef DEBUG
-	b->debug = fftwf_malloc(b->sample_count * sizeof(float));
+	b->debug_size = b->sample_count;
+	b->debug = fftwf_malloc(b->debug_size * sizeof(float));
 #endif
 }
 
 struct processing_buffers *pb_clone(struct processing_buffers *p)
 {
 	struct processing_buffers *new = malloc(sizeof(struct processing_buffers));
-	new->sample_rate = p->sample_rate;
-	new->waveform = malloc(new->sample_rate * sizeof(float));
-	memcpy(new->waveform, p->waveform, new->sample_rate * sizeof(float));
+	new->sample_count = ceil(p->period);
+	new->waveform = malloc(new->sample_count * sizeof(float));
+	memcpy(new->waveform, p->waveform, new->sample_count * sizeof(float));
 	new->events = malloc(EVENTS_MAX * sizeof(uint64_t));
 	memcpy(new->events, p->events, EVENTS_MAX * sizeof(uint64_t));
 
 #ifdef DEBUG
-	new->debug = malloc(p->sample_count * sizeof(float));
-	memcpy(new->debug, p->debug, p->sample_count * sizeof(float));
+	new->debug_size = p->debug_size;
+	new->debug = malloc(new->debug_size * sizeof(float));
+	memcpy(new->debug, p->debug, new->debug_size * sizeof(float));
 #endif
 
-	new->sample_count = p->sample_count;
+	new->sample_rate = p->sample_rate;
 	new->period = p->period;
 	new->sigma = p->sigma;
 	new->be = p->be;
