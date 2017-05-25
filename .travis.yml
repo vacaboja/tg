@@ -15,7 +15,7 @@ env:
 addons:
   apt:
     packages:
-      - libgtk2.0-dev
+      - libgtk-3-dev
       - libjack-jackd2-dev
       - portaudio19-dev
       - libfftw3-dev
@@ -23,7 +23,7 @@ addons:
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       brew update;
-      brew install gtk+;
+      brew install gtk+3;
       brew install portaudio;
       brew install fftw;
     fi

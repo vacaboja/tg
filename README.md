@@ -47,13 +47,13 @@ Binary .deb packages can be downloaded from https://tg.ciovil.li
 
 The source code of tg can probably be built by any C99 compiler, however
 only gcc and clang have been tested. You need the following libraries:
-gtk2, portaudio2, fftw3 (all available as open-source).
+gtk+3, portaudio2, fftw3 (all available as open-source).
 
 ### Compiling on Debian
 
 To compile tg on Debian
 
-	sudo apt-get install libgtk2.0-dev libjack-jackd2-dev portaudio19-dev libfftw3-dev git
+	sudo apt-get install libgtk-3-dev libjack-jackd2-dev portaudio19-dev libfftw3-dev git
 	git clone https://github.com/vacaboja/tg.git
 	cd tg
 	make
