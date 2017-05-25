@@ -606,7 +606,7 @@ int main(int argc, char **argv)
 	GtkApplication *app = gtk_application_new ("li.ciovil.tg", G_APPLICATION_FLAGS_NONE);
 	g_signal_connect (app, "activate", G_CALLBACK (start_interface), NULL);
 	g_signal_connect (app, "shutdown", G_CALLBACK (on_shutdown), NULL);
-	int ret = g_application_run (G_APPLICATION (app), argc, argv);
+	int ret = g_application_run (G_APPLICATION (app), 0, NULL);
 	g_object_unref (app);
 
 	debug("Interface exited with status %d\n",ret);
