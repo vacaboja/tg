@@ -3,7 +3,7 @@ Maintainer: Marcello Mamino <vacaboja@gmail.com>
 Section: misc
 Priority: optional
 Standards-Version: 3.9.8
-Build-Depends: debhelper (>= 9), libgtk2.0-dev (>= 2.24), portaudio19-dev (>=19), libfftw3-dev (>=3.3)
+Build-Depends: debhelper (>= 9), libgtk-3-dev (>= 3.14), portaudio19-dev (>=19), libfftw3-dev (>=3.3)
 
 Package: tg-timer
 Architecture: any
