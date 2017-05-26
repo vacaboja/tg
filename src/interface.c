@@ -598,6 +598,8 @@ void on_shutdown(GApplication *app, void *p)
 
 int main(int argc, char **argv)
 {
+	gtk_disable_setlocale();
+
 #ifdef DEBUG
 	if(argc > 1 && !strcmp("test",argv[1]))
 		testing = 1;
