@@ -179,6 +179,8 @@ void computer_quit(void *w)
 
 gboolean quit(struct main_window *w)
 {
+	g_source_remove(w->kick_timeout);
+	g_source_remove(w->save_timeout);
 	lock_computer(w->computer);
 	w->computer->recompute = -1;
 	w->computer->callback = computer_quit;
@@ -590,8 +592,8 @@ int start_interface(GtkApplication* app, void *p)
 
 	init_main_window(w);
 
-	g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,w,NULL);
-	g_timeout_add_full(G_PRIORITY_LOW,10000,(GSourceFunc)save_on_change_timer,w,NULL);
+	w->kick_timeout = g_timeout_add_full(G_PRIORITY_LOW,100,(GSourceFunc)kick_computer,w,NULL);
+	w->save_timeout = g_timeout_add_full(G_PRIORITY_LOW,10000,(GSourceFunc)save_on_change_timer,w,NULL);
 #ifdef DEBUG
 	if(testing)
 		g_timeout_add_full(G_PRIORITY_LOW,3000,(GSourceFunc)quit,w,NULL);
@@ -605,9 +607,12 @@ int start_interface(GtkApplication* app, void *p)
 void on_shutdown(GApplication *app, void *p)
 {
 	debug("Main loop has terminated\n");
-	save_config(g_object_get_data(G_OBJECT(app), "main-window"));
+	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
+	save_config(w);
+	computer_destroy(w->computer);
+	op_destroy(w->active_panel);
+	free(w);
 	terminate_portaudio();
-	// We leak the main_window structure
 }
 
 int main(int argc, char **argv)

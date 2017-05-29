@@ -9,7 +9,7 @@ ifneq ($(shell uname -s),Darwin)
 endif
 
 PACKAGES := gtk+-3.0 portaudio-2.0 fftw3f
-CFLAGS += -Wall -O3 -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
+CFLAGS += -Wall -ffast-math -DVERSION='"$(VERSION)"' `pkg-config --cflags $(PACKAGES)`
 LDFLAGS += -lm -lpthread `pkg-config --libs $(PACKAGES)`
 
 SRCDIR := src
@@ -40,6 +40,10 @@ test: $(BUILDDIR)/tg-dbg$(EXT)
 	$(BUILDDIR)/tg-dbg test
 .PHONY: test
 
+valgrind: $(BUILDDIR)/tg-vlg$(EXT)
+	valgrind --leak-check=full -v --num-callers=99 --suppressions=.valgrind.supp $(BUILDDIR)/tg-vlg$(EXT)
+.PHONY: debug
+
 $(BUILDDIR)/tg-timer.res: icons/tg-timer.rc icons/tg-timer.ico
 	windres icons/tg-timer.rc -O coff -o $(BUILDDIR)/tg-timer.res
 
@@ -54,12 +58,14 @@ ifeq ($(4),strip)
 endif
 endef
 
-$(eval $(call TARGET,tg,,,strip))
-$(eval $(call TARGET,tg-lt,-DLIGHT,,strip))
-$(eval $(call TARGET,tg-dbg,-ggdb -DDEBUG,$(DEBUG_LDFLAGS),))
-$(eval $(call TARGET,tg-lt-dbg,-ggdb -DDEBUG -DLIGHT,$(DEBUG_LDFLAGS),))
-$(eval $(call TARGET,tg-prf,-pg,,))
-$(eval $(call TARGET,tg-lt-prf,-DLIGHT -pg,,))
+$(eval $(call TARGET,tg,-O3,,strip))
+$(eval $(call TARGET,tg-lt,-O3 -DLIGHT,,strip))
+$(eval $(call TARGET,tg-dbg,-O3 -ggdb -DDEBUG,$(DEBUG_LDFLAGS),))
+$(eval $(call TARGET,tg-lt-dbg,-O3 -ggdb -DDEBUG -DLIGHT,$(DEBUG_LDFLAGS),))
+$(eval $(call TARGET,tg-prf,-O3 -pg,,))
+$(eval $(call TARGET,tg-lt-prf,-O3 -DLIGHT -pg,,))
+$(eval $(call TARGET,tg-vlg,-O1 -g,,))
+$(eval $(call TARGET,tg-vlg-lt,-O1 -g -DLIGHT,,))
 
 ICONSIZES := $(foreach SIZE, $(shell cat icons/sizes), $(SIZE)x$(SIZE))
 

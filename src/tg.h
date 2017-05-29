@@ -105,10 +105,12 @@ struct calibration_data {
 };
 
 void setup_buffers(struct processing_buffers *b);
+void pb_destroy(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
 void process(struct processing_buffers *p, int bph, double la);
 void setup_cal_data(struct calibration_data *cd);
+void cal_data_destroy(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
 
@@ -180,6 +182,7 @@ struct computer {
 
 struct snapshot *snapshot_clone(struct snapshot *s);
 void snapshot_destroy(struct snapshot *s);
+void computer_destroy(struct computer *c);
 struct computer *start_computer(int nominal_sr, int bph, double la, int cal);
 void lock_computer(struct computer *c);
 void unlock_computer(struct computer *c);
@@ -237,6 +240,9 @@ struct main_window {
 	GKeyFile *config_file;
 	gchar *config_file_name;
 	struct conf_data *conf_data;
+
+	guint kick_timeout;
+	guint save_timeout;
 };
 
 extern int preset_bph[];

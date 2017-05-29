@@ -211,7 +211,26 @@ void *computing_thread(void *void_computer)
 	}
 
 	debug("Terminating computation thread\n");
+
 	return NULL;
+}
+
+void computer_destroy(struct computer *c)
+{
+	int i;
+	for(i=0; i<NSTEPS; i++)
+		pb_destroy(&c->pdata->buffers[i]);
+	free(c->pdata->buffers);
+	free(c->pdata);
+	cal_data_destroy(c->cdata);
+	free(c->cdata);
+	snapshot_destroy(c->actv);
+	if(c->curr)
+		snapshot_destroy(c->curr);
+	pthread_mutex_destroy(&c->mutex);
+	pthread_cond_destroy(&c->cond);
+	pthread_join(c->thread, NULL);
+	free(c);
 }
 
 struct computer *start_computer(int nominal_sr, int bph, double la, int cal)

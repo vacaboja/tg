@@ -103,6 +103,34 @@ void setup_buffers(struct processing_buffers *b)
 #endif
 }
 
+void pb_destroy(struct processing_buffers *b)
+{
+	fftwf_free(b->samples);
+	free(b->samples_sc);
+	free(b->waveform);
+	free(b->waveform_sc);
+	fftwf_free(b->fft);
+	fftwf_free(b->sc_fft);
+	fftwf_free(b->tic_wf);
+	fftwf_free(b->slice_wf);
+	fftwf_free(b->tic_fft);
+	fftwf_free(b->slice_fft);
+	free(b->tic_c);
+	fftwf_destroy_plan(b->plan_a);
+	fftwf_destroy_plan(b->plan_b);
+	fftwf_destroy_plan(b->plan_c);
+	fftwf_destroy_plan(b->plan_d);
+	fftwf_destroy_plan(b->plan_e);
+	fftwf_destroy_plan(b->plan_f);
+	fftwf_destroy_plan(b->plan_g);
+	free(b->hpf);
+	free(b->lpf);
+	free(b->events);
+#ifdef DEBUG
+	fftwf_free(b->debug);
+#endif
+}
+
 struct processing_buffers *pb_clone(struct processing_buffers *p)
 {
 	struct processing_buffers *new = malloc(sizeof(struct processing_buffers));
@@ -659,6 +687,13 @@ void setup_cal_data(struct calibration_data *cd)
 	cd->events = malloc(cd->size * sizeof(uint64_t));
 }
 
+void cal_data_destroy(struct calibration_data *cd)
+{
+	free(cd->times);
+	free(cd->phases);
+	free(cd->events);
+}
+
 int add_sample_cal(struct processing_buffers *p, struct calibration_data *cd)
 {
 	int i;
@@ -732,7 +767,7 @@ void process(struct processing_buffers *p, int bph, double la)
 {
 	prepare_data(p,1);
 	p->ready = !compute_period(p,bph);
-	if(p->period >= p->sample_rate / 2) {
+	if(p->ready && p->period >= p->sample_rate / 2) {
 		debug("Detected period too long\n");
 		p->ready = 0;
 	}
