@@ -70,6 +70,8 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 #ifdef DEBUG
 void draw_debug_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
+	if(!p->debug) return;
+
 	GtkAllocation temp;
 	gtk_widget_get_allocation (da, &temp);
 	int width = temp.width;
@@ -523,7 +525,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_pane
 	} else {
 		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
 		zoom_factor = PAPERSTRIP_ZOOM;
-		if(snst->events[snst->events_wp])
+		if(snst->events_count && snst->events[snst->events_wp])
 			slope = - snst->rate * zoom_factor / (3600. * 24.);
 	}
 
@@ -536,7 +538,9 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_pane
 	int height = temp.height;
 
 	int stopped = 0;
-	if(snst->events[snst->events_wp] && time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
+	if( snst->events_count &&
+	    snst->events[snst->events_wp] &&
+	    time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
 		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
 		stopped = 1;
 	}
@@ -598,7 +602,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_pane
 
 	cairo_set_source(c,stopped?yellow:white);
 	for(i = snst->events_wp;;) {
-		if(!snst->events[i]) break;
+		if(!snst->events_count || !snst->events[i]) break;
 		double event = now - snst->events[i] + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
 		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
 		int row = floor(event / sweep);
@@ -619,7 +623,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_pane
 			cairo_line_to(c,column,row);
 			cairo_fill(c);
 		}
-		if(--i < 0) i = EVENTS_COUNT - 1;
+		if(--i < 0) i = snst->events_count - 1;
 		if(i == snst->events_wp) break;
 	}
 
@@ -690,7 +694,7 @@ void handle_clear_trace(GtkButton *b, struct output_panel *op)
 	if(op->computer) {
 		lock_computer(op->computer);
 		if(!op->snst->calibrate) {
-			memset(op->snst->events,0,EVENTS_COUNT*sizeof(uint64_t));
+			memset(op->snst->events,0,op->snst->events_count*sizeof(uint64_t));
 			op->computer->clear_trace = 1;
 		}
 		unlock_computer(op->computer);

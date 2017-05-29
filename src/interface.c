@@ -241,11 +241,6 @@ void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main
 		cal = w->cal;
 		la = w->la;
 	}
-	// TODO: move to serializer
-	// you never know where this snapshot has been loaded from...
-	if(la < MIN_LA || la > MAX_LA) la = DEFAULT_LA;
-	if(bph < MIN_BPH || bph > MAX_BPH) bph = 0;
-	if(cal < MIN_CAL || cal > MAX_CAL) cal = 0;
 
 	int i,current = 0;
 	for(i = 0; preset_bph[i]; i++) {
@@ -308,14 +303,10 @@ GtkWidget *make_tab_label(char *s, struct output_panel *panel_to_close)
 	return hbox;
 }
 
-void handle_snapshot(GtkButton *b, struct main_window *w)
+void add_new_tab(struct snapshot *s, char *name, struct main_window *w)
 {
-	if(w->active_snapshot->calibrate) return;
-
-	struct snapshot *s = snapshot_clone(w->active_snapshot);
-	s->timestamp = get_timestamp();
 	struct output_panel *op = init_output_panel(NULL, s, 5);
-	GtkWidget *label = make_tab_label("Snapshot", op);
+	GtkWidget *label = make_tab_label(name, op);
 	gtk_widget_show_all(op->panel);
 
 	op_set_border(w->active_panel, 5);
@@ -325,20 +316,32 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), op->panel, TRUE);
 }
 
+void handle_snapshot(GtkButton *b, struct main_window *w)
+{
+	if(w->active_snapshot->calibrate) return;
+	struct snapshot *s = snapshot_clone(w->active_snapshot);
+	s->timestamp = get_timestamp();
+	add_new_tab(s, "Snapshot", w);
+}
+
 void serialize_test(GtkMenuItem *m, struct main_window *w)
 {
 	FILE *f = fopen("test.dat", "w");
 
-	serialize_struct_begin(f);
-	int i, tabs = gtk_notebook_get_n_pages(GTK_NOTEBOOK(w->notebook));
-	for(i = 0; i < tabs; i++) {
+	int i, j, tabs = gtk_notebook_get_n_pages(GTK_NOTEBOOK(w->notebook));
+	struct snapshot *s[tabs];// = alloca(tabs * sizeof(struct snapshot *));
+	char *names[tabs];// = alloca(tabs * sizeof(char *));
+
+	for(i = j = 0; i < tabs; i++) {
 		GtkWidget *tab = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), i);
 		struct output_panel *op = g_object_get_data(G_OBJECT(tab), "op-pointer");
 		if(!op) continue; // This one is the real-time tab
 		GtkLabel *label = g_object_get_data(G_OBJECT(tab), "tab-label");
-		serialize_snapshot(f, op->snst, (char *)gtk_label_get_text(label));
+		s[j] = op->snst;
+		names[j++] = (char *)gtk_label_get_text(label);
 	}
-	serialize_struct_end(f);
+
+	write_file(f, s, names, j);
 
 	fclose(f);
 }
@@ -347,7 +350,18 @@ void scan_test(GtkMenuItem *m, struct main_window *w)
 {
 	FILE *f = fopen("test.dat", "r");
 
-	printf("eat_file = %d\n", eat_object(f));
+	struct snapshot **s;
+	char **names;
+	uint64_t cnt;
+	if(!read_file(f, &s, &names, &cnt)) {
+		uint64_t i;
+		for(i = 0; i < cnt; i++) {
+			add_new_tab(s[i], names[i], w);
+			free(names[i]);
+		}
+		free(s);
+		free(names);
+	}
 
 	fclose(f);
 }
@@ -510,7 +524,7 @@ guint refresh(struct main_window *w)
 		w->computer->curr = NULL;
 		s->trace_centering = trace_centering;
 		if(w->computer->clear_trace && !s->calibrate)
-			memset(s->events,0,EVENTS_COUNT*sizeof(uint64_t));
+			memset(s->events,0,s->events_count*sizeof(uint64_t));
 		if(s->calibrate && s->cal_state == 1 && s->cal_result != w->cal) {
 			w->cal = s->cal_result;
 			gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), s->cal_result);

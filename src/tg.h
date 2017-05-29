@@ -136,6 +136,7 @@ struct snapshot {
 	double la; // deg
 	int cal; // 0.1 s/d
 
+	int events_count;
 	uint64_t *events; // used in cal+timegrapher mode
 	int events_wp; // used in cal+timegrapher mode
 	uint64_t events_from; // used only in timegrapher mode
@@ -263,7 +264,5 @@ void save_config(struct main_window *w);
 void save_on_change(struct main_window *w);
 
 /* serializer.c */
-int serialize_snapshot(FILE *f, struct snapshot *s, char *name);
-int eat_object(FILE *f);
-int serialize_struct_begin(FILE *f);
-int serialize_struct_end(FILE *f);
+int write_file(FILE *f, struct snapshot **s, char **names, uint64_t cnt);
+int read_file(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt);

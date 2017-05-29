@@ -18,13 +18,36 @@
 
 #include "tg.h"
 
+int count_events(struct snapshot *s)
+{
+	int i, cnt = 0;
+	if(!s->events_count) return 0;
+	for(i = s->events_wp; s->events[i];) {
+		cnt++;
+		if(--i < 0) i = s->events_count - 1;
+		if(i == s->events_wp) break;
+	}
+	return cnt;
+}
+
 struct snapshot *snapshot_clone(struct snapshot *s)
 {
 	struct snapshot *t = malloc(sizeof(struct snapshot));
 	memcpy(t,s,sizeof(struct snapshot));
 	if(s->pb) t->pb = pb_clone(s->pb);
-	t->events = malloc(EVENTS_COUNT * sizeof(uint64_t));
-	memcpy(t->events, s->events, EVENTS_COUNT * sizeof(uint64_t));
+	t->events_count = count_events(s);
+	if(t->events_count) {
+		t->events_wp = t->events_count - 1;
+		t->events = malloc(t->events_count * sizeof(uint64_t));
+		int i, j;
+		for(i = t->events_wp, j = s->events_wp; i; i--) {
+			t->events[i] = s->events[j];
+			if(--j < 0) j = s->events_count - 1;
+		}
+	} else {
+		t->events_wp = 0;
+		t->events = NULL;
+	}
 	return t;
 }
 
@@ -95,7 +118,7 @@ void compute_events_cal(struct computer *c)
 	for(i++; i<d->wp; i++) {
 		if(d->events[i] / s->nominal_sr <= s->events[s->events_wp] / s->nominal_sr)
 			continue;
-		if(++s->events_wp == EVENTS_COUNT) s->events_wp = 0;
+		if(++s->events_wp == s->events_count) s->events_wp = 0;
 		s->events[s->events_wp] = d->events[i];
 		debug("event at %llu\n",s->events[s->events_wp]);
 	}
@@ -111,7 +134,7 @@ void compute_events(struct computer *c)
 		int i;
 		for(i=0; i<EVENTS_MAX && p->events[i]; i++)
 			if(p->events[i] > last + floor(p->period / 4)) {
-				if(++s->events_wp == EVENTS_COUNT) s->events_wp = 0;
+				if(++s->events_wp == s->events_count) s->events_wp = 0;
 				s->events[s->events_wp] = p->events[i];
 				debug("event at %llu\n",s->events[s->events_wp]);
 			}
@@ -162,7 +185,7 @@ void *computing_thread(void *void_computer)
 			c->actv->cal_percent = 0;
 		}
 		if(calibrate != c->actv->calibrate)
-			memset(c->actv->events,0,EVENTS_COUNT*sizeof(uint64_t));
+			memset(c->actv->events,0,c->actv->events_count*sizeof(uint64_t));
 		c->actv->calibrate = calibrate;
 
 		if(c->actv->calibrate) {
@@ -178,7 +201,7 @@ void *computing_thread(void *void_computer)
 				snapshot_destroy(c->curr);
 			if(c->clear_trace) {
 				if(!calibrate)
-					memset(c->actv->events,0,EVENTS_COUNT*sizeof(uint64_t));
+					memset(c->actv->events,0,c->actv->events_count*sizeof(uint64_t));
 				c->clear_trace = 0;
 			}
 			c->curr = snapshot_clone(c->actv);
@@ -215,6 +238,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal)
 	s->is_old = 1;
 	s->calibrate = 0;
 	s->signal = 0;
+	s->events_count = EVENTS_COUNT;
 	s->events = malloc(EVENTS_COUNT * sizeof(uint64_t));
 	memset(s->events,0,EVENTS_COUNT * sizeof(uint64_t));
 	s->events_wp = 0;
