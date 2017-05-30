@@ -611,6 +611,7 @@ void on_shutdown(GApplication *app, void *p)
 	save_config(w);
 	computer_destroy(w->computer);
 	op_destroy(w->active_panel);
+	close_config(w);
 	free(w);
 	terminate_portaudio();
 }

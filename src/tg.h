@@ -268,6 +268,7 @@ struct conf_data {
 void load_config(struct main_window *w);
 void save_config(struct main_window *w);
 void save_on_change(struct main_window *w);
+void close_config(struct main_window *w);
 
 /* serializer.c */
 int write_file(FILE *f, struct snapshot **s, char **names, uint64_t cnt);

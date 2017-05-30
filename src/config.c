@@ -113,3 +113,10 @@ void save_on_change(struct main_window *w)
 
 	CONFIG_FIELDS(CHANGED);
 }
+
+void close_config(struct main_window *w)
+{
+	g_key_file_free(w->config_file);
+	g_free(w->config_file_name);
+	free(w->conf_data);
+}
