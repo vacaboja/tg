@@ -208,8 +208,10 @@ int serialize_struct_end(FILE *f)
 int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 {
 	if(serialize_struct_begin(f)) return 1;
-	if(make_label(f, "name")) return 1;
-	if(serialize_string(f, name)) return 1;
+	if(name) {
+		if(make_label(f, "name")) return 1;
+		if(serialize_string(f, name)) return 1;
+	}
 	if(make_label(f, "pb->waveform")) return 1;
 	if(serialize_float_array(f, s->pb->waveform, s->pb->sample_count)) return 1;
 	if(make_label(f, "events")) return 1;

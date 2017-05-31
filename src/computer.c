@@ -40,7 +40,7 @@ struct snapshot *snapshot_clone(struct snapshot *s)
 		t->events_wp = t->events_count - 1;
 		t->events = malloc(t->events_count * sizeof(uint64_t));
 		int i, j;
-		for(i = t->events_wp, j = s->events_wp; i; i--) {
+		for(i = t->events_wp, j = s->events_wp; i >= 0; i--) {
 			t->events[i] = s->events[j];
 			if(--j < 0) j = s->events_count - 1;
 		}

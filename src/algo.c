@@ -137,13 +137,19 @@ struct processing_buffers *pb_clone(struct processing_buffers *p)
 	new->sample_count = ceil(p->period);
 	new->waveform = malloc(new->sample_count * sizeof(float));
 	memcpy(new->waveform, p->waveform, new->sample_count * sizeof(float));
-	new->events = malloc(EVENTS_MAX * sizeof(uint64_t));
-	memcpy(new->events, p->events, EVENTS_MAX * sizeof(uint64_t));
+	if(p->events) {
+		new->events = malloc(EVENTS_MAX * sizeof(uint64_t));
+		memcpy(new->events, p->events, EVENTS_MAX * sizeof(uint64_t));
+	} else
+		new->events = NULL;
 
 #ifdef DEBUG
 	new->debug_size = p->debug_size;
-	new->debug = malloc(new->debug_size * sizeof(float));
-	memcpy(new->debug, p->debug, new->debug_size * sizeof(float));
+	if(p->debug) {
+		new->debug = malloc(new->debug_size * sizeof(float));
+		memcpy(new->debug, p->debug, new->debug_size * sizeof(float));
+	} else
+		new->debug = NULL;
 #endif
 
 	new->sample_rate = p->sample_rate;

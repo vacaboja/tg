@@ -225,12 +225,16 @@ struct main_window {
 	GtkWidget *snapshot_name_entry;
 	GtkWidget *cal_button;
 	GtkWidget *notebook;
+	GtkWidget *save_item;
+	GtkWidget *save_all_item;
+	GtkWidget *close_all_item;
 	struct output_panel *active_panel;
 
 	struct computer *computer;
 	struct snapshot *active_snapshot;
 	int computer_timeout;
 
+	int zombie;
 	int controls_active;
 	int calibrate;
 	int bph;

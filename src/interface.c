@@ -17,6 +17,11 @@
 */
 
 #include "tg.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <libgen.h>
+#include <ctype.h>
 
 #ifdef DEBUG
 int testing = 0;
@@ -165,9 +170,22 @@ void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
 	}
 }
 
+void on_shutdown(GApplication *app, void *p)
+{
+	debug("Main loop has terminated\n");
+	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
+	save_config(w);
+	computer_destroy(w->computer);
+	op_destroy(w->active_panel);
+	close_config(w);
+	free(w);
+	terminate_portaudio();
+}
+
 guint close_main_window(struct main_window *w)
 {
 	debug("Closing main window\n");
+	w->zombie = 1;
 	gtk_widget_destroy(w->window);
 	return FALSE;
 }
@@ -196,6 +214,11 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 	return TRUE;
 }
 
+void handle_quit(GtkMenuItem *m, struct main_window *w)
+{
+	quit(w);
+}
+
 void controls_active(struct main_window *w, int active)
 {
 	w->controls_active = active;
@@ -212,36 +235,36 @@ void controls_active(struct main_window *w, int active)
 	}
 }
 
-void handle_tab_closed(GtkNotebook *nbk, GtkWidget *panel, guint x, void *p)
+int blank_string(char *s)
 {
-	if(gtk_notebook_get_n_pages(nbk) == 1) {
-		gtk_notebook_set_show_tabs(GTK_NOTEBOOK(nbk), FALSE);
-		gtk_notebook_set_show_border(GTK_NOTEBOOK(nbk), FALSE);
-	}
-	// Now, are we sure that we are not going to segfault?
-	struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
-	if(op) op_destroy(op);
+	if(!s) return 1;
+	for(;*s;s++)
+		if(!isspace((unsigned char)*s)) return 0;
+	return 1;
 }
 
 void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_window *w)
 {
 	// These are NULL for the Real Time tab
 	struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
-	GtkLabel *label = g_object_get_data(G_OBJECT(panel), "tab-label");
+	char *tab_name = g_object_get_data(G_OBJECT(panel), "tab-name");
 
 	controls_active(w, !op);
 
 	int bph, cal;
 	double la;
+	struct snapshot *snap;
 	if(op) {
-		gtk_entry_set_text(GTK_ENTRY(w->snapshot_name_entry), gtk_label_get_text(label));
+		gtk_entry_set_text(GTK_ENTRY(w->snapshot_name_entry), tab_name ? tab_name : "");
 		bph = op->snst->bph;
 		cal = op->snst->cal;
 		la = op->snst->la;
+		snap = op->snst;
 	} else {
 		bph = w->bph;
 		cal = w->cal;
 		la = w->la;
+		snap = w->active_snapshot;
 	}
 
 	int i,current = 0;
@@ -261,8 +284,22 @@ void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main
 	}
 
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), la);
-
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), cal);
+	gtk_widget_set_sensitive(w->save_item, !snap->calibrate && snap->pb);
+}
+
+void handle_tab_closed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_window *w)
+{
+	if(gtk_notebook_get_n_pages(nbk) == 1 && !w->zombie) {
+		gtk_notebook_set_show_tabs(GTK_NOTEBOOK(nbk), FALSE);
+		gtk_notebook_set_show_border(GTK_NOTEBOOK(nbk), FALSE);
+		gtk_widget_set_sensitive(w->save_all_item, FALSE);
+		gtk_widget_set_sensitive(w->close_all_item, FALSE);
+	}
+	// Now, are we sure that we are not going to segfault?
+	struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
+	if(op) op_destroy(op);
+	free(g_object_get_data(G_OBJECT(panel), "tab-name"));
 }
 
 void handle_close_tab(GtkButton *b, struct output_panel *p)
@@ -275,14 +312,18 @@ void handle_name_change(GtkEntry *e, struct main_window *w)
 	int p = gtk_notebook_get_current_page(GTK_NOTEBOOK(w->notebook));
 	GtkWidget *panel = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), p);
 	GtkLabel *label = g_object_get_data(G_OBJECT(panel), "tab-label");
-	gtk_label_set_text(label, gtk_entry_get_text(e));
+	free( g_object_get_data(G_OBJECT(panel), "tab-name") );
+	char *name = (char *)gtk_entry_get_text(e);
+	g_object_set_data(G_OBJECT(panel), "tab-name", blank_string(name) ? NULL : strdup(name));
+	gtk_label_set_text(label, name ? name : "Snapshot");
 }
 
-GtkWidget *make_tab_label(char *s, struct output_panel *panel_to_close)
+GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close)
 {
 	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
-	GtkWidget *label = gtk_label_new(s);
+	char *nm = panel_to_close ? name ? name : "Snapshot" : "Real time";
+	GtkWidget *label = gtk_label_new(nm);
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 5);
 
 	if(panel_to_close) {
@@ -298,6 +339,7 @@ GtkWidget *make_tab_label(char *s, struct output_panel *panel_to_close)
 		gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 0);
 		g_object_set_data(G_OBJECT(panel_to_close->panel), "op-pointer", panel_to_close);
 		g_object_set_data(G_OBJECT(panel_to_close->panel), "tab-label", label);
+		g_object_set_data(G_OBJECT(panel_to_close->panel), "tab-name", name ? strdup(name) : NULL);
 	}
 
 	gtk_widget_show_all(hbox);
@@ -316,6 +358,8 @@ void add_new_tab(struct snapshot *s, char *name, struct main_window *w)
 	gtk_notebook_set_show_border(GTK_NOTEBOOK(w->notebook), TRUE);
 	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), op->panel, label);
 	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), op->panel, TRUE);
+	gtk_widget_set_sensitive(w->save_all_item, TRUE);
+	gtk_widget_set_sensitive(w->close_all_item, TRUE);
 }
 
 void handle_snapshot(GtkButton *b, struct main_window *w)
@@ -323,24 +367,133 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 	if(w->active_snapshot->calibrate) return;
 	struct snapshot *s = snapshot_clone(w->active_snapshot);
 	s->timestamp = get_timestamp();
-	add_new_tab(s, "Snapshot", w);
+	add_new_tab(s, NULL, w);
 }
 
-void serialize_test(GtkMenuItem *m, struct main_window *w)
+void chooser_set_filters(GtkFileChooser *chooser)
 {
-	FILE *f = fopen("test.dat", "w");
+	GtkFileFilter *all_filter = gtk_file_filter_new();
+	gtk_file_filter_set_name(all_filter, "All files");
+	gtk_file_filter_add_pattern(all_filter, "*");
+	gtk_file_chooser_add_filter(chooser, all_filter);
+
+	GtkFileFilter *tgj_filter = gtk_file_filter_new();
+	gtk_file_filter_set_name(tgj_filter, ".tgj");
+	gtk_file_filter_add_pattern(tgj_filter, "*.tgj");
+	gtk_file_chooser_add_filter(chooser, tgj_filter);
+
+	gtk_file_chooser_set_filter(chooser, tgj_filter);
+}
+
+FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
+{
+	FILE *f = NULL;
+
+	GtkFileChooserNative *native = gtk_file_chooser_native_new (title,
+			GTK_WINDOW(w->window),
+			GTK_FILE_CHOOSER_ACTION_SAVE,
+			"_Save",
+			"_Cancel");
+	GtkFileChooser *chooser = GTK_FILE_CHOOSER (native);
+	if(suggestion)
+		gtk_file_chooser_set_filename(chooser, suggestion);
+
+	chooser_set_filters(chooser);
+
+	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (native))) {
+		char *filename = gtk_file_chooser_get_filename (chooser);
+		if(!strcmp(".tgj", gtk_file_filter_get_name(gtk_file_chooser_get_filter(chooser)))) {
+			char *s = strdup(filename);
+			if(!strchr(basename(s), '.')) {
+				char *t = g_malloc(strlen(filename)+5);
+				sprintf(t,"%s.tgj",filename);
+				g_free(filename);
+				filename = t;
+			}
+			free(s);
+		}
+		struct stat stst;
+		int do_open = 0;
+		if(!stat(filename, &stst)) {
+			GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),
+				GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+				GTK_MESSAGE_QUESTION,
+				GTK_BUTTONS_OK_CANCEL,
+				"File %s already exists. Do you want to replace it?",
+				filename);
+			do_open = GTK_RESPONSE_OK == gtk_dialog_run(GTK_DIALOG(dialog));
+			gtk_widget_destroy(dialog);
+		} else
+			do_open = 1;
+		if(do_open) {
+			f = fopen(filename, "w");
+			//TODO: handle error
+			char *uri = g_filename_to_uri(filename,NULL,NULL);
+			if(f && uri)
+				gtk_recent_manager_add_item(
+					gtk_recent_manager_get_default(), uri);
+			g_free(uri);
+		}
+		g_free (filename);
+	}
+	g_object_unref (native);
+
+	return f;
+}
+
+void save_current(GtkMenuItem *m, struct main_window *w)
+{
+	int p = gtk_notebook_get_current_page(GTK_NOTEBOOK(w->notebook));
+	GtkWidget *tab = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), p);
+	struct output_panel *op = g_object_get_data(G_OBJECT(tab), "op-pointer");
+	struct snapshot *snapshot = op ? op->snst : w->active_snapshot;
+	char *name = g_object_get_data(G_OBJECT(tab), "tab-name");
+
+	if(snapshot->calibrate || !snapshot->pb) return;
+
+	snapshot = snapshot_clone(snapshot);
+
+	if(!snapshot->timestamp)
+		snapshot->timestamp = get_timestamp();
+
+	FILE *f = choose_file_for_save(w, "Save current display", NULL);
+	if(!f) return;
+
+	write_file(f, &snapshot, &name, 1);
+
+	snapshot_destroy(snapshot);
+	fclose(f);
+}
+
+void close_all(GtkMenuItem *m, struct main_window *w)
+{
+	int i = 0;
+	while(i < gtk_notebook_get_n_pages(GTK_NOTEBOOK(w->notebook))) {
+		GtkWidget *tab = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), i);
+		struct output_panel *op = g_object_get_data(G_OBJECT(tab), "op-pointer");
+		if(!op) {  // This one is the real-time tab
+			i++;
+			continue;
+		}
+		gtk_widget_destroy(tab);
+	}
+}
+
+void save_all(GtkMenuItem *m, struct main_window *w)
+{
+	FILE *f = choose_file_for_save(w, "Save all snapshots", NULL);
+	if(!f) return;
 
 	int i, j, tabs = gtk_notebook_get_n_pages(GTK_NOTEBOOK(w->notebook));
-	struct snapshot *s[tabs];// = alloca(tabs * sizeof(struct snapshot *));
-	char *names[tabs];// = alloca(tabs * sizeof(char *));
+	struct snapshot *s[tabs];
+	char *names[tabs];
 
 	for(i = j = 0; i < tabs; i++) {
 		GtkWidget *tab = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), i);
 		struct output_panel *op = g_object_get_data(G_OBJECT(tab), "op-pointer");
 		if(!op) continue; // This one is the real-time tab
-		GtkLabel *label = g_object_get_data(G_OBJECT(tab), "tab-label");
 		s[j] = op->snst;
-		names[j++] = (char *)gtk_label_get_text(label);
+		names[j++] = g_object_get_data(G_OBJECT(tab), "tab-name");
 	}
 
 	write_file(f, s, names, j);
@@ -348,22 +501,56 @@ void serialize_test(GtkMenuItem *m, struct main_window *w)
 	fclose(f);
 }
 
-void scan_test(GtkMenuItem *m, struct main_window *w)
+void load_snapshots(FILE *f, char *name, struct main_window *w)
 {
-	FILE *f = fopen("test.dat", "r");
-
 	struct snapshot **s;
 	char **names;
 	uint64_t cnt;
 	if(!read_file(f, &s, &names, &cnt)) {
 		uint64_t i;
 		for(i = 0; i < cnt; i++) {
-			add_new_tab(s[i], names[i], w);
+			add_new_tab(s[i], names[i] ? names[i] : name, w);
 			free(names[i]);
 		}
 		free(s);
 		free(names);
 	}
+}
+
+void load(GtkMenuItem *m, struct main_window *w)
+{
+	FILE *f = NULL;
+
+	GtkFileChooserNative *native = gtk_file_chooser_native_new ("Open",
+			GTK_WINDOW(w->window),
+			GTK_FILE_CHOOSER_ACTION_OPEN,
+			"_Open",
+			"_Cancel");
+	GtkFileChooser *chooser = GTK_FILE_CHOOSER (native);
+
+	chooser_set_filters(chooser);
+
+	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (native))) {
+		char *filename = gtk_file_chooser_get_filename (chooser);
+		f = fopen(filename, "r");
+		//TODO: handle error
+		if(f) {
+			char *filename_cpy = strdup(filename);
+			char *name = basename(filename_cpy);
+			int i;
+			for(i = strlen(name)-1; i > 0; i--) {
+				if(name[i] == '.') {
+					name[i] = 0;
+					break;
+				}
+			}
+			load_snapshots(f, name, w);
+			free(filename_cpy);
+		}
+		g_free (filename);
+	}
+
+	g_object_unref (native);
 
 	fclose(f);
 }
@@ -471,21 +658,43 @@ void init_main_window(struct main_window *w)
 	g_object_set(G_OBJECT(command_menu), "halign", GTK_ALIGN_END, NULL);
 	gtk_menu_button_set_popup(GTK_MENU_BUTTON(command_menu_button), command_menu);
 	gtk_box_pack_end(GTK_BOX(hbox), command_menu_button, FALSE, FALSE, 0);
+	
+	// ... Open
+	GtkWidget *open_item = gtk_menu_item_new_with_label("Open");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), open_item);
+	g_signal_connect(open_item, "activate", G_CALLBACK(load), w);
 
-	// Serialize TODO: it's a test
-	GtkWidget *pippo = gtk_menu_item_new_with_label("Serialize");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), pippo);
-	g_signal_connect(pippo, "activate", G_CALLBACK(serialize_test), w);
+	// ... Save
+	w->save_item = gtk_menu_item_new_with_label("Save current display");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->save_item);
+	g_signal_connect(w->save_item, "activate", G_CALLBACK(save_current), w);
+	gtk_widget_set_sensitive(w->save_item, FALSE);
 
-	// Scan TODO: it's a test
-	GtkWidget *pluto = gtk_menu_item_new_with_label("Scan");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), pluto);
-	g_signal_connect(pluto, "activate", G_CALLBACK(scan_test), w);
+	// ... Save all
+	w->save_all_item = gtk_menu_item_new_with_label("Save all snapshots");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->save_all_item);
+	g_signal_connect(w->save_all_item, "activate", G_CALLBACK(save_all), w);
+	gtk_widget_set_sensitive(w->save_all_item, FALSE);
 
-	// Calibrate checkbox
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), gtk_separator_menu_item_new());
+
+	// ... Calibrate checkbox
 	w->cal_button = gtk_check_menu_item_new_with_label("Calibrate");
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->cal_button);
 	g_signal_connect(w->cal_button, "toggled", G_CALLBACK(handle_calibrate), w);
+
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), gtk_separator_menu_item_new());
+
+	// ... Close all
+	w->close_all_item = gtk_menu_item_new_with_label("Close all snapshots");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->close_all_item);
+	g_signal_connect(w->close_all_item, "activate", G_CALLBACK(close_all), w);
+	gtk_widget_set_sensitive(w->close_all_item, FALSE);
+
+	// ... Quit
+	GtkWidget *quit_item = gtk_menu_item_new_with_label("Quit");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), quit_item);
+	g_signal_connect(quit_item, "activate", G_CALLBACK(handle_quit), w);
 
 	gtk_widget_show_all(command_menu);
 
@@ -495,11 +704,11 @@ void init_main_window(struct main_window *w)
 	gtk_notebook_set_scrollable(GTK_NOTEBOOK(w->notebook), TRUE);
 	gtk_notebook_set_show_tabs(GTK_NOTEBOOK(w->notebook), FALSE);
 	gtk_notebook_set_show_border(GTK_NOTEBOOK(w->notebook), FALSE);
-	g_signal_connect(w->notebook, "page-removed", G_CALLBACK(handle_tab_closed), NULL);
+	g_signal_connect(w->notebook, "page-removed", G_CALLBACK(handle_tab_closed), w);
 	g_signal_connect_after(w->notebook, "switch-page", G_CALLBACK(handle_tab_changed), w);
 
 	// The main tab
-	GtkWidget *tab_label = make_tab_label("Real time", NULL);
+	GtkWidget *tab_label = make_tab_label(NULL, NULL);
 	gtk_notebook_append_page(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, tab_label);
 	gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(w->notebook), w->active_panel->panel, TRUE);
 
@@ -531,12 +740,20 @@ guint refresh(struct main_window *w)
 			w->cal = s->cal_result;
 			gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), s->cal_result);
 		}
-		gtk_widget_set_sensitive(w->snapshot_button, !s->calibrate && s->pb);
 	}
 	unlock_computer(w->computer);
 	refresh_results(w);
 	op_set_snapshot(w->active_panel, w->active_snapshot);
-	gtk_widget_queue_draw(w->notebook);
+
+	int p = gtk_notebook_get_current_page(GTK_NOTEBOOK(w->notebook));
+	GtkWidget *panel = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), p);
+	int photogenic = 0;
+	if(!g_object_get_data(G_OBJECT(panel), "op-pointer")) {
+		photogenic = !w->active_snapshot->calibrate && w->active_snapshot->pb;
+		gtk_widget_set_sensitive(w->save_item, photogenic);
+		gtk_widget_queue_draw(w->notebook);
+	}
+	gtk_widget_set_sensitive(w->snapshot_button, photogenic);
 	return FALSE;
 }
 
@@ -564,6 +781,7 @@ int start_interface(GtkApplication* app, void *p)
 
 	w->app = app;
 
+	w->zombie = 0;
 	w->controls_active = 1;
 	w->cal = MIN_CAL - 1;
 	w->bph = 0;
@@ -602,18 +820,6 @@ int start_interface(GtkApplication* app, void *p)
 	g_object_set_data(G_OBJECT(app), "main-window", w);
 
 	return 0;
-}
-
-void on_shutdown(GApplication *app, void *p)
-{
-	debug("Main loop has terminated\n");
-	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
-	save_config(w);
-	computer_destroy(w->computer);
-	op_destroy(w->active_panel);
-	close_config(w);
-	free(w);
-	terminate_portaudio();
 }
 
 int main(int argc, char **argv)
