@@ -389,18 +389,34 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 {
 	FILE *f = NULL;
 
-	GtkFileChooserNative *native = gtk_file_chooser_native_new (title,
+#if GTK_CHECK_VERSION(3,20,0)
+	GtkFileChooserNative *dialog = gtk_file_chooser_native_new (title,
 			GTK_WINDOW(w->window),
 			GTK_FILE_CHOOSER_ACTION_SAVE,
-			"_Save",
-			"_Cancel");
-	GtkFileChooser *chooser = GTK_FILE_CHOOSER (native);
+			"Save",
+			"Cancel");
+#else
+	GtkWidget *dialog = gtk_file_chooser_dialog_new (title,
+			GTK_WINDOW(w->window),
+			GTK_FILE_CHOOSER_ACTION_SAVE,
+			"Cancel",
+			GTK_RESPONSE_CANCEL,
+			"Save",
+			GTK_RESPONSE_ACCEPT,
+			NULL);
+#endif
+	GtkFileChooser *chooser = GTK_FILE_CHOOSER (dialog);
 	if(suggestion)
 		gtk_file_chooser_set_filename(chooser, suggestion);
 
 	chooser_set_filters(chooser);
 
-	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (native))) {
+#if GTK_CHECK_VERSION(3,20,0)
+	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (dialog)))
+#else
+	if(GTK_RESPONSE_ACCEPT == gtk_dialog_run (GTK_DIALOG (dialog)))
+#endif
+	{
 		char *filename = gtk_file_chooser_get_filename (chooser);
 		if(!strcmp(".tgj", gtk_file_filter_get_name(gtk_file_chooser_get_filter(chooser)))) {
 			char *s = strdup(filename);
@@ -436,7 +452,12 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		}
 		g_free (filename);
 	}
-	g_object_unref (native);
+
+#if GTK_CHECK_VERSION(3,20,0)
+	g_object_unref (dialog);
+#else
+	gtk_widget_destroy(dialog);
+#endif
 
 	return f;
 }
@@ -521,16 +542,32 @@ void load(GtkMenuItem *m, struct main_window *w)
 {
 	FILE *f = NULL;
 
-	GtkFileChooserNative *native = gtk_file_chooser_native_new ("Open",
+#if GTK_CHECK_VERSION(3,20,0)
+	GtkFileChooserNative *dialog = gtk_file_chooser_native_new ("Open",
 			GTK_WINDOW(w->window),
 			GTK_FILE_CHOOSER_ACTION_OPEN,
-			"_Open",
-			"_Cancel");
-	GtkFileChooser *chooser = GTK_FILE_CHOOSER (native);
+			"Open",
+			"Cancel");
+#else
+	GtkWidget *dialog = gtk_file_chooser_dialog_new ("Open",
+			GTK_WINDOW(w->window),
+			GTK_FILE_CHOOSER_ACTION_OPEN,
+			"Cancel",
+			GTK_RESPONSE_CANCEL,
+			"Open",
+			GTK_RESPONSE_ACCEPT,
+			NULL);
+#endif
+	GtkFileChooser *chooser = GTK_FILE_CHOOSER (dialog);
 
 	chooser_set_filters(chooser);
 
-	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (native))) {
+#if GTK_CHECK_VERSION(3,20,0)
+	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (dialog)))
+#else
+	if(GTK_RESPONSE_ACCEPT == gtk_dialog_run (GTK_DIALOG (dialog)))
+#endif
+	{
 		char *filename = gtk_file_chooser_get_filename (chooser);
 		f = fopen(filename, "r");
 		//TODO: handle error
@@ -548,11 +585,14 @@ void load(GtkMenuItem *m, struct main_window *w)
 			free(filename_cpy);
 		}
 		g_free (filename);
+		fclose(f);
 	}
 
-	g_object_unref (native);
-
-	fclose(f);
+#if GTK_CHECK_VERSION(3,20,0)
+	g_object_unref (dialog);
+#else
+	gtk_widget_destroy(dialog);
+#endif
 }
 
 /* Set up the main window and populate with widgets */
