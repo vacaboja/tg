@@ -25,6 +25,48 @@
 #define STR(X) #X
 #define LABEL_SIZE_STR XSTR(LABEL_SIZE)
 
+#ifdef _WIN32
+int parse_hex_digit(char c)
+{
+	if('0' <= c && c <= '9') return c - '0';
+	if('a' <= c && c <= 'f') return 10 + c - 'a';
+	if('A' <= c && c <= 'F') return 10 + c - 'A';
+	return -1;
+}
+
+int parse_hex_double(FILE *f, double *d)
+{
+	char s[64], *t = s;
+	if(1 != fscanf(f, "%63[0-9a-fA-F.xXpP+-]", s)) return 1;
+	double place = 1;
+	if(*t == '+') t++;
+	else if(*t == '-') {
+		place = -1;
+		t++;
+	}
+	if(*t != '0') return 1;
+	if(*++t != 'x' && *t != 'X') return 1;
+	int n = parse_hex_digit(*++t);
+	if(n < 0) return 1;
+	*d = place * n;
+	if(!*++t) return 0;
+	if(*t != '.') goto exponent;
+	while(*++t && *t != 'p' && *t != 'P') {
+		place /= 16;
+		n = parse_hex_digit(*t);
+		if(n < 0) return 1;
+		*d += place * n;
+	}
+exponent:
+	if(*t) {
+		long int radix = strtol(t+1, &t, 10);
+		if(*t) return 1;
+		*d *= pow(2, radix);
+	}
+	return 0;
+}
+#endif
+
 int serialize_uint64_t(FILE *f, uint64_t x)
 {
 	return 0 > fprintf(f, "I%"PRIu64";\n", x);
@@ -62,13 +104,25 @@ int scan_int(FILE *f, int *x)
 
 int serialize_double(FILE *f, double x)
 {
+#ifdef _WIN32
+	return 0 > __mingw_fprintf(f, "I%a;\n", x);
+#else
 	return 0 > fprintf(f, "I%a;\n", x);
+#endif
 }
 
 int scan_double(FILE *f, double *x)
 {
 	int n = 0;
+#ifdef _WIN32
+	if( 0 != fscanf(f, " I%n", &n) || !n ) return 1;
+	if( parse_hex_double(f,x) ) return 1;
+	n = 0;
+	if( 0 != fscanf(f, ";%n", &n) || !n ) return 1;
+	return 0;
+#else
 	return 1 != fscanf(f, " I%la;%n", x, &n) || !n;
+#endif
 }
 
 int serialize_float(FILE *f, float x)
