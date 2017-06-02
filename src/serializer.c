@@ -361,14 +361,19 @@ int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 
 		if(eat_object(f)) goto error;
 	}
+	debug("serializer: checking period\n");
 	if((*s)->pb->period <= 0 || (*s)->pb->sample_count < ceil((*s)->pb->period)) goto error;
+	debug("serializer: checking timestamp\n");
 	if(!(*s)->timestamp) goto error;
+	debug("serializer: checking nominal_sr\n");
 	if(!(*s)->nominal_sr) goto error;
 	if((*s)->bph < MIN_BPH || (*s)->bph > MAX_BPH) (*s)->bph = 0;
 	if((*s)->la  < MIN_LA  || (*s)->la  > MAX_LA ) (*s)->la  = DEFAULT_LA;
 	if((*s)->cal < MIN_CAL || (*s)->cal > MAX_CAL) (*s)->cal = 0;
-	if((*s)->events_wp >= (*s)->events_count) goto error;
+	debug("serializer: checking events\n");
+	if((*s)->events_count && (*s)->events_wp >= (*s)->events_count) goto error;
 	if((*s)->signal > NSTEPS) (*s)->signal = NSTEPS;
+	debug("serializer: checking sample_rate\n");
 	if(!(*s)->sample_rate) goto error;
 	// ...
 	(*s)->pb->events = NULL;
@@ -455,6 +460,13 @@ int read_file(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt)
 	debug("serializer: end of data structure\n",l);
 	char c;
 	if(*s && 1 != fscanf(f, " %c", &c)) return 0;
+#ifdef DEBUG
+	if(*s) {
+		debug("serializer: stray char %c (%d) after end\n", c, c);
+	} else {
+		debug("serializer: no snapshots\n");
+	}
+#endif
 error:
 	debug("serializer: read error\n");
 	if(*s) {

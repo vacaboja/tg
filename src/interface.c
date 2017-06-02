@@ -382,6 +382,7 @@ void chooser_set_filters(GtkFileChooser *chooser)
 	gtk_file_filter_add_pattern(tgj_filter, "*.tgj");
 	gtk_file_chooser_add_filter(chooser, tgj_filter);
 
+	//TODO: on win10 seems not to work...
 	gtk_file_chooser_set_filter(chooser, tgj_filter);
 }
 
