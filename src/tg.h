@@ -27,6 +27,10 @@
 #include <gtk/gtk.h>
 #include <pthread.h>
 
+#ifdef __CYGWIN__
+#define _WIN32
+#endif
+
 #define CONFIG_FILE_NAME "tg-timer.ini"
 
 #define FILTER_CUTOFF 3000
