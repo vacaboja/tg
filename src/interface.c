@@ -327,11 +327,11 @@ GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close)
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 5);
 
 	if(panel_to_close) {
-//#ifdef _WIN32
-//		GtkWidget *image = gtk_image_new_from_file("window-close.png");
-//#else
+#ifdef WIN_XP
+		GtkWidget *image = gtk_image_new_from_file("window-close.png");
+#else
 		GtkWidget *image = gtk_image_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
-//#endif
+#endif
 		GtkWidget *button = gtk_button_new();
 		gtk_button_set_image(GTK_BUTTON(button), image);
 		gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
@@ -689,11 +689,11 @@ void init_main_window(struct main_window *w)
 	// Command menu
 	GtkWidget *command_menu = gtk_menu_new();
 	GtkWidget *command_menu_button = gtk_menu_button_new();
-//#ifdef _WIN32
-//	GtkWidget *image = gtk_image_new_from_file("open-menu.png");
-//#else
+#ifdef WIN_XP
+	GtkWidget *image = gtk_image_new_from_file("open-menu.png");
+#else
 	GtkWidget *image = gtk_image_new_from_icon_name("open-menu-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
-//#endif
+#endif
 	gtk_button_set_image(GTK_BUTTON(command_menu_button), image);
 	g_object_set(G_OBJECT(command_menu_button), "direction", GTK_ARROW_DOWN, NULL);
 	g_object_set(G_OBJECT(command_menu), "halign", GTK_ALIGN_END, NULL);

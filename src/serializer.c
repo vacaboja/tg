@@ -104,7 +104,7 @@ int scan_int(FILE *f, int *x)
 
 int serialize_double(FILE *f, double x)
 {
-#ifdef __MINGW32__
+#ifdef WIN_XP
 	return 0 > __mingw_fprintf(f, "I%a;\n", x);
 #else
 	return 0 > fprintf(f, "I%a;\n", x);
