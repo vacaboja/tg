@@ -9,7 +9,7 @@ fi
 DIR=`dirname "${BASH_SOURCE[0]}"`
 ABSDIR=`cd "$DIR"; pwd`
 
-DLLS=`cd "$1"; pwd`
+RESOURCES=`cd "$1"; pwd`
 
 TARGET="$ABSDIR/../build/msi"
 
@@ -27,9 +27,8 @@ cp "$ABSDIR/../README.md" "$TARGET"
 cp "$ABSDIR/../LICENSE" "$TARGET"
 cp "$ABSDIR/../build/tg.exe" "$TARGET"
 cp "$ABSDIR/../build/tg-lt.exe" "$TARGET"
-cp -r "$DLLS"/* "$TARGET"
-cp "$ABSDIR/../icons/stock"/* "$TARGET"
-heat dir "$DLLS" -srd -gg -sreg -dr INSTALLDIR -cg Resources -out "$TARGET/Resources.wxs"
+cp -r "$RESOURCES"/* "$TARGET"
+heat dir "$RESOURCES" -srd -gg -sreg -dr INSTALLDIR -cg Resources -out "$TARGET/Resources.wxs"
 
 cd "$TARGET"
 
