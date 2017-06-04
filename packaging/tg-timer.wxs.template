@@ -59,8 +59,7 @@
       <ComponentRef Id='LightExecutable' />
       <ComponentRef Id='License' />
       <ComponentRef Id='Readme' />
-      <ComponentGroupRef Id='Dlls' />
-      <ComponentGroupRef Id='Images' />
+      <ComponentGroupRef Id='Resources' />
       <ComponentRef Id='ProgramMenuDir' />
     </Feature>
 
