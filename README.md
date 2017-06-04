@@ -60,3 +60,12 @@ To compile tg on Debian
 
 The package libjack-jackd2-dev is not necessary, it only works around a
 known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).
+
+### Compiling on Fedora
+
+To compile tg on Fedora (accurate as of Fedora 25)
+
+	sudo dnf install fftw-devel portaudio-devel gtk2-devel
+	git clone https://github.com/vacaboja/tg.git
+	cd tg
+	make
