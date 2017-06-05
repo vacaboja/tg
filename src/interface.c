@@ -386,6 +386,19 @@ void chooser_set_filters(GtkFileChooser *chooser)
 	gtk_file_chooser_set_filter(chooser, tgj_filter);
 }
 
+FILE *fopen_check(char *filename, char *mode)
+{
+	FILE *f = fopen(filename, mode);
+	if(!f) {
+		//TODO: check filename encoding
+		GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+					"Error opening file %s\n", filename);
+		gtk_dialog_run(GTK_DIALOG(dialog));
+		gtk_widget_destroy(dialog);
+	}
+	return f;
+}
+
 FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 {
 	FILE *f = NULL;
@@ -407,8 +420,9 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 			NULL);
 #endif
 	GtkFileChooser *chooser = GTK_FILE_CHOOSER (dialog);
+	// TODO: check suggestion encoding
 	if(suggestion)
-		gtk_file_chooser_set_filename(chooser, suggestion);
+		gtk_file_chooser_set_current_name(chooser, suggestion);
 
 	chooser_set_filters(chooser);
 
@@ -421,7 +435,8 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		char *filename = gtk_file_chooser_get_filename (chooser);
 		if(!strcmp(".tgj", gtk_file_filter_get_name(gtk_file_chooser_get_filter(chooser)))) {
 			char *s = strdup(filename);
-			if(!strchr(basename(s), '.')) {
+			// TODO: encoding
+			if(strlen(s) > 3 && strcasecmp(".tgj", s + strlen(s) - 4)) {
 				char *t = g_malloc(strlen(filename)+5);
 				sprintf(t,"%s.tgj",filename);
 				g_free(filename);
@@ -443,13 +458,15 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		} else
 			do_open = 1;
 		if(do_open) {
-			f = fopen(filename, "w");
-			//TODO: handle error
-			char *uri = g_filename_to_uri(filename,NULL,NULL);
-			if(f && uri)
-				gtk_recent_manager_add_item(
-					gtk_recent_manager_get_default(), uri);
-			g_free(uri);
+			f = fopen_check(filename, "w");
+			if(f) {
+				//TODO: check filename encoding
+				char *uri = g_filename_to_uri(filename,NULL,NULL);
+				if(f && uri)
+					gtk_recent_manager_add_item(
+						gtk_recent_manager_get_default(), uri);
+				g_free(uri);
+			}
 		}
 		g_free (filename);
 	}
@@ -478,13 +495,20 @@ void save_current(GtkMenuItem *m, struct main_window *w)
 	if(!snapshot->timestamp)
 		snapshot->timestamp = get_timestamp();
 
-	FILE *f = choose_file_for_save(w, "Save current display", NULL);
-	if(!f) return;
+	// TODO: check name encoding
+	FILE *f = choose_file_for_save(w, "Save current display", name);
 
-	write_file(f, &snapshot, &name, 1);
+	if(f) {
+		if(write_file(f, &snapshot, &name, 1)) {
+			GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+						"Error writing file");
+			gtk_dialog_run(GTK_DIALOG(dialog));
+			gtk_widget_destroy(dialog);
+		}
+		fclose(f);
+	}
 
 	snapshot_destroy(snapshot);
-	fclose(f);
 }
 
 void close_all(GtkMenuItem *m, struct main_window *w)
@@ -518,7 +542,12 @@ void save_all(GtkMenuItem *m, struct main_window *w)
 		names[j++] = g_object_get_data(G_OBJECT(tab), "tab-name");
 	}
 
-	write_file(f, s, names, j);
+	if(write_file(f, s, names, j)) {
+		GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+					"Error writing file");
+		gtk_dialog_run(GTK_DIALOG(dialog));
+		gtk_widget_destroy(dialog);
+	}
 
 	fclose(f);
 }
@@ -536,6 +565,11 @@ void load_snapshots(FILE *f, char *name, struct main_window *w)
 		}
 		free(s);
 		free(names);
+	} else {
+		GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+					"Error reading file");
+		gtk_dialog_run(GTK_DIALOG(dialog));
+		gtk_widget_destroy(dialog);
 	}
 }
 
@@ -570,23 +604,18 @@ void load(GtkMenuItem *m, struct main_window *w)
 #endif
 	{
 		char *filename = gtk_file_chooser_get_filename (chooser);
-		f = fopen(filename, "r");
-		//TODO: handle error
+		f = fopen_check(filename, "r");
 		if(f) {
 			char *filename_cpy = strdup(filename);
 			char *name = basename(filename_cpy);
-			int i;
-			for(i = strlen(name)-1; i > 0; i--) {
-				if(name[i] == '.') {
-					name[i] = 0;
-					break;
-				}
-			}
+			// TODO: encoding
+			if(strlen(name) > 3 && !strcasecmp(".tgj", name + strlen(name) - 4))
+				name[strlen(name) - 4] = 0;
 			load_snapshots(f, name, w);
 			free(filename_cpy);
+			fclose(f);
 		}
 		g_free (filename);
-		fclose(f);
 	}
 
 #if GTK_CHECK_VERSION(3,20,0)
