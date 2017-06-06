@@ -406,7 +406,10 @@ FILE *fopen_check(char *filename, char *mode, struct main_window *w)
 
 	if(!f) {
 		GtkWidget *dialog;
-error:		dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+#ifdef _WIN32
+error:
+#endif
+		dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
 					"Error opening file\n");
 		gtk_dialog_run(GTK_DIALOG(dialog));
 		gtk_widget_destroy(dialog);
