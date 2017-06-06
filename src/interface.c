@@ -386,16 +386,36 @@ void chooser_set_filters(GtkFileChooser *chooser)
 	gtk_file_chooser_set_filter(chooser, tgj_filter);
 }
 
-FILE *fopen_check(char *filename, char *mode)
+FILE *fopen_check(char *filename, char *mode, struct main_window *w)
 {
-	FILE *f = fopen(filename, mode);
+	FILE *f = NULL;
+#ifdef _WIN32
+	wchar_t *name = NULL;
+	wchar_t *md = NULL;
+
+	name = (wchar_t*)g_convert(filename, -1, "UTF-16LE", "ISO-8859-1", NULL, NULL, NULL);
+	if(!name) goto error;
+
+	md = (wchar_t*)g_convert(mode, -1, "UTF-16LE", "UTF-8", NULL, NULL, NULL);
+	if(!md) goto error;
+
+	f = _wfopen(name, md);
+#else
+	f = fopen(filename, mode);
+#endif
+
 	if(!f) {
-		//TODO: check filename encoding
-		GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
-					"Error opening file %s\n", filename);
+		GtkWidget *dialog;
+error:		dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+					"Error opening file\n");
 		gtk_dialog_run(GTK_DIALOG(dialog));
 		gtk_widget_destroy(dialog);
 	}
+
+#ifdef _WIN32
+	g_free(name);
+	g_free(md);
+#endif
 	return f;
 }
 
@@ -420,7 +440,6 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 			NULL);
 #endif
 	GtkFileChooser *chooser = GTK_FILE_CHOOSER (dialog);
-	// TODO: check suggestion encoding
 	if(suggestion)
 		gtk_file_chooser_set_current_name(chooser, suggestion);
 
@@ -435,7 +454,6 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		char *filename = gtk_file_chooser_get_filename (chooser);
 		if(!strcmp(".tgj", gtk_file_filter_get_name(gtk_file_chooser_get_filter(chooser)))) {
 			char *s = strdup(filename);
-			// TODO: encoding
 			if(strlen(s) > 3 && strcasecmp(".tgj", s + strlen(s) - 4)) {
 				char *t = g_malloc(strlen(filename)+5);
 				sprintf(t,"%s.tgj",filename);
@@ -458,9 +476,8 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		} else
 			do_open = 1;
 		if(do_open) {
-			f = fopen_check(filename, "w");
+			f = fopen_check(filename, "wb", w);
 			if(f) {
-				//TODO: check filename encoding
 				char *uri = g_filename_to_uri(filename,NULL,NULL);
 				if(f && uri)
 					gtk_recent_manager_add_item(
@@ -495,12 +512,11 @@ void save_current(GtkMenuItem *m, struct main_window *w)
 	if(!snapshot->timestamp)
 		snapshot->timestamp = get_timestamp();
 
-	// TODO: check name encoding
 	FILE *f = choose_file_for_save(w, "Save current display", name);
 
 	if(f) {
 		if(write_file(f, &snapshot, &name, 1)) {
-			GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+			GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
 						"Error writing file");
 			gtk_dialog_run(GTK_DIALOG(dialog));
 			gtk_widget_destroy(dialog);
@@ -543,7 +559,7 @@ void save_all(GtkMenuItem *m, struct main_window *w)
 	}
 
 	if(write_file(f, s, names, j)) {
-		GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+		GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
 					"Error writing file");
 		gtk_dialog_run(GTK_DIALOG(dialog));
 		gtk_widget_destroy(dialog);
@@ -566,7 +582,7 @@ void load_snapshots(FILE *f, char *name, struct main_window *w)
 		free(s);
 		free(names);
 	} else {
-		GtkWidget *dialog = gtk_message_dialog_new(NULL,0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
+		GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
 					"Error reading file");
 		gtk_dialog_run(GTK_DIALOG(dialog));
 		gtk_widget_destroy(dialog);
@@ -604,15 +620,20 @@ void load(GtkMenuItem *m, struct main_window *w)
 #endif
 	{
 		char *filename = gtk_file_chooser_get_filename (chooser);
-		f = fopen_check(filename, "r");
+		f = fopen_check(filename, "rb", w);
 		if(f) {
 			char *filename_cpy = strdup(filename);
 			char *name = basename(filename_cpy);
-			// TODO: encoding
-			if(strlen(name) > 3 && !strcasecmp(".tgj", name + strlen(name) - 4))
+#ifdef _WIN32
+			name = g_convert(name, -1, "UTF-8", "ISO-8859-1", NULL, NULL, NULL);
+#endif
+			if(name && strlen(name) > 3 && !strcasecmp(".tgj", name + strlen(name) - 4))
 				name[strlen(name) - 4] = 0;
 			load_snapshots(f, name, w);
 			free(filename_cpy);
+#ifdef _WIN32
+			g_free(name);
+#endif
 			fclose(f);
 		}
 		g_free (filename);

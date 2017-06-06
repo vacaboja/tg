@@ -26,6 +26,47 @@
 #define LABEL_SIZE_STR XSTR(LABEL_SIZE)
 
 #ifdef _WIN32
+// My own implementation of %a
+// because I'm sick of bugs in __mingw_fprintf()
+
+char hex_digit(uint64_t n)
+{
+	if(n < 10) return (char)n+'0';
+	else return (char)n-10+'a';
+}
+
+int write_hex_double(FILE *f, double d)
+{
+	uint64_t bd = *(uint64_t *)&d;
+	uint64_t mantissa = bd << 12;
+	uint64_t exponent = (bd >> 52) & 0x7ff;
+	uint64_t sign = bd >> 63;
+
+	// nan or inf = error
+	if(exponent == 0x7ff) return 1;
+
+	if(sign && fprintf(f, "-") < 0) return 1;
+
+	if(exponent == 0) {
+		if(mantissa) {
+			exponent = 1;
+			if(fprintf(f, "0x0") < 0) return 1;
+		} else {
+			return 0 > fprintf(f, "0x0p+0");
+		}
+	} else {
+		if(fprintf(f, "0x1") < 0) return 1;
+	}
+
+	if(mantissa && fprintf(f, ".")  < 0) return 1;
+	for(; mantissa; mantissa <<= 4)
+		if(fprintf(f, "%c", hex_digit( mantissa >> 60 )) < 0) return 1;
+
+	int exp = (int)exponent - 1023;
+	if(fprintf(f, "p%c", exp < 0 ? '-' : '+') < 0) return 1;
+	return 0 > fprintf(f,"%d",abs(exp));
+}
+
 int parse_hex_digit(char c)
 {
 	if('0' <= c && c <= '9') return c - '0';
@@ -104,8 +145,10 @@ int scan_int(FILE *f, int *x)
 
 int serialize_double(FILE *f, double x)
 {
-#ifdef WIN_XP
-	return 0 > __mingw_fprintf(f, "I%a;\n", x);
+#ifdef _WIN32
+	if(fprintf(f, "I") < 0) return 1;
+	if(write_hex_double(f, x)) return 1;
+	return 0 > fprintf(f, ";\n");
 #else
 	return 0 > fprintf(f, "I%a;\n", x);
 #endif
