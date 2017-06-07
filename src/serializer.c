@@ -282,6 +282,13 @@ int eat_object(FILE *f)
 				if(!strcmp("__end__", b)) return 0;
 				if(eat_object(f)) return 1;
 			}
+		case 'U':
+			if(1 != fscanf(f, "%c", &c)) return 1;
+			if(c != ';') return 1;
+			char b[LABEL_SIZE+1];
+			if(scan_label(f, b)) return 1;
+			if(eat_object(f)) return 1;
+			return 0;
 		default:
 			return 1;
 	}
@@ -297,6 +304,12 @@ int serialize_struct_end(FILE *f)
 	return make_label(f, "__end__");
 }
 
+int serialize_union_begin(FILE *f, char *s)
+{
+	if(fprintf(f, "U;\n") < 0) return 1;
+	return make_label(f, s);
+}
+
 #define SERIALIZE(T,A) {				\
 	if(make_label(f, #A)) return 1;			\
 	if(serialize_ ## T (f, s -> A)) return 1;	\
@@ -304,6 +317,7 @@ int serialize_struct_end(FILE *f)
 
 int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 {
+	if(serialize_union_begin(f, "realtime-snapshot")) return 1;
 	if(serialize_struct_begin(f)) return 1;
 	if(name) {
 		if(make_label(f, "name")) return 1;
@@ -347,15 +361,23 @@ int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 
 int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 {
+	char l[LABEL_SIZE+1];
+	int n = 0;
+	*s = NULL;
+	*name = NULL;
+	if(0 != fscanf(f, " U;%n", &n) || !n) return 1;
+	if(scan_label(f,l)) return 1;
+	if(strcmp("realtime-snapshot", l))
+		return eat_object(f);
+
 	*s = malloc(sizeof(struct snapshot));
 	memset(*s, 0, sizeof(struct snapshot));
 	(*s)->pb = malloc(sizeof(struct processing_buffers));
 	memset((*s)->pb, 0, sizeof(struct processing_buffers));
 	*name = NULL;
 
-	char l[LABEL_SIZE+1];
-	int n = 0;
-	if(0 != fscanf(f, " T;%n", &n) || !n) goto error;;
+	n = 0;
+	if(0 != fscanf(f, " T;%n", &n) || !n) goto error;
 	for(;;) {
 		if(scan_label(f,l)) goto error;
 		if(!strcmp("__end__", l)) break;
@@ -441,26 +463,33 @@ error:
 int scan_snapshot_list(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt)
 {
 	debug("serializer: scanning snapshot list\n");
-	uint64_t i = 0;
+	uint64_t i;
 	int n = 0;
 	*s = NULL;
 	*names = NULL;
-	if(1 != fscanf(f, " A%"SCNu64";%n", cnt, &n) || !n) goto error;
-	*s = malloc(*cnt*sizeof(struct snapshot *));
-	*names = malloc(*cnt*sizeof(char *));
-	for(i = 0; i < *cnt; i++)
-		if(scan_snapshot(f, *s+i, *names+i)) goto error;
+	*cnt = 0;
+	if(1 != fscanf(f, " A%"SCNu64";%n", &i, &n) || !n) goto error;
+	*s = malloc(i*sizeof(struct snapshot *));
+	*names = malloc(i*sizeof(char *));
+	uint64_t j;
+	for(j = 0; j < i; j++) {
+		if(scan_snapshot(f, *s+*cnt, *names+*cnt)) goto error;
+		*cnt += !!(*s)[*cnt];
+	}
+	*s = realloc(*s, *cnt*sizeof(struct snapshot *));
+	*names = realloc(*names, *cnt*sizeof(char *));
 	return 0;
 error:
 	debug("serializer: error in snapshot list\n");
-	for(; i--;) {
-		snapshot_destroy((*s)[i]);
-		free((*names)[i]);
+	for(; (*cnt)--;) {
+		snapshot_destroy((*s)[*cnt]);
+		free((*names)[*cnt]);
 	}
 	free(*s);
 	free(*names);
 	*s = NULL;
 	*names = NULL;
+	*cnt = 0;
 	return 1;
 }
 
