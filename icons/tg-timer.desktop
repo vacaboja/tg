@@ -5,4 +5,5 @@ Comment=Software-based timegrapher
 Exec=tg-timer
 Icon=tg-timer
 Terminal=false
-Categories=Utility;
+Categories=Utility
+MimeType=application/x-tg-timer-data

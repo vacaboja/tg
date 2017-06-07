@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
+  <mime-type type="application/x-tg-timer-data">
+    <comment>Watch timing data</comment>
+    <magic>
+      <match type="string" offset="0" value="Ltg-timer-version;"/>
+    </magic>
+    <glob pattern="*.tgj"/>
+  </mime-type>
+</mime-info>

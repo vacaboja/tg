@@ -69,8 +69,9 @@ $(eval $(call TARGET,tg-vlg-lt,-O1 -g -DLIGHT,,))
 
 ICONSIZES := $(foreach SIZE, $(shell cat icons/sizes), $(SIZE)x$(SIZE))
 
-$(ICONSIZES): %: icons/%/tg-timer.png
-	install -D -m 0644 $< $(PREFIX)/share/icons/hicolor/$@/apps/tg-timer.png
+$(ICONSIZES): %: icons/%/tg-timer.png icons/%/tg-document.png
+	install -D -m 0644 icons/$@/tg-timer.png $(PREFIX)/share/icons/hicolor/$@/apps/tg-timer.png
+	install -D -m 0644 icons/$@/tg-document.png $(PREFIX)/share/icons/hicolor/$@/mimetypes/application-x-tg-timer-data.png
 .PHONY: $(ICONSIZES)
 
 install: all $(ICONSIZES)
@@ -78,6 +79,7 @@ install: all $(ICONSIZES)
 	install -D -m 0755 $(BUILDDIR)/tg-lt$(EXT) $(PREFIX)/bin/tg-timer-lt$(EXT)
 	install -D -m 0644 icons/tg-timer.desktop $(PREFIX)/share/applications/tg-timer.desktop
 	install -D -m 0644 icons/tg-timer-lt.desktop $(PREFIX)/share/applications/tg-timer-lt.desktop
+	install -D -m 0644 icons/tg-timer.xml $(PREFIX)/share/mime/packages/tg-timer.xml
 	install -D -m 0644 docs/tg-timer.1.gz $(PREFIX)/share/man/man1/tg-timer.1.gz
 	ln -s tg-timer.1.gz $(PREFIX)/share/man/man1/tg-timer-lt.1.gz
 .PHONY: install
