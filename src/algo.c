@@ -231,9 +231,7 @@ void prepare_data(struct processing_buffers *b, int run_noise_suppressor)
 
 	memset(b->samples + b->sample_count, 0, b->sample_count * sizeof(float));
 	run_filter(b->hpf, b->samples, b->sample_count);
-#ifndef LIGHT
 	if(run_noise_suppressor) noise_suppressor(b);
-#endif
 
 	for(i=0; i < b->sample_count; i++)
 		b->samples[i] = fabs(b->samples[i]);
@@ -769,9 +767,9 @@ void compute_cal(struct calibration_data *cd, int sample_rate)
 	cd->state = delta * 3600 * 24 < 0.1 ? 1 : -1;
 }
 
-void process(struct processing_buffers *p, int bph, double la)
+void process(struct processing_buffers *p, int bph, double la, int light)
 {
-	prepare_data(p,1);
+	prepare_data(p, !light);
 	p->ready = !compute_period(p,bph);
 	if(p->ready && p->period >= p->sample_rate / 2) {
 		debug("Detected period too long\n");

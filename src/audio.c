@@ -93,13 +93,8 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 		goto error;
 
 	const PaStreamInfo *info = Pa_GetStreamInfo(stream);
-#ifdef LIGHT
-	*nominal_sample_rate = PA_SAMPLE_RATE / 2;
-	*real_sample_rate = info->sampleRate / 2;
-#else
 	*nominal_sample_rate = PA_SAMPLE_RATE;
 	*real_sample_rate = info->sampleRate;
-#endif
 #ifdef DEBUG
 end:
 #endif
@@ -123,46 +118,36 @@ int terminate_portaudio()
 	return 0;
 }
 
-uint64_t get_timestamp()
+uint64_t get_timestamp(int light)
 {
 	pthread_mutex_lock(&audio_mutex);
-#ifdef LIGHT
-	uint64_t ts = timestamp / 2;
-#else
-	uint64_t ts = timestamp;
-#endif
+	uint64_t ts = light ? timestamp / 2 : timestamp;
 	pthread_mutex_unlock(&audio_mutex);
 	return ts;
 }
 
-void fill_buffers(struct processing_buffers *p)
+void fill_buffers(struct processing_buffers *p, int light)
 {
 	pthread_mutex_lock(&audio_mutex);
 	uint64_t ts = timestamp;
 	int wp = write_pointer;
 	pthread_mutex_unlock(&audio_mutex);
 	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
-#ifdef LIGHT
-	if(wp % 2) wp--;
-	ts /= 2;
-#endif
+	if(light) {
+		if(wp % 2) wp--;
+		ts /= 2;
+	}
 	int i;
 	for(i=0; i<NSTEPS; i++) {
 		int j,k;
 		p[i].timestamp = ts;
-#ifdef LIGHT
-		k = wp - 2*p[i].sample_count;
-#else
-		k = wp - p[i].sample_count;
-#endif
+		if(light) k = wp - 2*p[i].sample_count;
+		else k = wp - p[i].sample_count;
+
 		if(k < 0) k += PA_BUFF_SIZE;
 		for(j=0; j < p[i].sample_count; j++) {
 			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
-#ifdef LIGHT
-			k += 2;
-#else
-			k++;
-#endif
+			k += light ? 2 : 1;
 			if(k >= PA_BUFF_SIZE) k -= PA_BUFF_SIZE;
 		}
 	}
@@ -171,14 +156,14 @@ void fill_buffers(struct processing_buffers *p)
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from)
 {
 	struct processing_buffers *p = pd->buffers;
-	fill_buffers(p);
+	fill_buffers(p, pd->is_light);
 
 	int i;
 	debug("\nSTART OF COMPUTATION CYCLE\n\n");
 	for(i=0; i<NSTEPS; i++) {
 		p[i].last_tic = pd->last_tic;
 		p[i].events_from = events_from;
-		process(&p[i], bph, la);
+		process(&p[i], bph, la, pd->is_light);
 		if( !p[i].ready ) break;
 		debug("step %d : %f +- %f\n",i,p[i].period/p[i].sample_rate,p[i].sigma/p[i].sample_rate);
 	}
@@ -193,7 +178,7 @@ int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t eve
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 {
 	struct processing_buffers *p = pd->buffers;
-	fill_buffers(p);
+	fill_buffers(p, pd->is_light);
 
 	int i,j;
 	debug("\nSTART OF CALIBRATION CYCLE\n\n");

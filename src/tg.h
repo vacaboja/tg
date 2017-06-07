@@ -37,11 +37,8 @@
 
 #define CAL_DATA_SIZE 900
 
-#ifdef LIGHT
-#define FIRST_STEP 0
-#else
 #define FIRST_STEP 1
-#endif
+#define FIRST_STEP_LIGHT 0
 
 #define NSTEPS 4
 #define PA_SAMPLE_RATE 44100
@@ -112,7 +109,7 @@ void setup_buffers(struct processing_buffers *b);
 void pb_destroy(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
-void process(struct processing_buffers *p, int bph, double la);
+void process(struct processing_buffers *p, int bph, double la, int light);
 void setup_cal_data(struct calibration_data *cd);
 void cal_data_destroy(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
@@ -122,11 +119,12 @@ int process_cal(struct processing_buffers *p, struct calibration_data *cd);
 struct processing_data {
 	struct processing_buffers *buffers;
 	uint64_t last_tic;
+	int is_light;
 };
 
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
 int terminate_portaudio();
-uint64_t get_timestamp();
+uint64_t get_timestamp(int light);
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 
@@ -135,6 +133,7 @@ struct snapshot {
 	struct processing_buffers *pb;
 	int is_old;
 	uint64_t timestamp;
+	int is_light;
 
 	int nominal_sr;
 	int calibrate;
@@ -187,7 +186,7 @@ struct computer {
 struct snapshot *snapshot_clone(struct snapshot *s);
 void snapshot_destroy(struct snapshot *s);
 void computer_destroy(struct computer *c);
-struct computer *start_computer(int nominal_sr, int bph, double la, int cal);
+struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light);
 void lock_computer(struct computer *c);
 void unlock_computer(struct computer *c);
 void compute_results(struct snapshot *s);

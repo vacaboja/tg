@@ -366,7 +366,7 @@ void handle_snapshot(GtkButton *b, struct main_window *w)
 {
 	if(w->active_snapshot->calibrate) return;
 	struct snapshot *s = snapshot_clone(w->active_snapshot);
-	s->timestamp = get_timestamp();
+	s->timestamp = get_timestamp(s->is_light);
 	add_new_tab(s, NULL, w);
 }
 
@@ -513,7 +513,7 @@ void save_current(GtkMenuItem *m, struct main_window *w)
 	snapshot = snapshot_clone(snapshot);
 
 	if(!snapshot->timestamp)
-		snapshot->timestamp = get_timestamp();
+		snapshot->timestamp = get_timestamp(snapshot->is_light);
 
 	FILE *f = choose_file_for_save(w, "Save current display", name);
 
@@ -891,7 +891,11 @@ int start_interface(GtkApplication* app, void *p)
 
 	w->computer_timeout = 0;
 
-	w->computer = start_computer(nominal_sr, w->bph, w->la, w->cal);
+#ifdef LIGHT
+	w->computer = start_computer(nominal_sr, w->bph, w->la, w->cal, 1);
+#else
+	w->computer = start_computer(nominal_sr, w->bph, w->la, w->cal, 0);
+#endif
 	if(!w->computer) return 2;
 	w->computer->callback = computer_callback;
 	w->computer->callback_data = w;

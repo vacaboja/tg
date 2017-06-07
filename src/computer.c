@@ -122,7 +122,7 @@ void compute_events_cal(struct computer *c)
 		s->events[s->events_wp] = d->events[i];
 		debug("event at %llu\n",s->events[s->events_wp]);
 	}
-	s->events_from = get_timestamp();
+	s->events_from = get_timestamp(s->is_light);
 }
 
 void compute_events(struct computer *c)
@@ -140,7 +140,7 @@ void compute_events(struct computer *c)
 			}
 		s->events_from = p->timestamp - ceil(p->period);
 	} else {
-		s->events_from = get_timestamp();
+		s->events_from = get_timestamp(s->is_light);
 	}
 }
 
@@ -233,19 +233,23 @@ void computer_destroy(struct computer *c)
 	free(c);
 }
 
-struct computer *start_computer(int nominal_sr, int bph, double la, int cal)
+struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light)
 {
+	if(light) nominal_sr /= 2;
+
 	struct processing_buffers *p = malloc(NSTEPS * sizeof(struct processing_buffers));
+	int first_step = light ? FIRST_STEP_LIGHT : FIRST_STEP;
 	int i;
 	for(i=0; i<NSTEPS; i++) {
 		p[i].sample_rate = nominal_sr;
-		p[i].sample_count = nominal_sr * (1<<(i+FIRST_STEP));
+		p[i].sample_count = nominal_sr * (1<<(i+first_step));
 		setup_buffers(&p[i]);
 	}
 
 	struct processing_data *pd = malloc(sizeof(struct processing_data));
 	pd->buffers = p;
 	pd->last_tic = 0;
+	pd->is_light = light;
 
 	struct calibration_data *cd = malloc(sizeof(struct calibration_data));
 	setup_cal_data(cd);
@@ -266,6 +270,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal)
 	s->bph = bph;
 	s->la = la;
 	s->cal = cal;
+	s->is_light = light;
 
 	struct computer *c = malloc(sizeof(struct computer));
 	c->cdata = cd;

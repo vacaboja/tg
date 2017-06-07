@@ -514,7 +514,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_pane
 {
 	int i;
 	struct snapshot *snst = op->snst;
-	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp();
+	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp(snst->is_light);
 	double sweep;
 	int zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display
