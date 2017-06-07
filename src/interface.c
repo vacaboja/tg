@@ -67,29 +67,6 @@ void error(char *format,...)
 	gtk_widget_destroy(dialog);
 }
 
-void recompute(struct main_window *w)
-{
-	w->computer_timeout = 0;
-	lock_computer(w->computer);
-	w->computer->bph = w->bph;
-	w->computer->la = w->la;
-	w->computer->calibrate = w->calibrate;
-	if(w->computer->recompute >= 0)
-		w->computer->recompute = 1;
-	unlock_computer(w->computer);
-}
-
-guint kick_computer(struct main_window *w)
-{
-	w->computer_timeout++;
-	if(w->calibrate && w->computer_timeout < 10) {
-		return TRUE;
-	} else {
-		recompute(w);
-		return TRUE;
-	}
-}
-
 void refresh_results(struct main_window *w)
 {
 	w->active_snapshot->bph = w->bph;
@@ -161,15 +138,6 @@ gboolean input_cal(GtkSpinButton *spin, double *val, gpointer data)
 	return TRUE;
 }
 
-void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
-{
-	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
-	if(button_state != w->calibrate) {
-		w->calibrate = button_state;
-		recompute(w);
-	}
-}
-
 void on_shutdown(GApplication *app, void *p)
 {
 	debug("Main loop has terminated\n");
@@ -182,27 +150,55 @@ void on_shutdown(GApplication *app, void *p)
 	terminate_portaudio();
 }
 
-guint close_main_window(struct main_window *w)
+void recompute(struct main_window *w);
+void computer_callback(void *w);
+
+guint computer_terminated(struct main_window *w)
 {
-	debug("Closing main window\n");
-	w->zombie = 1;
-	gtk_widget_destroy(w->window);
+	if(w->zombie) {
+		debug("Closing main window\n");
+		gtk_widget_destroy(w->window);
+	} else {
+		debug("Restarting computer");
+
+		struct computer *c = start_computer(w->nominal_sr, w->bph, w->la, w->cal, w->is_light);
+		if(!c) {
+			g_source_remove(w->kick_timeout);
+			g_source_remove(w->save_timeout);
+			w->zombie = 1;
+			gtk_widget_destroy(w->window);
+		} else {
+			computer_destroy(w->computer);
+			w->active_panel->computer = w->computer = c;
+
+			w->computer->callback = computer_callback;
+			w->computer->callback_data = w;
+
+			recompute(w);
+		}
+	}
 	return FALSE;
 }
 
 void computer_quit(void *w)
 {
-	gdk_threads_add_idle((GSourceFunc)close_main_window,w);
+	gdk_threads_add_idle((GSourceFunc)computer_terminated,w);
+}
+
+void kill_computer(struct main_window *w)
+{
+	w->computer->recompute = -1;
+	w->computer->callback = computer_quit;
+	w->computer->callback_data = w;
 }
 
 gboolean quit(struct main_window *w)
 {
 	g_source_remove(w->kick_timeout);
 	g_source_remove(w->save_timeout);
+	w->zombie = 1;
 	lock_computer(w->computer);
-	w->computer->recompute = -1;
-	w->computer->callback = computer_quit;
-	w->computer->callback_data = w;
+	kill_computer(w);
 	unlock_computer(w->computer);
 	return FALSE;
 }
@@ -217,6 +213,52 @@ gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 void handle_quit(GtkMenuItem *m, struct main_window *w)
 {
 	quit(w);
+}
+
+void recompute(struct main_window *w)
+{
+	w->computer_timeout = 0;
+	lock_computer(w->computer);
+	if(w->computer->recompute >= 0) {
+		if(w->is_light != w->computer->actv->is_light) {
+			kill_computer(w);
+		} else {
+			w->computer->bph = w->bph;
+			w->computer->la = w->la;
+			w->computer->calibrate = w->calibrate;
+			w->computer->recompute = 1;
+		}
+	}
+	unlock_computer(w->computer);
+}
+
+guint kick_computer(struct main_window *w)
+{
+	w->computer_timeout++;
+	if(w->calibrate && w->computer_timeout < 10) {
+		return TRUE;
+	} else {
+		recompute(w);
+		return TRUE;
+	}
+}
+
+void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
+{
+	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
+	if(button_state != w->calibrate) {
+		w->calibrate = button_state;
+		recompute(w);
+	}
+}
+
+void handle_light(GtkCheckMenuItem *b, struct main_window *w)
+{
+	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
+	if(button_state != w->is_light) {
+		w->is_light = button_state;
+		recompute(w);
+	}
 }
 
 void controls_active(struct main_window *w, int active)
@@ -314,7 +356,8 @@ void handle_name_change(GtkEntry *e, struct main_window *w)
 	GtkLabel *label = g_object_get_data(G_OBJECT(panel), "tab-label");
 	free( g_object_get_data(G_OBJECT(panel), "tab-name") );
 	char *name = (char *)gtk_entry_get_text(e);
-	g_object_set_data(G_OBJECT(panel), "tab-name", blank_string(name) ? NULL : strdup(name));
+	name = blank_string(name) ? NULL : strdup(name);
+	g_object_set_data(G_OBJECT(panel), "tab-name", name);
 	gtk_label_set_text(label, name ? name : "Snapshot");
 }
 
@@ -772,6 +815,12 @@ void init_main_window(struct main_window *w)
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), gtk_separator_menu_item_new());
 
+	// ... Light checkbox
+	GtkWidget *light_checkbox = gtk_check_menu_item_new_with_label("Light algorithm");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), light_checkbox);
+	g_signal_connect(light_checkbox, "toggled", G_CALLBACK(handle_light), w);
+	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(light_checkbox), w->is_light);
+
 	// ... Calibrate checkbox
 	w->cal_button = gtk_check_menu_item_new_with_label("Calibrate");
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->cal_button);
@@ -865,13 +914,13 @@ int start_interface(GtkApplication* app, void *p)
 		return 0;
 	}
 
-	int nominal_sr;
 	double real_sr;
 
 	initialize_palette();
-	if(start_portaudio(&nominal_sr, &real_sr)) return 1;
 
 	w = malloc(sizeof(struct main_window));
+
+	if(start_portaudio(&w->nominal_sr, &real_sr)) return 1;
 
 	w->app = app;
 
@@ -881,21 +930,18 @@ int start_interface(GtkApplication* app, void *p)
 	w->bph = 0;
 	w->la = DEFAULT_LA;
 	w->calibrate = 0;
+	w->is_light = 0;
 
 	load_config(w);
 
 	if(w->la < MIN_LA || w->la > MAX_LA) w->la = DEFAULT_LA;
 	if(w->bph < MIN_BPH || w->bph > MAX_BPH) w->bph = 0;
 	if(w->cal < MIN_CAL || w->cal > MAX_CAL)
-		w->cal = (real_sr - nominal_sr) * (3600*24) / nominal_sr;
+		w->cal = (real_sr - w->nominal_sr) * (3600*24) / w->nominal_sr;
 
 	w->computer_timeout = 0;
 
-#ifdef LIGHT
-	w->computer = start_computer(nominal_sr, w->bph, w->la, w->cal, 1);
-#else
-	w->computer = start_computer(nominal_sr, w->bph, w->la, w->cal, 0);
-#endif
+	w->computer = start_computer(w->nominal_sr, w->bph, w->la, w->cal, w->is_light);
 	if(!w->computer) return 2;
 	w->computer->callback = computer_callback;
 	w->computer->callback_data = w;

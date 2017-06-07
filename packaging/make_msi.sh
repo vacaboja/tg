@@ -26,7 +26,6 @@ cp "$ABSDIR/LICENSE.rtf" "$TARGET"
 cp "$ABSDIR/../README.md" "$TARGET"
 cp "$ABSDIR/../LICENSE" "$TARGET"
 cp "$ABSDIR/../build/tg.exe" "$TARGET"
-cp "$ABSDIR/../build/tg-lt.exe" "$TARGET"
 cp -r "$RESOURCES"/* "$TARGET"
 heat dir "$RESOURCES" -srd -gg -sreg -dr INSTALLDIR -cg Resources -out "$TARGET/Resources.wxs"
 

@@ -112,7 +112,7 @@ double amplitude_to_time(double lift_angle, double amp)
 	return asin(lift_angle / (2 * amp)) / M_PI;
 }
 
-double draw_watch_icon(cairo_t *c, int signal, int happy)
+double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
 {
 	happy = !!happy;
 	cairo_set_line_width(c,3);
@@ -124,7 +124,7 @@ double draw_watch_icon(cairo_t *c, int signal, int happy)
 	cairo_stroke(c);
 	cairo_arc(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.4, 0, 2*M_PI);
 	cairo_stroke(c);
-	const int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
+	int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
 	int i;
 	cairo_set_line_width(c,1);
 	for(i = 0; i < signal; i++) {
@@ -135,6 +135,18 @@ double draw_watch_icon(cairo_t *c, int signal, int happy)
 		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
 		cairo_stroke_preserve(c);
 		cairo_fill(c);
+	}
+	if(light) {
+		int l = OUTPUT_WINDOW_HEIGHT * 0.15;
+		cairo_set_line_width(c,2);
+		cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 - 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.2);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 - 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.2 + l);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.5        , OUTPUT_WINDOW_HEIGHT * 0.2 + l);
+		cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 - 0.2*l, OUTPUT_WINDOW_HEIGHT * 0.2 + 1);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 + 0.8*l, OUTPUT_WINDOW_HEIGHT * 0.2 + 1);
+		cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 + 0.3*l, OUTPUT_WINDOW_HEIGHT * 0.2 + 1);
+		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 + 0.3*l, OUTPUT_WINDOW_HEIGHT * 0.2 + l + 1);
+		cairo_stroke(c);
 	}
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
@@ -181,7 +193,7 @@ gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *o
 	struct processing_buffers *p = snst->pb;
 	int old = snst->is_old;
 
-	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal);
+	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal, snst->is_light);
 
 	cairo_text_extents_t extents;
 

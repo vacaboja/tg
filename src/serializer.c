@@ -334,6 +334,7 @@ int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 	SERIALIZE(double,be);
 	SERIALIZE(double,amp);
 	SERIALIZE(double,trace_centering);
+	SERIALIZE(int,is_light);
 	return serialize_struct_end(f);
 }
 
@@ -401,6 +402,7 @@ int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 		SCAN(double,be);
 		SCAN(double,amp);
 		SCAN(double,trace_centering);
+		SCAN(int,is_light);
 
 		if(eat_object(f)) goto error;
 	}

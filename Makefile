@@ -27,13 +27,13 @@ else
 	RESFILE :=
 endif
 
-all: $(BUILDDIR)/tg$(EXT) $(BUILDDIR)/tg-lt$(EXT)
+all: $(BUILDDIR)/tg$(EXT)
 .PHONY: all
 
-debug: $(BUILDDIR)/tg-dbg$(EXT) $(BUILDDIR)/tg-lt-dbg$(EXT)
+debug: $(BUILDDIR)/tg-dbg$(EXT)
 .PHONY: debug
 
-profile: $(BUILDDIR)/tg-prf$(EXT) $(BUILDDIR)/tg-lt-prf$(EXT)
+profile: $(BUILDDIR)/tg-prf$(EXT)
 .PHONY: profile
 
 test: $(BUILDDIR)/tg-dbg$(EXT)
@@ -59,13 +59,9 @@ endif
 endef
 
 $(eval $(call TARGET,tg,-O3,,strip))
-$(eval $(call TARGET,tg-lt,-O3 -DLIGHT,,strip))
 $(eval $(call TARGET,tg-dbg,-O3 -ggdb -DDEBUG,$(DEBUG_LDFLAGS),))
-$(eval $(call TARGET,tg-lt-dbg,-O3 -ggdb -DDEBUG -DLIGHT,$(DEBUG_LDFLAGS),))
 $(eval $(call TARGET,tg-prf,-O3 -pg,,))
-$(eval $(call TARGET,tg-lt-prf,-O3 -DLIGHT -pg,,))
 $(eval $(call TARGET,tg-vlg,-O1 -g,,))
-$(eval $(call TARGET,tg-vlg-lt,-O1 -g -DLIGHT,,))
 
 ICONSIZES := $(foreach SIZE, $(shell cat icons/sizes), $(SIZE)x$(SIZE))
 
@@ -76,12 +72,9 @@ $(ICONSIZES): %: icons/%/tg-timer.png icons/%/tg-document.png
 
 install: all $(ICONSIZES)
 	install -D -m 0755 $(BUILDDIR)/tg$(EXT) $(PREFIX)/bin/tg-timer$(EXT)
-	install -D -m 0755 $(BUILDDIR)/tg-lt$(EXT) $(PREFIX)/bin/tg-timer-lt$(EXT)
 	install -D -m 0644 icons/tg-timer.desktop $(PREFIX)/share/applications/tg-timer.desktop
-	install -D -m 0644 icons/tg-timer-lt.desktop $(PREFIX)/share/applications/tg-timer-lt.desktop
 	install -D -m 0644 icons/tg-timer.xml $(PREFIX)/share/mime/packages/tg-timer.xml
 	install -D -m 0644 docs/tg-timer.1.gz $(PREFIX)/share/man/man1/tg-timer.1.gz
-	ln -s tg-timer.1.gz $(PREFIX)/share/man/man1/tg-timer-lt.1.gz
 .PHONY: install
 
 clean:

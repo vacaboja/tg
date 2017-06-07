@@ -24,7 +24,6 @@ mkdir -p "$TARGET"
 cp "$ABSDIR/../README.md" "$TARGET"
 cp "$ABSDIR/../LICENSE" "$TARGET"
 cp "$ABSDIR/../build/tg.exe" "$TARGET"
-cp "$ABSDIR/../build/tg-lt.exe" "$TARGET"
 cp "$DLLS"/* "$TARGET"
 
 cd build

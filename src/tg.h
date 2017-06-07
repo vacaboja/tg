@@ -237,12 +237,14 @@ struct main_window {
 	struct snapshot *active_snapshot;
 	int computer_timeout;
 
+	int is_light;
 	int zombie;
 	int controls_active;
 	int calibrate;
 	int bph;
 	double la; // deg
 	int cal; // 0.1 s/d
+	int nominal_sr;
 
 	GKeyFile *config_file;
 	gchar *config_file_name;
@@ -265,7 +267,8 @@ void error(char *format,...);
 #define CONFIG_FIELDS(OP) \
 	OP(bph, bph, int) \
 	OP(lift_angle, la, double) \
-	OP(calibration, cal, int)
+	OP(calibration, cal, int) \
+	OP(light_algorithm, is_light, int)
 
 struct conf_data {
 #define DEF(NAME,PLACE,TYPE) TYPE PLACE;

@@ -24,13 +24,6 @@
             </File>
           </Component>
 
-          <Component Id='LightExecutable' Guid='#UUID#'>
-            <File Id='TgLtEXE' Name='tg-lt.exe' DiskId='1' Source='tg-lt.exe' KeyPath='yes'>
-              <Shortcut Id='startmenuTgLt' Directory='ProgramMenuDir' Name='Tg lt #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
-              <Shortcut Id='desktopTgLt' Directory='DesktopFolder' Name='Tg lt #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
-            </File>
-          </Component>
-
           <Component Id='License' Guid='#UUID#'>
             <File Id='License' Name='LICENSE' DiskId='1' Source='LICENSE' KeyPath='yes' />
           </Component>
@@ -56,7 +49,6 @@
 
     <Feature Id='Complete' Level='1' ConfigurableDirectory='INSTALLDIR'>
       <ComponentRef Id='MainExecutable' />
-      <ComponentRef Id='LightExecutable' />
       <ComponentRef Id='License' />
       <ComponentRef Id='Readme' />
       <ComponentGroupRef Id='Resources' />
