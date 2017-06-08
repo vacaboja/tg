@@ -22,7 +22,8 @@
               <Shortcut Id='startmenuTg' Directory='ProgramMenuDir' Name='Tg #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
               <Shortcut Id='desktopTg' Directory='DesktopFolder' Name='Tg #VERSION#' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
-            <ProgId Id='TgjFile' Description='Tg data file' Icon='tg-document.ico'>
+            <File Id='TgDocumentICO' Name='tg-document.ico' Source='tg-document.ico' />
+            <ProgId Id='TgjFile' Description='Tg data file' Icon='TgDocumentICO'>
               <Extension Id='tgj' ContentType='application/x-tg-timer-data'>
                 <Verb Id='open' Command='Open' TargetFile='TgEXE' Argument='"%1"' />
               </Extension>
