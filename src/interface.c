@@ -996,8 +996,10 @@ int main(int argc, char **argv)
 	gtk_disable_setlocale();
 
 #ifdef DEBUG
-	if(argc > 1 && !strcmp("test",argv[1]))
+	if(argc > 1 && !strcmp("test",argv[1])) {
 		testing = 1;
+		argv++; argc--;
+	}
 #endif
 
 	GtkApplication *app = gtk_application_new ("li.ciovil.tg", G_APPLICATION_HANDLES_OPEN);
