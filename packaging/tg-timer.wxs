@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
-  <Product Name='Tg' Id='3751b37e-963f-40dd-bb9c-a854f7e52d40' UpgradeCode='088fdac7-fc91-4881-a2db-eed04425a207'
+  <Product Name='Tg' Id='e679153b-2568-496a-8c08-a85631d2f583' UpgradeCode='088fdac7-fc91-4881-a2db-eed04425a207'
     Language='1033' Codepage='1252' Version='0.4.1' Manufacturer='Marcello Mamino'>
 
     <Package Id='*' Keywords='Installer'
@@ -17,18 +17,23 @@
       <Directory Id='ProgramFilesFolder' Name='PFiles'>
         <Directory Id='INSTALLDIR' Name='tg-timer'>
 
-          <Component Id='MainExecutable' Guid='fa6272ec-38c4-4efc-b804-36f44496fae8'>
+          <Component Id='MainExecutable' Guid='0853715e-cb1f-4e3d-809e-4ba4797ad06a'>
             <File Id='TgEXE' Name='tg.exe' DiskId='1' Source='tg.exe' KeyPath='yes'>
               <Shortcut Id='startmenuTg' Directory='ProgramMenuDir' Name='Tg 0.4.1-test' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
               <Shortcut Id='desktopTg' Directory='DesktopFolder' Name='Tg 0.4.1-test' WorkingDirectory='INSTALLDIR' Icon='tg.exe' IconIndex='0' Advertise='yes' />
             </File>
+            <ProgId Id='TgjFile' Description='Tg data file' Icon='tg-document.ico'>
+              <Extension Id='tgj' ContentType='application/x-tg-timer-data'>
+                <Verb Id='open' Command='Open' TargetFile='TgEXE' Argument='"%1"' />
+              </Extension>
+            </ProgId>
           </Component>
 
-          <Component Id='License' Guid='bed22c82-e553-4b69-abe1-61a9f2577795'>
+          <Component Id='License' Guid='2b307b4e-14c2-4097-bfeb-a2c5836eb6e5'>
             <File Id='License' Name='LICENSE' DiskId='1' Source='LICENSE' KeyPath='yes' />
           </Component>
 
-          <Component Id='Readme' Guid='a53f04c5-b051-4e9d-b98a-25f6110a1d3d'>
+          <Component Id='Readme' Guid='1ba234c1-dce4-47ef-b100-83261f8e0f79'>
             <File Id='Readme' Name='README.md' DiskId='1' Source='README.md' KeyPath='yes' />
           </Component>
 
@@ -37,7 +42,7 @@
 
       <Directory Id='ProgramMenuFolder' Name='Programs'>
         <Directory Id='ProgramMenuDir' Name='Tg 0.4.1-test'>
-          <Component Id='ProgramMenuDir' Guid='b9d30e65-210f-4dbc-92e7-e2fec8ab470b'>
+          <Component Id='ProgramMenuDir' Guid='29e56065-c1ad-4bb2-9ab5-b45c989ca7d7'>
             <RemoveFolder Id='ProgramMenuDir' On='uninstall' />
             <RegistryValue Root='HKCU' Key='Software\[Manufacturer]\[ProductName]' Type='string' Value='' KeyPath='yes' />
           </Component>
