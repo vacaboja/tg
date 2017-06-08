@@ -2,7 +2,7 @@
 Type=Application
 Name=Tg
 Comment=Software-based timegrapher
-Exec=tg-timer
+Exec=tg-timer %F
 Icon=tg-timer
 Terminal=false
 Categories=Utility

@@ -142,11 +142,13 @@ void on_shutdown(GApplication *app, void *p)
 {
 	debug("Main loop has terminated\n");
 	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
-	save_config(w);
-	computer_destroy(w->computer);
-	op_destroy(w->active_panel);
-	close_config(w);
-	free(w);
+	if(w) {
+		save_config(w);
+		computer_destroy(w->computer);
+		op_destroy(w->active_panel);
+		close_config(w);
+		free(w);
+	}
 	terminate_portaudio();
 }
 
@@ -166,6 +168,7 @@ guint computer_terminated(struct main_window *w)
 			g_source_remove(w->kick_timeout);
 			g_source_remove(w->save_timeout);
 			w->zombie = 1;
+			error("Failed to restart computation thread");
 			gtk_widget_destroy(w->window);
 		} else {
 			computer_destroy(w->computer);
@@ -629,16 +632,34 @@ void load_snapshots(FILE *f, char *name, struct main_window *w)
 		free(names);
 	} else {
 		GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
-					"Error reading file");
+					"Error reading file: %s", name);
 		gtk_dialog_run(GTK_DIALOG(dialog));
 		gtk_widget_destroy(dialog);
 	}
 }
 
+void load_from_file(char *filename, struct main_window *w)
+{
+	FILE *f = fopen_check(filename, "rb", w);
+	if(f) {
+		char *filename_cpy = strdup(filename);
+		char *name = basename(filename_cpy);
+#ifdef _WIN32
+		name = g_convert(name, -1, "UTF-8", "ISO-8859-1", NULL, NULL, NULL);
+#endif
+		if(name && strlen(name) > 3 && !strcasecmp(".tgj", name + strlen(name) - 4))
+			name[strlen(name) - 4] = 0;
+		load_snapshots(f, name, w);
+		free(filename_cpy);
+#ifdef _WIN32
+		g_free(name);
+#endif
+		fclose(f);
+	}
+}
+
 void load(GtkMenuItem *m, struct main_window *w)
 {
-	FILE *f = NULL;
-
 #if GTK_CHECK_VERSION(3,20,0)
 	GtkFileChooserNative *dialog = gtk_file_chooser_native_new ("Open",
 			GTK_WINDOW(w->window),
@@ -666,22 +687,7 @@ void load(GtkMenuItem *m, struct main_window *w)
 #endif
 	{
 		char *filename = gtk_file_chooser_get_filename (chooser);
-		f = fopen_check(filename, "rb", w);
-		if(f) {
-			char *filename_cpy = strdup(filename);
-			char *name = basename(filename_cpy);
-#ifdef _WIN32
-			name = g_convert(name, -1, "UTF-8", "ISO-8859-1", NULL, NULL, NULL);
-#endif
-			if(name && strlen(name) > 3 && !strcasecmp(".tgj", name + strlen(name) - 4))
-				name[strlen(name) - 4] = 0;
-			load_snapshots(f, name, w);
-			free(filename_cpy);
-#ifdef _WIN32
-			g_free(name);
-#endif
-			fclose(f);
-		}
+		load_from_file(filename, w);
 		g_free (filename);
 	}
 
@@ -771,7 +777,7 @@ void init_main_window(struct main_window *w)
 	g_signal_connect(w->snapshot_button, "clicked", G_CALLBACK(handle_snapshot), w);
 
 	// Snapshot name field
-	GtkWidget *name_label = gtk_label_new("Current snapshot");
+	GtkWidget *name_label = gtk_label_new("Current snapshot:");
 	w->snapshot_name_entry = gtk_entry_new();
 	w->snapshot_name = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
 	gtk_box_pack_start(GTK_BOX(w->snapshot_name), name_label, FALSE, FALSE, 0);
@@ -905,24 +911,20 @@ void computer_callback(void *w)
 	gdk_threads_add_idle((GSourceFunc)refresh,w);
 }
 
-int start_interface(GtkApplication* app, void *p)
+void start_interface(GApplication* app, void *p)
 {
-	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
-	if(w) {
-		debug("Application already active\n");
-		gtk_window_present(GTK_WINDOW(w->window));
-		return 0;
-	}
-
 	double real_sr;
 
 	initialize_palette();
 
-	w = malloc(sizeof(struct main_window));
+	struct main_window *w = malloc(sizeof(struct main_window));
 
-	if(start_portaudio(&w->nominal_sr, &real_sr)) return 1;
+	if(start_portaudio(&w->nominal_sr, &real_sr)) {
+		g_application_quit(app);
+		return;
+	}
 
-	w->app = app;
+	w->app = GTK_APPLICATION(app);
 
 	w->zombie = 0;
 	w->controls_active = 1;
@@ -942,7 +944,11 @@ int start_interface(GtkApplication* app, void *p)
 	w->computer_timeout = 0;
 
 	w->computer = start_computer(w->nominal_sr, w->bph, w->la, w->cal, w->is_light);
-	if(!w->computer) return 2;
+	if(!w->computer) {
+		error("Error starting computation thread");
+		g_application_quit(app);
+		return;
+	}
 	w->computer->callback = computer_callback;
 	w->computer->callback_data = w;
 
@@ -962,8 +968,27 @@ int start_interface(GtkApplication* app, void *p)
 #endif
 
 	g_object_set_data(G_OBJECT(app), "main-window", w);
+}
 
-	return 0;
+void handle_activate(GApplication* app, void *p)
+{
+	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
+	if(w) gtk_window_present(GTK_WINDOW(w->window));
+}
+
+void handle_open(GApplication* app, GFile **files, int cnt, char *hint, void *p)
+{
+	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
+	if(w) {
+		int i;
+		for(i = 0; i < cnt; i++) {
+			char *path = g_file_get_path(files[i]);
+			load_from_file(path, w);
+			g_free(path);
+		}
+		gtk_notebook_set_current_page(GTK_NOTEBOOK(w->notebook), -1);
+		gtk_window_present(GTK_WINDOW(w->window));
+	}
 }
 
 int main(int argc, char **argv)
@@ -975,10 +1000,12 @@ int main(int argc, char **argv)
 		testing = 1;
 #endif
 
-	GtkApplication *app = gtk_application_new ("li.ciovil.tg", G_APPLICATION_FLAGS_NONE);
-	g_signal_connect (app, "activate", G_CALLBACK (start_interface), NULL);
+	GtkApplication *app = gtk_application_new ("li.ciovil.tg", G_APPLICATION_HANDLES_OPEN);
+	g_signal_connect (app, "startup", G_CALLBACK (start_interface), NULL);
+	g_signal_connect (app, "activate", G_CALLBACK (handle_activate), NULL);
+	g_signal_connect (app, "open", G_CALLBACK (handle_open), NULL);
 	g_signal_connect (app, "shutdown", G_CALLBACK (on_shutdown), NULL);
-	int ret = g_application_run (G_APPLICATION (app), 0, NULL);
+	int ret = g_application_run (G_APPLICATION (app), argc, argv);
 	g_object_unref (app);
 
 	debug("Interface exited with status %d\n",ret);
