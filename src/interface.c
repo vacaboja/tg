@@ -1029,7 +1029,11 @@ void handle_open(GApplication* app, GFile **files, int cnt, char *hint, void *p)
 		for(i = 0; i < cnt; i++) {
 			char *path = g_file_get_path(files[i]);
 #ifdef _WIN32
+#ifdef WIN_XP
+			load_from_file(path, "ISO-8859-1", w);
+#else
 			load_from_file(path, "UTF-8", w);
+#endif
 #else
 			load_from_file(path, w);
 #endif
