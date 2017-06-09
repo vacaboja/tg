@@ -434,15 +434,25 @@ int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 	if(!(*s)->timestamp) goto error;
 	debug("serializer: checking nominal_sr\n");
 	if(!(*s)->nominal_sr) goto error;
-	if((*s)->bph < MIN_BPH || (*s)->bph > MAX_BPH) (*s)->bph = 0;
-	if((*s)->la  < MIN_LA  || (*s)->la  > MAX_LA ) (*s)->la  = DEFAULT_LA;
-	if((*s)->cal < MIN_CAL || (*s)->cal > MAX_CAL) (*s)->cal = 0;
+	debug("serializer: checking bph\n");
+	if((*s)->bph && ( (*s)->bph < MIN_BPH || (*s)->bph > MAX_BPH )) goto error;
+	debug("serializer: checking la\n");
+	if((*s)->la  < MIN_LA  || (*s)->la  > MAX_LA ) goto error;
+	debug("serializer: checking cal\n");
+	if((*s)->cal < MIN_CAL || (*s)->cal > MAX_CAL) goto error;
 	debug("serializer: checking events\n");
 	if((*s)->events_count && (*s)->events_wp >= (*s)->events_count) goto error;
 	if((*s)->signal > NSTEPS) (*s)->signal = NSTEPS;
 	debug("serializer: checking sample_rate\n");
-	if(!(*s)->sample_rate) goto error;
-	// ...
+	if((*s)->sample_rate <= 0) goto error;
+	debug("serializer: checking guessed_bph\n");
+	if((*s)->guessed_bph < MIN_BPH || (*s)->guessed_bph > MAX_BPH) goto error;
+	debug("serializer: checking rate\n");
+	if((*s)->rate < -9999 || (*s)->rate > 9999) goto error;
+	debug("serializer: checking beat error\n");
+	if((*s)->be < 0 || (*s)->be > 99.9) goto error;
+	debug("serializer: checking amplitude\n");
+	if((*s)->amp < 0 || (*s)->amp > 360) goto error;
 	(*s)->pb->events = NULL;
 #ifdef DEBUG
 	(*s)->pb->debug = NULL;
