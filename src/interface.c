@@ -364,6 +364,23 @@ void handle_name_change(GtkEntry *e, struct main_window *w)
 	gtk_label_set_text(label, name ? name : "Snapshot");
 }
 
+#ifdef WIN_XP
+GtkWidget *image_from_file(char *filename)
+{
+	char *dir = g_win32_get_package_installation_directory_of_module(NULL);
+	char *s;
+	if(dir) {
+		s = alloca( strlen(dir) + strlen(filename) + 2 );
+		sprintf(s, "%s/%s", dir, filename);
+	} else {
+		s = filename;
+	}
+	GtkWidget *img = gtk_image_new_from_file(s);
+	g_free(dir);
+	return img;
+}
+#endif
+
 GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close)
 {
 	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -374,7 +391,7 @@ GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close)
 
 	if(panel_to_close) {
 #ifdef WIN_XP
-		GtkWidget *image = gtk_image_new_from_file("window-close.png");
+		GtkWidget *image = image_from_file("window-close.png");
 #else
 		GtkWidget *image = gtk_image_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
 #endif
@@ -792,7 +809,7 @@ void init_main_window(struct main_window *w)
 	GtkWidget *command_menu = gtk_menu_new();
 	GtkWidget *command_menu_button = gtk_menu_button_new();
 #ifdef WIN_XP
-	GtkWidget *image = gtk_image_new_from_file("open-menu.png");
+	GtkWidget *image = image_from_file("open-menu.png");
 #else
 	GtkWidget *image = gtk_image_new_from_icon_name("open-menu-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
 #endif
