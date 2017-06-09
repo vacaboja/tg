@@ -449,14 +449,18 @@ void chooser_set_filters(GtkFileChooser *chooser)
 	gtk_file_chooser_set_filter(chooser, tgj_filter);
 }
 
+#ifdef _WIN32
+FILE *fopen_check(char *filename, char *mode, char *encoding, struct main_window *w)
+#else
 FILE *fopen_check(char *filename, char *mode, struct main_window *w)
+#endif
 {
 	FILE *f = NULL;
 #ifdef _WIN32
 	wchar_t *name = NULL;
 	wchar_t *md = NULL;
 
-	name = (wchar_t*)g_convert(filename, -1, "UTF-16LE", "ISO-8859-1", NULL, NULL, NULL);
+	name = (wchar_t*)g_convert(filename, -1, "UTF-16LE", encoding, NULL, NULL, NULL);
 	if(!name) goto error;
 
 	md = (wchar_t*)g_convert(mode, -1, "UTF-16LE", "UTF-8", NULL, NULL, NULL);
@@ -542,7 +546,15 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		} else
 			do_open = 1;
 		if(do_open) {
+#ifdef _WIN32
+#ifdef WIN_XP
+			f = fopen_check(filename, "wb", "UTF-8", w);
+#else
+			f = fopen_check(filename, "wb", "ISO-8859-1", w);
+#endif
+#else
 			f = fopen_check(filename, "wb", w);
+#endif
 			if(f) {
 				char *uri = g_filename_to_uri(filename,NULL,NULL);
 				if(f && uri)
@@ -655,14 +667,22 @@ void load_snapshots(FILE *f, char *name, struct main_window *w)
 	}
 }
 
+#ifdef _WIN32
+void load_from_file(char *filename, char *encoding, struct main_window *w)
+#else
 void load_from_file(char *filename, struct main_window *w)
+#endif
 {
+#ifdef _WIN32
+	FILE *f = fopen_check(filename, "rb", encoding, w);
+#else
 	FILE *f = fopen_check(filename, "rb", w);
+#endif
 	if(f) {
 		char *filename_cpy = strdup(filename);
 		char *name = basename(filename_cpy);
 #ifdef _WIN32
-		name = g_convert(name, -1, "UTF-8", "ISO-8859-1", NULL, NULL, NULL);
+		name = g_convert(name, -1, "UTF-8", encoding, NULL, NULL, NULL);
 #endif
 		if(name && strlen(name) > 3 && !strcasecmp(".tgj", name + strlen(name) - 4))
 			name[strlen(name) - 4] = 0;
@@ -704,7 +724,15 @@ void load(GtkMenuItem *m, struct main_window *w)
 #endif
 	{
 		char *filename = gtk_file_chooser_get_filename (chooser);
+#ifdef _WIN32
+#ifdef WIN_XP
+		load_from_file(filename, "UTF-8", w);
+#else
+		load_from_file(filename, "ISO-8859-1", w);
+#endif
+#else
 		load_from_file(filename, w);
+#endif
 		g_free (filename);
 	}
 
@@ -1000,7 +1028,11 @@ void handle_open(GApplication* app, GFile **files, int cnt, char *hint, void *p)
 		int i;
 		for(i = 0; i < cnt; i++) {
 			char *path = g_file_get_path(files[i]);
+#ifdef _WIN32
+			load_from_file(path, "UTF-8", w);
+#else
 			load_from_file(path, w);
+#endif
 			g_free(path);
 		}
 		gtk_notebook_set_current_page(GTK_NOTEBOOK(w->notebook), -1);
