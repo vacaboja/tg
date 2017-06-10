@@ -457,11 +457,6 @@ FILE *fopen_check(char *filename, char *mode, struct main_window *w)
 	wchar_t *name = NULL;
 	wchar_t *md = NULL;
 
-	// TODO: see if contrary to docs you need this in XP...
-	//
-	// filename = g_filename_to_utf8(filename, -1, NULL, NULL, NULL);
-	// if(!filename) goto error;
-
 	name = (wchar_t*)g_convert(filename, -1, "UTF-16LE", "UTF-8", NULL, NULL, NULL);
 	if(!name) goto error;
 
@@ -969,6 +964,9 @@ void handle_open(GApplication* app, GFile **files, int cnt, char *hint, void *p)
 		int i;
 		for(i = 0; i < cnt; i++) {
 			char *path = g_file_get_path(files[i]);
+			// This partially works around a bug in XP (i.e. gtk+ bundle 3.6.4)
+			path = g_locale_to_utf8(path, -1, NULL, NULL, NULL);
+			if(!path) continue;
 			load_from_file(path, w);
 			g_free(path);
 		}
