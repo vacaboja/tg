@@ -449,57 +449,47 @@ void chooser_set_filters(GtkFileChooser *chooser)
 	gtk_file_chooser_set_filter(chooser, tgj_filter);
 }
 
-#ifdef _WIN32
-FILE *fopen_check(char *filename, char *mode, char *encoding, struct main_window *w)
-#else
 FILE *fopen_check(char *filename, char *mode, struct main_window *w)
-#endif
 {
 	FILE *f = NULL;
+
 #ifdef _WIN32
 	wchar_t *name = NULL;
 	wchar_t *md = NULL;
 
-	name = (wchar_t*)g_convert(filename, -1, "UTF-16LE", encoding, NULL, NULL, NULL);
+	// TODO: see if contrary to docs you need this in XP...
+	//
+	// filename = g_filename_to_utf8(filename, -1, NULL, NULL, NULL);
+	// if(!filename) goto error;
+
+	name = (wchar_t*)g_convert(filename, -1, "UTF-16LE", "UTF-8", NULL, NULL, NULL);
 	if(!name) goto error;
 
 	md = (wchar_t*)g_convert(mode, -1, "UTF-16LE", "UTF-8", NULL, NULL, NULL);
 	if(!md) goto error;
 
 	f = _wfopen(name, md);
+
+error:	g_free(name);
+	g_free(md);
 #else
 	f = fopen(filename, mode);
 #endif
 
 	if(!f) {
 		GtkWidget *dialog;
-#ifdef _WIN32
-error:
-#endif
 		dialog = gtk_message_dialog_new(GTK_WINDOW(w->window),0,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,
 					"Error opening file\n");
 		gtk_dialog_run(GTK_DIALOG(dialog));
 		gtk_widget_destroy(dialog);
 	}
 
-#ifdef _WIN32
-	g_free(name);
-	g_free(md);
-#endif
 	return f;
 }
 
 FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 {
 	FILE *f = NULL;
-
-#if GTK_CHECK_VERSION(3,20,0)
-	GtkFileChooserNative *dialog = gtk_file_chooser_native_new (title,
-			GTK_WINDOW(w->window),
-			GTK_FILE_CHOOSER_ACTION_SAVE,
-			"Save",
-			"Cancel");
-#else
 	GtkWidget *dialog = gtk_file_chooser_dialog_new (title,
 			GTK_WINDOW(w->window),
 			GTK_FILE_CHOOSER_ACTION_SAVE,
@@ -508,20 +498,17 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 			"Save",
 			GTK_RESPONSE_ACCEPT,
 			NULL);
-#endif
 	GtkFileChooser *chooser = GTK_FILE_CHOOSER (dialog);
 	if(suggestion)
 		gtk_file_chooser_set_current_name(chooser, suggestion);
 
 	chooser_set_filters(chooser);
 
-#if GTK_CHECK_VERSION(3,20,0)
-	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (dialog)))
-#else
 	if(GTK_RESPONSE_ACCEPT == gtk_dialog_run (GTK_DIALOG (dialog)))
-#endif
 	{
-		char *filename = gtk_file_chooser_get_filename (chooser);
+		GFile *gf = gtk_file_chooser_get_file(chooser);
+		char *filename = g_file_get_path(gf);
+		g_object_unref(gf);
 		if(!strcmp(".tgj", gtk_file_filter_get_name(gtk_file_chooser_get_filter(chooser)))) {
 			char *s = strdup(filename);
 			if(strlen(s) > 3 && strcasecmp(".tgj", s + strlen(s) - 4)) {
@@ -546,15 +533,7 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		} else
 			do_open = 1;
 		if(do_open) {
-#ifdef _WIN32
-#ifdef WIN_XP
-			f = fopen_check(filename, "wb", "UTF-8", w);
-#else
-			f = fopen_check(filename, "wb", "ISO-8859-1", w);
-#endif
-#else
 			f = fopen_check(filename, "wb", w);
-#endif
 			if(f) {
 				char *uri = g_filename_to_uri(filename,NULL,NULL);
 				if(f && uri)
@@ -566,11 +545,7 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 		g_free (filename);
 	}
 
-#if GTK_CHECK_VERSION(3,20,0)
-	g_object_unref (dialog);
-#else
 	gtk_widget_destroy(dialog);
-#endif
 
 	return f;
 }
@@ -667,43 +642,24 @@ void load_snapshots(FILE *f, char *name, struct main_window *w)
 	}
 }
 
-#ifdef _WIN32
-void load_from_file(char *filename, char *encoding, struct main_window *w)
-#else
 void load_from_file(char *filename, struct main_window *w)
-#endif
 {
-#ifdef _WIN32
-	FILE *f = fopen_check(filename, "rb", encoding, w);
-#else
 	FILE *f = fopen_check(filename, "rb", w);
-#endif
 	if(f) {
 		char *filename_cpy = strdup(filename);
 		char *name = basename(filename_cpy);
-#ifdef _WIN32
-		name = g_convert(name, -1, "UTF-8", encoding, NULL, NULL, NULL);
-#endif
+		name = g_filename_to_utf8(name, -1, NULL, NULL, NULL);
 		if(name && strlen(name) > 3 && !strcasecmp(".tgj", name + strlen(name) - 4))
 			name[strlen(name) - 4] = 0;
 		load_snapshots(f, name, w);
 		free(filename_cpy);
-#ifdef _WIN32
 		g_free(name);
-#endif
 		fclose(f);
 	}
 }
 
 void load(GtkMenuItem *m, struct main_window *w)
 {
-#if GTK_CHECK_VERSION(3,20,0)
-	GtkFileChooserNative *dialog = gtk_file_chooser_native_new ("Open",
-			GTK_WINDOW(w->window),
-			GTK_FILE_CHOOSER_ACTION_OPEN,
-			"Open",
-			"Cancel");
-#else
 	GtkWidget *dialog = gtk_file_chooser_dialog_new ("Open",
 			GTK_WINDOW(w->window),
 			GTK_FILE_CHOOSER_ACTION_OPEN,
@@ -712,35 +668,20 @@ void load(GtkMenuItem *m, struct main_window *w)
 			"Open",
 			GTK_RESPONSE_ACCEPT,
 			NULL);
-#endif
 	GtkFileChooser *chooser = GTK_FILE_CHOOSER (dialog);
 
 	chooser_set_filters(chooser);
 
-#if GTK_CHECK_VERSION(3,20,0)
-	if(GTK_RESPONSE_ACCEPT == gtk_native_dialog_run (GTK_NATIVE_DIALOG (dialog)))
-#else
 	if(GTK_RESPONSE_ACCEPT == gtk_dialog_run (GTK_DIALOG (dialog)))
-#endif
 	{
-		char *filename = gtk_file_chooser_get_filename (chooser);
-#ifdef _WIN32
-#ifdef WIN_XP
-		load_from_file(filename, "UTF-8", w);
-#else
-		load_from_file(filename, "ISO-8859-1", w);
-#endif
-#else
+		GFile *gf = gtk_file_chooser_get_file(chooser);
+		char *filename = g_file_get_path(gf);
+		g_object_unref(gf);
 		load_from_file(filename, w);
-#endif
 		g_free (filename);
 	}
 
-#if GTK_CHECK_VERSION(3,20,0)
-	g_object_unref (dialog);
-#else
 	gtk_widget_destroy(dialog);
-#endif
 }
 
 /* Set up the main window and populate with widgets */
@@ -1028,15 +969,7 @@ void handle_open(GApplication* app, GFile **files, int cnt, char *hint, void *p)
 		int i;
 		for(i = 0; i < cnt; i++) {
 			char *path = g_file_get_path(files[i]);
-#ifdef _WIN32
-#ifdef WIN_XP
-			load_from_file(path, "ISO-8859-1", w);
-#else
-			load_from_file(path, "UTF-8", w);
-#endif
-#else
 			load_from_file(path, w);
-#endif
 			g_free(path);
 		}
 		gtk_notebook_set_current_page(GTK_NOTEBOOK(w->notebook), -1);
