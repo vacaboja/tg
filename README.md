@@ -43,11 +43,22 @@ You can now launch tg by typing
 
 Binary .deb packages can be downloaded from https://tg.ciovil.li
 
-### Compiling from sources
+## Compiling from sources
 
 The source code of tg can probably be built by any C99 compiler, however
 only gcc and clang have been tested. You need the following libraries:
 gtk+3, portaudio2, fftw3 (all available as open-source).
+
+### Compiling on Windows
+
+It is suggested to use the msys2 platform. First install msys2 according
+to the instructions at [http://www.msys2.org](http://www.msys2.org). Then
+issue the following commands.
+
+	pacman -S mingw-w64-x86_64-gcc make pkg-config mingw-w64-x86_64-gtk3 mingw-w64-x86_64-portaudio mingw-w64-x86_64-fftw git
+	git clone https://github.com/vacaboja/tg.git
+	cd tg
+	make
 
 ### Compiling on Debian
 
@@ -63,9 +74,9 @@ known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).
 
 ### Compiling on Fedora
 
-To compile tg on Fedora (accurate as of Fedora 25)
+To compile tg on Fedora
 
-	sudo dnf install fftw-devel portaudio-devel gtk2-devel
+	sudo dnf install fftw-devel portaudio-devel gtk3-devel
 	git clone https://github.com/vacaboja/tg.git
 	cd tg
 	make
