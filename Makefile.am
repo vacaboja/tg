@@ -11,7 +11,7 @@ LIBS = $(GTK_LIBS) \
        $(FFTW_LIBS) \
        -lpthread \
        -lm
-AM_CPPFLAGS = -DPROGRAM_NAME=\"$(bin_PROGRAMS)\"
+AM_CPPFLAGS = -DPROGRAM_NAME=\"$(bin_PROGRAMS)\" -DVERSION=\"$(PACKAGE_VERSION)\"
 AM_CFLAGS = $(GTK_CFLAGS) \
 	    $(GTHREAD_CFLAGS) \
 	    $(PORTAUDIO_CFLAGS) \
