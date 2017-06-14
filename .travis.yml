@@ -38,4 +38,4 @@ before_script:
     fi
 
 script:
-  make "$TARGET"
+  make -f Makefile.old "$TARGET"
