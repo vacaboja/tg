@@ -9,5 +9,10 @@ PKG_CHECK_MODULES([GTHREAD], [gthread-2.0])
 PKG_CHECK_MODULES([PORTAUDIO], [portaudio-2.0])
 PKG_CHECK_MODULES([FFTW], [fftw3f])
 
+AC_ARG_ENABLE([light], AS_HELP_STRING([--enable-light], [Enable light resource usage]))
+AS_IF([test "x$enable_light" = "xyes"], [
+       CPPFLAGS+=" -DLIGHT"
+])
+
 AC_OUTPUT([Makefile])
 
