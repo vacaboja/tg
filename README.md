@@ -56,6 +56,8 @@ To compile tg on Debian
 	sudo apt-get install libgtk2.0-dev libjack-jackd2-dev portaudio19-dev libfftw3-dev git
 	git clone https://github.com/vacaboja/tg.git
 	cd tg
+	./autogen.sh
+	./configure
 	make
 
 The package libjack-jackd2-dev is not necessary, it only works around a
@@ -68,4 +70,6 @@ To compile tg on Fedora (accurate as of Fedora 25)
 	sudo dnf install fftw-devel portaudio-devel gtk2-devel
 	git clone https://github.com/vacaboja/tg.git
 	cd tg
+	./autogen.sh
+	./configure
 	make
