@@ -19,7 +19,7 @@ build
 tg-timer
 
 # autotools
-#Makefile
+Makefile
 Makefile.in
 /autom4te.cache
 /aclocal.m4
