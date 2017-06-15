@@ -35,8 +35,8 @@ before_script:
     fi;
     if [[ "$TARGET" == "test" ]]; then
       mkdir ~/.config;
-    fi
-    mkdir build
+    fi;
+    mkdir build;
 
 script:
   make -f Makefile.old "$TARGET"
