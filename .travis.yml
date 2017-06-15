@@ -35,8 +35,10 @@ before_script:
     fi;
     if [[ "$TARGET" == "test" ]]; then
       mkdir ~/.config;
+      export CPPFLAGS="-DDEBUG";
     fi;
-    mkdir build;
 
 script:
-  make -f Makefile.old "$TARGET"
+  ./autogen.sh;
+  ./configure;
+  make "$TARGET";

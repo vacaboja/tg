@@ -1,4 +1,5 @@
-bin_PROGRAMS = tg-timer
+main_program = tg-timer
+bin_PROGRAMS =$(main_program)
 tg_timer_SOURCES = src/algo.c \
 		   src/audio.c \
 		   src/config.c \
@@ -11,7 +12,7 @@ LIBS = $(GTK_LIBS) \
        $(FFTW_LIBS) \
        -lpthread \
        -lm
-AM_CPPFLAGS = -DPROGRAM_NAME=\"$(bin_PROGRAMS)\" -DVERSION=\"$(PACKAGE_VERSION)\"
+AM_CPPFLAGS = -DPROGRAM_NAME=\"$(main_program)\" -DVERSION=\"$(PACKAGE_VERSION)\"
 AM_CFLAGS = $(GTK_CFLAGS) \
 	    $(GTHREAD_CFLAGS) \
 	    $(PORTAUDIO_CFLAGS) \
@@ -41,6 +42,10 @@ desktop_DATA = icons/tg-timer.desktop
 dist_man_MANS = docs/tg-timer.1
 
 EXTRA_DIST := autogen.sh \
-    icons \
-    packaging
+	      icons \
+	      packaging
+
+test: $(main_program)
+	./$(main_program) test
+.PHONY: test
 
