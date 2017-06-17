@@ -35,7 +35,6 @@ before_script:
     fi;
     if [[ "$TARGET" == "test" ]]; then
       mkdir ~/.config;
-      export CPPFLAGS="-DDEBUG";
     fi;
 
 script:

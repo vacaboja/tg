@@ -1,10 +1,13 @@
-main_program = tg-timer
-bin_PROGRAMS =$(main_program)
+bin_PROGRAMS = tg-timer
+EXTRA_PROGRAMS = tg-timer-dbg
+MOSTLYCLEANFILES := $(EXTRA_PROGRAMS)
+
 tg_timer_SOURCES = src/algo.c \
 		   src/audio.c \
 		   src/config.c \
 		   src/interface.c \
 		   src/tg.h
+tg_timer_dbg_SOURCES = $(tg_timer_SOURCES)
 
 LIBS = $(GTK_LIBS) \
        $(GTHREAD_LIBS) \
@@ -12,11 +15,15 @@ LIBS = $(GTK_LIBS) \
        $(FFTW_LIBS) \
        -lpthread \
        -lm
-AM_CPPFLAGS = -DPROGRAM_NAME=\"$(main_program)\" -DVERSION=\"$(PACKAGE_VERSION)\"
+
+AM_CPPFLAGS = -DPROGRAM_NAME=\"tg-timer\" -DVERSION=\"$(PACKAGE_VERSION)\"
+tg_timer_dbg_CPPFLAGS = $(AM_CPPFLAGS) -DDEBUG
+
 AM_CFLAGS = $(GTK_CFLAGS) \
 	    $(GTHREAD_CFLAGS) \
 	    $(PORTAUDIO_CFLAGS) \
 	    $(FFTW_CFLAGS)
+tg_timer_dbg_CFLAGS = $(AM_CFLAGS) -ggdb
 
 iconthemedir = $(datadir)/icons/hicolor
 appicon16dir = $(iconthemedir)/16x16/apps
@@ -45,7 +52,7 @@ EXTRA_DIST := autogen.sh \
 	      icons \
 	      packaging
 
-test: $(main_program)
-	./$(main_program) test
+test: tg-timer-dbg
+	./tg-timer-dbg test
 .PHONY: test
 
