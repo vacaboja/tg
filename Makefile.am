@@ -40,12 +40,11 @@ tg_timer_prf_CFLAGS = $(AM_CFLAGS) -pg
 tg_timer_vlg_CFLAGS = $(AM_CFLAGS) -g
 
 desktopdir = $(datadir)/applications
-desktop_DATA = icons/tg-timer.desktop
+dist_desktop_DATA = icons/tg-timer.desktop \
+		    icons/tg-timer.xml
 
 dist_man_MANS = docs/tg-timer.1
 
-desktopdir = $(datadir)/applications
-dist_desktop_DATA = icons/tg-timer.xml
 
 EXTRA_DIST := autogen.sh \
 	      icons \
