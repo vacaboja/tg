@@ -45,7 +45,6 @@ dist_desktop_DATA = icons/tg-timer.desktop \
 
 dist_man_MANS = docs/tg-timer.1
 
-
 EXTRA_DIST := autogen.sh \
 	      icons \
 	      packaging \
