@@ -14,7 +14,7 @@ tg_timer_SOURCES = src/algo.c \
 		   src/serializer.c \
 		   src/tg.h
 if HAVE_WINDRES
-tg_timer_SOURCES += tg-timer.res
+	tg_timer_SOURCES += tg-timer.res
 endif
 
 tg_timer_dbg_SOURCES = $(tg_timer_SOURCES)
@@ -48,7 +48,9 @@ dist_man_MANS = docs/tg-timer.1
 
 EXTRA_DIST := autogen.sh \
 	      icons \
-	      packaging
+	      packaging \
+	      LICENSE \
+	      README.md
 
 test: tg-timer-dbg
 	./tg-timer-dbg test
