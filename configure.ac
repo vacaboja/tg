@@ -7,7 +7,9 @@ AC_CHECK_LIB([m], [sqrt], [], [AC_MSG_ERROR([libm not found])])
 PKG_CHECK_MODULES([GTK], [gtk+-3.0 glib-2.0])
 PKG_CHECK_MODULES([PORTAUDIO], [portaudio-2.0])
 PKG_CHECK_MODULES([FFTW], [fftw3f])
-AM_CONDITIONAL(HAVE_WINDRES, which windres >/dev/null)
+
+AC_CHECK_TOOL(WINDRES, windres)
+AM_CONDITIONAL(HAVE_WINDRES, test x$WINDRES != x)
 
 AC_OUTPUT([Makefile icons/Makefile])
 
