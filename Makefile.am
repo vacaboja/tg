@@ -44,10 +44,8 @@ desktop_DATA = icons/tg-timer.desktop
 
 dist_man_MANS = docs/tg-timer.1
 
-xdgdatadir = @XDGDATADIR@
-mimedir = $(xdgdatadir)/mime
-xmldir = $(mimedir)/packages
-xml_DATA = icons/tg-timer.xml
+desktopdir = $(datadir)/applications
+dist_desktop_DATA = icons/tg-timer.xml
 
 EXTRA_DIST := autogen.sh \
 	      icons \
