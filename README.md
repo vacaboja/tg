@@ -49,6 +49,20 @@ The source code of tg can probably be built by any C99 compiler, however
 only gcc and clang have been tested. You need the following libraries:
 gtk+3, portaudio2, fftw3 (all available as open-source).
 
+Release build:
+```sh
+git clone https://github.com/vacaboja/tg.git
+cd tg
+./autogen.sh
+./configure
+make
+```
+
+Debug build:
+```sh
+make tg-timer-dbg
+```
+
 ### Compiling on Windows
 
 It is suggested to use the msys2 platform. First install msys2 according
@@ -65,9 +79,6 @@ issue the following commands.
 To compile tg on Debian
 
 	sudo apt-get install libgtk-3-dev libjack-jackd2-dev portaudio19-dev libfftw3-dev git
-	git clone https://github.com/vacaboja/tg.git
-	cd tg
-	make
 
 The package libjack-jackd2-dev is not necessary, it only works around a
 known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).
@@ -77,6 +88,3 @@ known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).
 To compile tg on Fedora
 
 	sudo dnf install fftw-devel portaudio-devel gtk3-devel
-	git clone https://github.com/vacaboja/tg.git
-	cd tg
-	make

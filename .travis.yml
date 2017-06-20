@@ -38,7 +38,9 @@ before_script:
     fi;
     if [[ "$TARGET" == "test" ]]; then
       mkdir -p ~/.config;
-    fi
+    fi;
 
 script:
-  make "$TARGET"
+  ./autogen.sh;
+  ./configure;
+  make "$TARGET";

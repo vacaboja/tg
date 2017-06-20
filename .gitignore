@@ -2,3 +2,47 @@
 !.gitignore
 !.travis.yml
 !.valgrind.supp
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+build
+tg-timer.res
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+tg-timer
+tg-timer-dbg
+tg-timer-prf
+tg-timer-vlg
+
+# autotools
+Makefile
+Makefile.in
+/autom4te.cache
+/aclocal.m4
+/compile
+/configure
+/depcomp
+/install-sh
+/missing
+/stamp-h1
+/config.*
+/libtool
+/ltmain.sh
+/test-driver
+/test-suite.log
+.libs
+.deps
+.dirstamp
+*.log
+*.trs
+*.tar.gz
+
