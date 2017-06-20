@@ -690,6 +690,7 @@ void init_main_window(struct main_window *w)
 	g_signal_connect(w->window, "delete_event", G_CALLBACK(delete_event), w);
 
 	gtk_window_set_title(GTK_WINDOW(w->window), PROGRAM_NAME " " VERSION);
+	gtk_window_set_icon_name (GTK_WINDOW(w->window), PROGRAM_NAME);
 
 	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 	gtk_container_add(GTK_CONTAINER(w->window), vbox);
