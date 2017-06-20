@@ -1,8 +1,9 @@
 # A program for timing mechanical watches [![Build Status](https://travis-ci.org/vacaboja/tg.svg?branch=master)](https://travis-ci.org/vacaboja/tg)
 
-The program tg is copyright (C) 2015 by Marcello Mamino, and it is
-distributed under the GNU GPL license version 2. The full source code of
-tg is available at https://github.com/vacaboja/tg
+The program tg is distributed under the GNU GPL license version 2. The full
+source code of tg is available at
+[https://github.com/vacaboja/tg](https://github.com/vacaboja/tg) and its
+copyright belongs to the respective contributors.
 
 Tg is in development, and there is still no manual. Some info can be found
 in this
@@ -62,6 +63,8 @@ Debug build:
 ```sh
 make tg-timer-dbg
 ```
+
+### TODO: fix following sections for autotools
 
 ### Compiling on Windows
 
