@@ -8,8 +8,11 @@ PKG_CHECK_MODULES([GTK], [gtk+-3.0 glib-2.0])
 PKG_CHECK_MODULES([PORTAUDIO], [portaudio-2.0])
 PKG_CHECK_MODULES([FFTW], [fftw3f])
 
-AC_CHECK_TOOL(WINDRES, windres)
-AM_CONDITIONAL(HAVE_WINDRES, test x$WINDRES != x)
+AC_CHECK_TOOL([WINDRES], [windres])
+AM_CONDITIONAL([HAVE_WINDRES], [test x$WINDRES != x])
+
+AM_CONDITIONAL([BE_WINDOWS], [test x$OS = xWindows_NT])
+
+AC_CONFIG_LINKS([icons/tg-timer.ico:icons/tg-timer.ico])
 
 AC_OUTPUT([Makefile icons/Makefile])
-

@@ -64,24 +64,33 @@ Debug build:
 make tg-timer-dbg
 ```
 
-### TODO: fix following sections for autotools
-
 ### Compiling on Windows
 
 It is suggested to use the msys2 platform. First install msys2 according
 to the instructions at [http://www.msys2.org](http://www.msys2.org). Then
 issue the following commands.
 
-	pacman -S mingw-w64-x86_64-gcc make pkg-config mingw-w64-x86_64-gtk3 mingw-w64-x86_64-portaudio mingw-w64-x86_64-fftw git
-	git clone https://github.com/vacaboja/tg.git
-	cd tg
-	make
+```sh
+pacman -S mingw-w64-x86_64-gcc make pkg-config mingw-w64-x86_64-gtk3 mingw-w64-x86_64-portaudio mingw-w64-x86_64-fftw git autoconf automake libtool
+git clone https://github.com/vacaboja/tg.git
+cd tg
+./autogen.sh
+./configure
+make
+```
 
 ### Compiling on Debian
 
 To compile tg on Debian
 
-	sudo apt-get install libgtk-3-dev libjack-jackd2-dev portaudio19-dev libfftw3-dev git
+```sh
+sudo apt-get install libgtk-3-dev libjack-jackd2-dev portaudio19-dev libfftw3-dev git autoconf automake libtool
+git clone https://github.com/vacaboja/tg.git
+cd tg
+./autogen.sh
+./configure
+make
+```
 
 The package libjack-jackd2-dev is not necessary, it only works around a
 known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).

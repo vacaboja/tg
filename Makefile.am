@@ -13,9 +13,6 @@ tg_timer_SOURCES = src/algo.c \
 		   src/output_panel.c \
 		   src/serializer.c \
 		   src/tg.h
-if HAVE_WINDRES
-	tg_timer_SOURCES += tg-timer.res
-endif
 
 tg_timer_dbg_SOURCES = $(tg_timer_SOURCES)
 tg_timer_prf_SOURCES = $(tg_timer_SOURCES)
@@ -39,6 +36,16 @@ tg_timer_dbg_CFLAGS = $(AM_CFLAGS) -ggdb
 tg_timer_prf_CFLAGS = $(AM_CFLAGS) -pg
 tg_timer_vlg_CFLAGS = $(AM_CFLAGS) -g
 
+if BE_WINDOWS
+if HAVE_WINDRES
+tg_timer_SOURCES += icons/tg-timer.rc
+endif
+tg_timer_LDFLAGS = -mwindows
+tg_timer_dbg_LDFLAGS = -mconsole
+tg_timer_prf_LDFLAGS = -mconsole
+tg_timer_vlg_LDFLAGS = -mconsole
+endif
+
 desktopdir = $(datadir)/applications
 dist_desktop_DATA = icons/tg-timer.desktop \
 		    icons/tg-timer.xml
@@ -51,12 +58,12 @@ EXTRA_DIST := autogen.sh \
 	      LICENSE \
 	      README.md
 
+.rc.o:
+	$(WINDRES) $< -O coff -o $@
+
 test: tg-timer-dbg
 	./tg-timer-dbg test
 .PHONY: test
-
-tg-timer.res: icons/tg-timer.rc icons/tg-timer.ico
-	windres icons/tg-timer.rc -O coff -o $@
 
 valgrind: tg-timer-vlg
 	valgrind --leak-check=full -v --num-callers=99 --suppressions=.valgrind.supp ./$^
