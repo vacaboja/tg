@@ -46,3 +46,6 @@ Makefile.in
 *.trs
 *.tar.gz
 
+# build directories
+/deb
+/msi
