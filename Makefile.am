@@ -25,7 +25,7 @@ LIBS = $(GTK_LIBS) \
        -lpthread \
        -lm
 
-AM_CPPFLAGS = -DPROGRAM_NAME=\"tg-timer\" -DVERSION=\"$(PACKAGE_VERSION)\"
+AM_CPPFLAGS = -DPROGRAM_NAME=\"Tg\" -DVERSION=\"$(PACKAGE_VERSION)\"
 tg_timer_dbg_CPPFLAGS = $(AM_CPPFLAGS) -DDEBUG
 
 AM_CFLAGS = $(GTK_CFLAGS) \
@@ -36,14 +36,19 @@ tg_timer_dbg_CFLAGS = $(AM_CFLAGS) -ggdb
 tg_timer_prf_CFLAGS = $(AM_CFLAGS) -pg
 tg_timer_vlg_CFLAGS = $(AM_CFLAGS) -g
 
+tg_timer_LDFLAGS = $(AM_LDFLAGS)
+tg_timer_dbg_LDFLAGS = $(AM_LDFLAGS)
+tg_timer_prf_LDFLAGS = $(AM_LDFLAGS)
+tg_timer_vlg_LDFLAGS = $(AM_LDFLAGS)
+
 if BE_WINDOWS
 if HAVE_WINDRES
 tg_timer_SOURCES += icons/tg-timer.rc
 endif
-tg_timer_LDFLAGS = -mwindows
-tg_timer_dbg_LDFLAGS = -mconsole
-tg_timer_prf_LDFLAGS = -mconsole
-tg_timer_vlg_LDFLAGS = -mconsole
+tg_timer_LDFLAGS += -mwindows
+tg_timer_dbg_LDFLAGS += -mconsole
+tg_timer_prf_LDFLAGS += -mconsole
+tg_timer_vlg_LDFLAGS += -mconsole
 endif
 
 desktopdir = $(datadir)/applications
@@ -68,4 +73,3 @@ test: tg-timer-dbg
 valgrind: tg-timer-vlg
 	valgrind --leak-check=full -v --num-callers=99 --suppressions=.valgrind.supp ./$^
 .PHONY: valgrind
-

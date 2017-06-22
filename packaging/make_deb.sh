@@ -7,10 +7,13 @@ cd "$DIR"/..
 
 VERSION=`cat version`
 
-cd build
+./autogen.sh
+./configure
+make dist
+
 rm -rf deb
 mkdir deb
-cp tg-timer_"$VERSION".tar.gz deb/tg-timer_"$VERSION".orig.tar.gz
+cp tg-timer-"$VERSION".tar.gz deb/tg-timer_"$VERSION".orig.tar.gz
 
 cd deb
 
