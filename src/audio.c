@@ -24,13 +24,16 @@ int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
 
-int paudio_callback(const void *input_buffer,
-			void *output_buffer,
-			unsigned long frame_count,
-			const PaStreamCallbackTimeInfo *time_info,
-			PaStreamCallbackFlags status_flags,
-			void *data)
+static int paudio_callback(const void *input_buffer,
+			   void *output_buffer,
+			   unsigned long frame_count,
+			   const PaStreamCallbackTimeInfo *time_info,
+			   PaStreamCallbackFlags status_flags,
+			   void *data)
 {
+	UNUSED(output_buffer);
+	UNUSED(time_info);
+	UNUSED(status_flags);
 	unsigned long i;
 	long channels = (long)data;
 	int wp = write_pointer;
@@ -126,7 +129,7 @@ uint64_t get_timestamp(int light)
 	return ts;
 }
 
-void fill_buffers(struct processing_buffers *p, int light)
+static void fill_buffers(struct processing_buffers *p, int light)
 {
 	pthread_mutex_lock(&audio_mutex);
 	uint64_t ts = timestamp;

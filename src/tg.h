@@ -70,8 +70,10 @@
 #ifdef DEBUG
 #define debug(...) print_debug(__VA_ARGS__)
 #else
-#define debug(...)
+#define debug(...) {}
 #endif
+
+#define UNUSED(X) (void)(X)
 
 /* algo.c */
 struct processing_buffers {

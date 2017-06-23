@@ -19,7 +19,7 @@
 #include "tg.h"
 
 #if !GLIB_CHECK_VERSION(2,40,0)
-gboolean
+static gboolean
 g_key_file_save_to_file (GKeyFile     *key_file,
                          const gchar  *filename,
                          GError      **error)

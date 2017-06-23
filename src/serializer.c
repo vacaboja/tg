@@ -29,13 +29,13 @@
 // My own implementation of %a
 // because I'm sick of bugs in __mingw_fprintf()
 
-char hex_digit(uint64_t n)
+static char hex_digit(uint64_t n)
 {
 	if(n < 10) return (char)n+'0';
 	else return (char)n-10+'a';
 }
 
-int write_hex_double(FILE *f, double d)
+static int write_hex_double(FILE *f, double d)
 {
 	uint64_t bd = *(uint64_t *)&d;
 	uint64_t mantissa = bd << 12;
@@ -67,7 +67,7 @@ int write_hex_double(FILE *f, double d)
 	return 0 > fprintf(f,"%d",abs(exp));
 }
 
-int parse_hex_digit(char c)
+static int parse_hex_digit(char c)
 {
 	if('0' <= c && c <= '9') return c - '0';
 	if('a' <= c && c <= 'f') return 10 + c - 'a';
@@ -75,7 +75,7 @@ int parse_hex_digit(char c)
 	return -1;
 }
 
-int parse_hex_double(FILE *f, double *d)
+static int parse_hex_double(FILE *f, double *d)
 {
 	char s[64], *t = s;
 	if(1 != fscanf(f, "%63[0-9a-fA-F.xXpP+-]", s)) return 1;
@@ -108,34 +108,34 @@ exponent:
 }
 #endif
 
-int serialize_uint64_t(FILE *f, uint64_t x)
+static int serialize_uint64_t(FILE *f, uint64_t x)
 {
 	return 0 > fprintf(f, "I%"PRIu64";\n", x);
 }
 
-int scan_uint64_t(FILE *f, uint64_t *x)
+static int scan_uint64_t(FILE *f, uint64_t *x)
 {
 	int n = 0;
 	return 1 != fscanf(f, " I%"SCNu64";%n", x, &n) || !n;
 }
 
-int serialize_int64_t(FILE *f, int64_t x)
+static int serialize_int64_t(FILE *f, int64_t x)
 {
 	return 0 > fprintf(f, "I%"PRId64";\n", x);
 }
 
-int scan_int64_t(FILE *f, int64_t *x)
+static int scan_int64_t(FILE *f, int64_t *x)
 {
 	int n = 0;
 	return 1 != fscanf(f, " I%"SCNd64";%n", x, &n) || !n;
 }
 
-int serialize_int(FILE *f, int x)
+static int serialize_int(FILE *f, int x)
 {
 	return serialize_int64_t(f, x);
 }
 
-int scan_int(FILE *f, int *x)
+static int scan_int(FILE *f, int *x)
 {
 	int64_t y;
 	if(scan_int64_t(f, &y) || y < INT_MIN || y > INT_MAX) return 1;
@@ -143,7 +143,7 @@ int scan_int(FILE *f, int *x)
 	return 0;
 }
 
-int serialize_double(FILE *f, double x)
+static int serialize_double(FILE *f, double x)
 {
 #ifdef _WIN32
 	if(fprintf(f, "I") < 0) return 1;
@@ -154,7 +154,7 @@ int serialize_double(FILE *f, double x)
 #endif
 }
 
-int scan_double(FILE *f, double *x)
+static int scan_double(FILE *f, double *x)
 {
 	int n = 0;
 #ifdef _WIN32
@@ -168,12 +168,12 @@ int scan_double(FILE *f, double *x)
 #endif
 }
 
-int serialize_float(FILE *f, float x)
+static int serialize_float(FILE *f, float x)
 {
 	return serialize_double(f, x);
 }
 
-int scan_float(FILE *f, float *x)
+static int scan_float(FILE *f, float *x)
 {
 	double y;
 	if(scan_double(f, &y)) return 1;
@@ -181,13 +181,13 @@ int scan_float(FILE *f, float *x)
 	return 0;
 }
 
-int serialize_string(FILE *f, char *s)
+static int serialize_string(FILE *f, char *s)
 {
 	if(0 > fprintf(f, "S%"PRIu64";", (uint64_t)strlen(s))) return 1;
 	return 0 > fprintf(f, "%s;\n", s);
 }
 
-int scan_string(FILE *f, char **s, uint64_t max_l, uint64_t *len)
+static int scan_string(FILE *f, char **s, uint64_t max_l, uint64_t *len)
 {
 	uint64_t l;
 	int n = 0;
@@ -201,7 +201,7 @@ int scan_string(FILE *f, char **s, uint64_t max_l, uint64_t *len)
 	return 0;
 }
 
-int serialize_uint64_t_array(FILE *f, uint64_t *a, uint64_t len)
+static int serialize_uint64_t_array(FILE *f, uint64_t *a, uint64_t len)
 {
 	uint64_t i;
 	if(0 > fprintf(f, "A%"PRIu64";\n", len)) return 1;
@@ -210,7 +210,7 @@ int serialize_uint64_t_array(FILE *f, uint64_t *a, uint64_t len)
 	return 0;
 }
 
-int scan_uint64_t_array(FILE *f, uint64_t **a, uint64_t max_l, uint64_t *len)
+static int scan_uint64_t_array(FILE *f, uint64_t **a, uint64_t max_l, uint64_t *len)
 {
 	uint64_t l,i;
 	int n = 0;
@@ -223,7 +223,7 @@ int scan_uint64_t_array(FILE *f, uint64_t **a, uint64_t max_l, uint64_t *len)
 	return 0;
 }
 
-int serialize_float_array(FILE *f, float *a, uint64_t len)
+static int serialize_float_array(FILE *f, float *a, uint64_t len)
 {
 	uint64_t i;
 	if(0 > fprintf(f, "A%"PRIu64";\n", len)) return 1;
@@ -232,7 +232,7 @@ int serialize_float_array(FILE *f, float *a, uint64_t len)
 	return 0;
 }
 
-int scan_float_array(FILE *f, float **a, uint64_t max_l, uint64_t *len)
+static int scan_float_array(FILE *f, float **a, uint64_t max_l, uint64_t *len)
 {
 	uint64_t l,i;
 	int n = 0;
@@ -245,18 +245,18 @@ int scan_float_array(FILE *f, float **a, uint64_t max_l, uint64_t *len)
 	return 0;
 }
 
-int make_label(FILE *f, char *l)
+static int make_label(FILE *f, char *l)
 {
 	return 0 > fprintf(f, "L%s;\n", l);
 }
 
-int scan_label(FILE *f, char *l)
+static int scan_label(FILE *f, char *l)
 {
 	int n = 0;
 	return 1 != fscanf(f, " L%" LABEL_SIZE_STR "[^;];%n", l, &n) || !n;
 }
 
-int eat_object(FILE *f)
+static int eat_object(FILE *f)
 {
 	char c;
 	if(1 != fscanf(f, " %c", &c)) return 1;
@@ -294,17 +294,17 @@ int eat_object(FILE *f)
 	}
 }
 
-int serialize_struct_begin(FILE *f)
+static int serialize_struct_begin(FILE *f)
 {
 	return 0 > fprintf(f, "T;\n");
 }
 
-int serialize_struct_end(FILE *f)
+static int serialize_struct_end(FILE *f)
 {
 	return make_label(f, "__end__");
 }
 
-int serialize_union_begin(FILE *f, char *s)
+static int serialize_union_begin(FILE *f, char *s)
 {
 	if(fprintf(f, "U;\n") < 0) return 1;
 	return make_label(f, s);
@@ -315,7 +315,7 @@ int serialize_union_begin(FILE *f, char *s)
 	if(serialize_ ## T (f, s -> A)) return 1;	\
 	}
 
-int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
+static int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 {
 	if(serialize_union_begin(f, "realtime-snapshot")) return 1;
 	if(serialize_struct_begin(f)) return 1;
@@ -359,7 +359,7 @@ int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 		continue;					\
 	}}
 
-int scan_snapshot(FILE *f, struct snapshot **s, char **name)
+static int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 {
 	char l[LABEL_SIZE+1];
 	int n = 0;
@@ -470,7 +470,7 @@ error:
 	return 1;
 }
 
-int scan_snapshot_list(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt)
+static int scan_snapshot_list(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt)
 {
 	debug("serializer: scanning snapshot list\n");
 	uint64_t i;
@@ -554,7 +554,7 @@ int read_file(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt)
 error:
 	debug("serializer: read error\n");
 	if(*s) {
-		int i;
+		uint64_t i;
 		for(i = 0; i < *cnt; i++) {
 			snapshot_destroy((*s)[i]);
 			free((*names)[i]);

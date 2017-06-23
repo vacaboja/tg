@@ -22,21 +22,21 @@ struct filter {
 	double a0,a1,a2,b1,b2;
 };
 
-int fl_cmp(const void *a, const void *b)
+static int fl_cmp(const void *a, const void *b)
 {
 	float x = *(float*)a;
 	float y = *(float*)b;
 	return x<y ? -1 : x>y ? 1 : 0;
 }
 
-int int_cmp(const void *a, const void *b)
+static int int_cmp(const void *a, const void *b)
 {
 	int x = *(int*)a;
 	int y = *(int*)b;
 	return x<y ? -1 : x>y ? 1 : 0;
 }
 
-void make_hp(struct filter *f, double freq)
+static void make_hp(struct filter *f, double freq)
 {
 	double K = tan(M_PI * freq);
 	double norm = 1 / (1 + K * sqrt(2) + K * K);
@@ -47,7 +47,7 @@ void make_hp(struct filter *f, double freq)
 	f->b2 = (1 - K * sqrt(2) + K * K) * norm;
 }
 
-void make_lp(struct filter *f, double freq)
+static void make_lp(struct filter *f, double freq)
 {
 	double K = tan(M_PI * freq);
 	double norm = 1 / (1 + K * sqrt(2) + K * K);
@@ -58,7 +58,7 @@ void make_lp(struct filter *f, double freq)
 	f->b2 = (1 - K * sqrt(2) + K * K) * norm;
 }
 
-void run_filter(struct filter *f, float *buff, int size)
+static void run_filter(struct filter *f, float *buff, int size)
 {
 	int i;
 	double z1 = 0, z2 = 0;
@@ -177,7 +177,7 @@ void pb_destroy_clone(struct processing_buffers *p)
 	free(p);
 }
 
-float vmax(float *v, int a, int b, int *i_max)
+static float vmax(float *v, int a, int b, int *i_max)
 {
 	float max = v[a];
 	if(i_max) *i_max = a;
@@ -191,7 +191,7 @@ float vmax(float *v, int a, int b, int *i_max)
 	return max;
 }
 
-void noise_suppressor(struct processing_buffers *p)
+static void noise_suppressor(struct processing_buffers *p)
 {
 	float *a = p->samples_sc;
 	float *b = p->samples_sc + p->sample_count;
@@ -225,7 +225,7 @@ void noise_suppressor(struct processing_buffers *p)
 	}
 }
 
-void prepare_data(struct processing_buffers *b, int run_noise_suppressor)
+static void prepare_data(struct processing_buffers *b, int run_noise_suppressor)
 {
 	int i;
 
@@ -261,7 +261,7 @@ void prepare_data(struct processing_buffers *b, int run_noise_suppressor)
 #endif
 }
 
-int peak_detector(float *buff, int a, int b)
+static int peak_detector(float *buff, int a, int b)
 {
 	int i_max;
 	double max = vmax(buff, a, b+1, &i_max);
@@ -296,7 +296,7 @@ int peak_detector(float *buff, int a, int b)
 	return i_max;
 }
 
-double estimate_period(struct processing_buffers *p)
+static double estimate_period(struct processing_buffers *p)
 {
 	int first_estimate;
 	vmax(p->samples_sc, p->sample_rate / 12, p->sample_rate, &first_estimate);
@@ -335,7 +335,7 @@ double estimate_period(struct processing_buffers *p)
 	} else return estimate;
 }
 
-int compute_period(struct processing_buffers *b, int bph)
+static int compute_period(struct processing_buffers *b, int bph)
 {
 	double estimate;
 	if(bph)
@@ -386,7 +386,7 @@ int compute_period(struct processing_buffers *b, int bph)
 	return 0;
 }
 
-float tmean(float *x, int n)
+static float tmean(float *x, int n)
 {
 	if(n>16) {
 		qsort(x,16,sizeof(float),fl_cmp);
@@ -412,7 +412,7 @@ float tmean(float *x, int n)
 	return sum/(n*4/5);
 }
 
-void compute_phase(struct processing_buffers *p, double period)
+static void compute_phase(struct processing_buffers *p, double period)
 {
 	int i;
 	double x = 0, y = 0;
@@ -434,7 +434,7 @@ void compute_phase(struct processing_buffers *p, double period)
 	p->phase = period * (M_PI + atan2(y,x)) / (2 * M_PI);
 }
 
-void compute_waveform(struct processing_buffers *p, int wf_size)
+static void compute_waveform(struct processing_buffers *p, int wf_size)
 {
 	int i;
 	for(i=0; i<2*p->sample_rate; i++)
@@ -462,7 +462,7 @@ void compute_waveform(struct processing_buffers *p, int wf_size)
 	p->waveform_max = vmax(p->waveform, 0, wf_size, &p->waveform_max_i);
 }
 
-void prepare_waveform(struct processing_buffers *p)
+static void prepare_waveform(struct processing_buffers *p)
 {
 	compute_phase(p,p->period/2);
 	compute_waveform(p,ceil(p->period));
@@ -474,13 +474,13 @@ void prepare_waveform(struct processing_buffers *p)
 	fftwf_execute(p->plan_d);
 }
 
-void prepare_waveform_cal(struct processing_buffers *p)
+static void prepare_waveform_cal(struct processing_buffers *p)
 {
 	compute_phase(p,p->sample_rate);
 	compute_waveform(p,p->sample_rate);
 }
 
-void smooth(float *in, float *out, int window, int size)
+static void smooth(float *in, float *out, int window, int size)
 {
 	int i;
 	double k = 1 - (1. / window);
@@ -505,7 +505,7 @@ void smooth(float *in, float *out, int window, int size)
 	}
 }
 
-int compute_parameters(struct processing_buffers *p)
+static int compute_parameters(struct processing_buffers *p)
 {
 	int tic_to_toc = peak_detector(p->waveform_sc,
 			floor(p->period/2)-p->sample_rate/50,
@@ -552,7 +552,7 @@ int compute_parameters(struct processing_buffers *p)
 	return 0;
 }
 
-void do_locate_events(int *events, struct processing_buffers *p, float *waveform, int last, int offset, int count)
+static void do_locate_events(int *events, struct processing_buffers *p, float *waveform, int last, int offset, int count)
 {
 	int i;
 	memset(p->tic_wf, 0, p->sample_rate * sizeof(float));
@@ -586,7 +586,7 @@ void do_locate_events(int *events, struct processing_buffers *p, float *waveform
 	}
 }
 
-void locate_events(struct processing_buffers *p)
+static void locate_events(struct processing_buffers *p)
 {
 	int count = 1 + ceil((p->timestamp - p->events_from) / p->period);
 	if(count <= 0 || 2*count >= EVENTS_MAX) {
@@ -614,7 +614,7 @@ void locate_events(struct processing_buffers *p)
 	p->events[j] = 0;
 }
 
-void compute_amplitude(struct processing_buffers *p, double la)
+static void compute_amplitude(struct processing_buffers *p, double la)
 {
 	int i,j,k;
 
@@ -698,7 +698,7 @@ void cal_data_destroy(struct calibration_data *cd)
 	free(cd->events);
 }
 
-int add_sample_cal(struct processing_buffers *p, struct calibration_data *cd)
+static int add_sample_cal(struct processing_buffers *p, struct calibration_data *cd)
 {
 	int i;
 	double phase = -1;
@@ -737,7 +737,7 @@ int add_sample_cal(struct processing_buffers *p, struct calibration_data *cd)
 	return 0;
 }
 
-void compute_cal(struct calibration_data *cd, int sample_rate)
+static void compute_cal(struct calibration_data *cd)
 {
 	int i;
 	double x = 0, y = 0;
@@ -806,6 +806,6 @@ int process_cal(struct processing_buffers *p, struct calibration_data *cd)
 	if(add_sample_cal(p,cd))
 		return 1;
 	if(cd->wp == cd->size && cd->state == 0)
-		compute_cal(cd, p->sample_rate);
+		compute_cal(cd);
 	return 0;
 }

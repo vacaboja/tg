@@ -20,7 +20,7 @@
 
 cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
 
-void define_color(cairo_pattern_t **gc,double r,double g,double b)
+static void define_color(cairo_pattern_t **gc,double r,double g,double b)
 {
 	*gc = cairo_pattern_create_rgb(r,g,b);
 }
@@ -36,7 +36,7 @@ void initialize_palette()
 	define_color(&yellow,1,1,0);
 }
 
-void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
+static void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
 	GtkAllocation temp;
 	gtk_widget_get_allocation (da, &temp);
@@ -68,7 +68,7 @@ void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, Gt
 }
 
 #ifdef DEBUG
-void draw_debug_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
+static void draw_debug_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
 {
 	if(!p->debug) return;
 
@@ -107,12 +107,12 @@ void draw_debug_graph(double a, double b, cairo_t *c, struct processing_buffers 
 }
 #endif
 
-double amplitude_to_time(double lift_angle, double amp)
+static double amplitude_to_time(double lift_angle, double amp)
 {
 	return asin(lift_angle / (2 * amp)) / M_PI;
 }
 
-double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
+static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
 {
 	happy = !!happy;
 	cairo_set_line_width(c,3);
@@ -151,7 +151,7 @@ double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
-void cairo_init(cairo_t *c)
+static void cairo_init(cairo_t *c)
 {
 	cairo_set_line_width(c,1);
 
@@ -159,7 +159,7 @@ void cairo_init(cairo_t *c)
 	cairo_paint(c);
 }
 
-double print_s(cairo_t *c, double x, double y, char *s)
+static double print_s(cairo_t *c, double x, double y, char *s)
 {
 	cairo_text_extents_t extents;
 	cairo_move_to(c,x,y);
@@ -169,7 +169,7 @@ double print_s(cairo_t *c, double x, double y, char *s)
 	return x;
 }
 
-double print_number(cairo_t *c, double x, double y, char *s)
+static double print_number(cairo_t *c, double x, double y, char *s)
 {
 	cairo_text_extents_t extents;
 	cairo_text_extents(c,"0",&extents);
@@ -185,8 +185,9 @@ double print_number(cairo_t *c, double x, double y, char *s)
 	return x;
 }
 
-gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
+static gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
+	UNUSED(widget);
 	cairo_init(c);
 
 	struct snapshot *snst = op->snst;
@@ -306,12 +307,12 @@ gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *o
 	return FALSE;
 }
 
-void expose_waveform(
-		struct output_panel *op,
-		GtkWidget *da,
-		cairo_t *c,
-		int (*get_offset)(struct processing_buffers*),
-		double (*get_pulse)(struct processing_buffers*))
+static void expose_waveform(
+			struct output_panel *op,
+			GtkWidget *da,
+			cairo_t *c,
+			int (*get_offset)(struct processing_buffers*),
+			double (*get_pulse)(struct processing_buffers*))
 {
 	cairo_init(c);
 
@@ -426,40 +427,43 @@ void expose_waveform(
 	}
 }
 
-int get_tic(struct processing_buffers *p)
+static int get_tic(struct processing_buffers *p)
 {
 	return p->tic;
 }
 
-int get_toc(struct processing_buffers *p)
+static int get_toc(struct processing_buffers *p)
 {
 	return p->toc;
 }
 
-double get_tic_pulse(struct processing_buffers *p)
+static double get_tic_pulse(struct processing_buffers *p)
 {
 	return p->tic_pulse;
 }
 
-double get_toc_pulse(struct processing_buffers *p)
+static double get_toc_pulse(struct processing_buffers *p)
 {
 	return p->toc_pulse;
 }
 
-gboolean tic_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
+static gboolean tic_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
+	UNUSED(widget);
 	expose_waveform(op, op->tic_drawing_area, c, get_tic, get_tic_pulse);
 	return FALSE;
 }
 
-gboolean toc_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
+static gboolean toc_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
+	UNUSED(widget);
 	expose_waveform(op, op->toc_drawing_area, c, get_toc, get_toc_pulse);
 	return FALSE;
 }
 
-gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
+static gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
+	UNUSED(widget);
 	cairo_init(c);
 
 	GtkAllocation temp;
@@ -522,7 +526,7 @@ gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *o
 	return FALSE;
 }
 
-gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
+static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	int i;
 	struct snapshot *snst = op->snst;
@@ -676,7 +680,7 @@ gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_pane
 }
 
 #ifdef DEBUG
-gboolean debug_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
+static gboolean debug_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	cairo_init(c);
 
@@ -701,8 +705,9 @@ gboolean debug_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op
 }
 #endif
 
-void handle_clear_trace(GtkButton *b, struct output_panel *op)
+static void handle_clear_trace(GtkButton *b, struct output_panel *op)
 {
+	UNUSED(b);
 	if(op->computer) {
 		lock_computer(op->computer);
 		if(!op->snst->calibrate) {
@@ -714,8 +719,9 @@ void handle_clear_trace(GtkButton *b, struct output_panel *op)
 	}
 }
 
-void handle_center_trace(GtkButton *b, struct output_panel *op)
+static void handle_center_trace(GtkButton *b, struct output_panel *op)
 {
+	UNUSED(b);
 	struct snapshot *snst = op->snst;
 	uint64_t last_ev = snst->events[snst->events_wp];
 	double new_centering;
@@ -732,7 +738,7 @@ void handle_center_trace(GtkButton *b, struct output_panel *op)
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
-void shift_trace(struct output_panel *op, double direction)
+static void shift_trace(struct output_panel *op, double direction)
 {
 	struct snapshot *snst = op->snst;
 	double sweep;
@@ -744,13 +750,15 @@ void shift_trace(struct output_panel *op, double direction)
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
-void handle_left(GtkButton *b, struct output_panel *op)
+static void handle_left(GtkButton *b, struct output_panel *op)
 {
+	UNUSED(b);
 	shift_trace(op,-1);
 }
 
-void handle_right(GtkButton *b, struct output_panel *op)
+static void handle_right(GtkButton *b, struct output_panel *op)
 {
+	UNUSED(b);
 	shift_trace(op,1);
 }
 

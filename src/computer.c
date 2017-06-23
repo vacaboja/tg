@@ -18,7 +18,7 @@
 
 #include "tg.h"
 
-int count_events(struct snapshot *s)
+static int count_events(struct snapshot *s)
 {
 	int i, cnt = 0;
 	if(!s->events_count) return 0;
@@ -58,7 +58,7 @@ void snapshot_destroy(struct snapshot *s)
 	free(s);
 }
 
-int guess_bph(double period)
+static int guess_bph(double period)
 {
 	double bph = 7200 / period;
 	double min = bph;
@@ -76,7 +76,7 @@ int guess_bph(double period)
 	return preset_bph[ret];
 }
 
-void compute_update_cal(struct computer *c)
+static void compute_update_cal(struct computer *c)
 {
 	c->actv->signal = analyze_pa_data_cal(c->pdata, c->cdata);
 	if(c->actv->pb) {
@@ -89,7 +89,7 @@ void compute_update_cal(struct computer *c)
 		c->actv->cal_result = round(10 * c->cdata->calibration);
 }
 
-void compute_update(struct computer *c)
+static void compute_update(struct computer *c)
 {
 	int signal = analyze_pa_data(c->pdata, c->actv->bph, c->actv->la, c->actv->events_from);
 	struct processing_buffers *p = c->pdata->buffers;
@@ -107,7 +107,7 @@ void compute_update(struct computer *c)
 	}
 }
 
-void compute_events_cal(struct computer *c)
+static void compute_events_cal(struct computer *c)
 {
 	struct calibration_data *d = c->cdata;
 	struct snapshot *s = c->actv;
@@ -125,7 +125,7 @@ void compute_events_cal(struct computer *c)
 	s->events_from = get_timestamp(s->is_light);
 }
 
-void compute_events(struct computer *c)
+static void compute_events(struct computer *c)
 {
 	struct snapshot *s = c->actv;
 	struct processing_buffers *p = c->actv->pb;
@@ -158,7 +158,7 @@ void compute_results(struct snapshot *s)
 		s->guessed_bph = s->bph ? s->bph : DEFAULT_BPH;
 }
 
-void *computing_thread(void *void_computer)
+static void *computing_thread(void *void_computer)
 {
 	struct computer *c = void_computer;
 	for(;;) {

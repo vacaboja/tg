@@ -67,7 +67,7 @@ void error(char *format,...)
 	gtk_widget_destroy(dialog);
 }
 
-void refresh_results(struct main_window *w)
+static void refresh_results(struct main_window *w)
 {
 	w->active_snapshot->bph = w->bph;
 	w->active_snapshot->la = w->la;
@@ -75,7 +75,7 @@ void refresh_results(struct main_window *w)
 	compute_results(w->active_snapshot);
 }
 
-void handle_bph_change(GtkComboBox *b, struct main_window *w)
+static void handle_bph_change(GtkComboBox *b, struct main_window *w)
 {
 	if(!w->controls_active) return;
 	char *s = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(b));
@@ -92,7 +92,7 @@ void handle_bph_change(GtkComboBox *b, struct main_window *w)
 	}
 }
 
-void handle_la_change(GtkSpinButton *b, struct main_window *w)
+static void handle_la_change(GtkSpinButton *b, struct main_window *w)
 {
 	if(!w->controls_active) return;
 	double la = gtk_spin_button_get_value(b);
@@ -102,7 +102,7 @@ void handle_la_change(GtkSpinButton *b, struct main_window *w)
 	gtk_widget_queue_draw(w->notebook);
 }
 
-void handle_cal_change(GtkSpinButton *b, struct main_window *w)
+static void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 {
 	if(!w->controls_active) return;
 	int cal = gtk_spin_button_get_value(b);
@@ -111,8 +111,9 @@ void handle_cal_change(GtkSpinButton *b, struct main_window *w)
 	gtk_widget_queue_draw(w->notebook);
 }
 
-gboolean output_cal(GtkSpinButton *spin, gpointer data)
+static gboolean output_cal(GtkSpinButton *spin, gpointer data)
 {
+	UNUSED(data);
 	GtkAdjustment *adj;
 	gchar *text;
 	int value;
@@ -126,8 +127,9 @@ gboolean output_cal(GtkSpinButton *spin, gpointer data)
 	return TRUE;
 }
 
-gboolean input_cal(GtkSpinButton *spin, double *val, gpointer data)
+static gboolean input_cal(GtkSpinButton *spin, double *val, gpointer data)
 {
+	UNUSED(data);
 	double x = 0;
 	sscanf(gtk_entry_get_text (GTK_ENTRY (spin)), "%lf", &x);
 	int n = round(x*10);
@@ -138,8 +140,9 @@ gboolean input_cal(GtkSpinButton *spin, double *val, gpointer data)
 	return TRUE;
 }
 
-void on_shutdown(GApplication *app, void *p)
+static void on_shutdown(GApplication *app, void *p)
 {
+	UNUSED(p);
 	debug("Main loop has terminated\n");
 	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
 	if(w) {
@@ -152,10 +155,10 @@ void on_shutdown(GApplication *app, void *p)
 	terminate_portaudio();
 }
 
-void recompute(struct main_window *w);
-void computer_callback(void *w);
+static void recompute(struct main_window *w);
+static void computer_callback(void *w);
 
-guint computer_terminated(struct main_window *w)
+static guint computer_terminated(struct main_window *w)
 {
 	if(w->zombie) {
 		debug("Closing main window\n");
@@ -183,19 +186,19 @@ guint computer_terminated(struct main_window *w)
 	return FALSE;
 }
 
-void computer_quit(void *w)
+static void computer_quit(void *w)
 {
 	gdk_threads_add_idle((GSourceFunc)computer_terminated,w);
 }
 
-void kill_computer(struct main_window *w)
+static void kill_computer(struct main_window *w)
 {
 	w->computer->recompute = -1;
 	w->computer->callback = computer_quit;
 	w->computer->callback_data = w;
 }
 
-gboolean quit(struct main_window *w)
+static gboolean quit(struct main_window *w)
 {
 	g_source_remove(w->kick_timeout);
 	g_source_remove(w->save_timeout);
@@ -206,19 +209,22 @@ gboolean quit(struct main_window *w)
 	return FALSE;
 }
 
-gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
+static gboolean delete_event(GtkWidget *widget, GdkEvent *event, gpointer w)
 {
+	UNUSED(widget);
+	UNUSED(event);
 	debug("Received delete event\n");
 	quit((struct main_window *)w);
 	return TRUE;
 }
 
-void handle_quit(GtkMenuItem *m, struct main_window *w)
+static void handle_quit(GtkMenuItem *m, struct main_window *w)
 {
+	UNUSED(m);
 	quit(w);
 }
 
-void recompute(struct main_window *w)
+static void recompute(struct main_window *w)
 {
 	w->computer_timeout = 0;
 	lock_computer(w->computer);
@@ -235,7 +241,7 @@ void recompute(struct main_window *w)
 	unlock_computer(w->computer);
 }
 
-guint kick_computer(struct main_window *w)
+static guint kick_computer(struct main_window *w)
 {
 	w->computer_timeout++;
 	if(w->calibrate && w->computer_timeout < 10) {
@@ -246,7 +252,7 @@ guint kick_computer(struct main_window *w)
 	}
 }
 
-void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
+static void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
 {
 	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
 	if(button_state != w->calibrate) {
@@ -255,7 +261,7 @@ void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
 	}
 }
 
-void handle_light(GtkCheckMenuItem *b, struct main_window *w)
+static void handle_light(GtkCheckMenuItem *b, struct main_window *w)
 {
 	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
 	if(button_state != w->is_light) {
@@ -264,7 +270,7 @@ void handle_light(GtkCheckMenuItem *b, struct main_window *w)
 	}
 }
 
-void controls_active(struct main_window *w, int active)
+static void controls_active(struct main_window *w, int active)
 {
 	w->controls_active = active;
 	gtk_widget_set_sensitive(w->bph_combo_box, active);
@@ -280,7 +286,7 @@ void controls_active(struct main_window *w, int active)
 	}
 }
 
-int blank_string(char *s)
+static int blank_string(char *s)
 {
 	if(!s) return 1;
 	for(;*s;s++)
@@ -288,8 +294,10 @@ int blank_string(char *s)
 	return 1;
 }
 
-void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_window *w)
+static void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_window *w)
 {
+	UNUSED(nbk);
+	UNUSED(x);
 	// These are NULL for the Real Time tab
 	struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
 	char *tab_name = g_object_get_data(G_OBJECT(panel), "tab-name");
@@ -333,8 +341,9 @@ void handle_tab_changed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main
 	gtk_widget_set_sensitive(w->save_item, !snap->calibrate && snap->pb);
 }
 
-void handle_tab_closed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_window *w)
+static void handle_tab_closed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_window *w)
 {
+	UNUSED(x);
 	if(gtk_notebook_get_n_pages(nbk) == 1 && !w->zombie) {
 		gtk_notebook_set_show_tabs(GTK_NOTEBOOK(nbk), FALSE);
 		gtk_notebook_set_show_border(GTK_NOTEBOOK(nbk), FALSE);
@@ -347,12 +356,13 @@ void handle_tab_closed(GtkNotebook *nbk, GtkWidget *panel, guint x, struct main_
 	free(g_object_get_data(G_OBJECT(panel), "tab-name"));
 }
 
-void handle_close_tab(GtkButton *b, struct output_panel *p)
+static void handle_close_tab(GtkButton *b, struct output_panel *p)
 {
+	UNUSED(b);
 	gtk_widget_destroy(p->panel);
 }
 
-void handle_name_change(GtkEntry *e, struct main_window *w)
+static void handle_name_change(GtkEntry *e, struct main_window *w)
 {
 	int p = gtk_notebook_get_current_page(GTK_NOTEBOOK(w->notebook));
 	GtkWidget *panel = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), p);
@@ -365,7 +375,7 @@ void handle_name_change(GtkEntry *e, struct main_window *w)
 }
 
 #ifdef WIN_XP
-GtkWidget *image_from_file(char *filename)
+static GtkWidget *image_from_file(char *filename)
 {
 	char *dir = g_win32_get_package_installation_directory_of_module(NULL);
 	char *s;
@@ -381,7 +391,7 @@ GtkWidget *image_from_file(char *filename)
 }
 #endif
 
-GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close)
+static GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close)
 {
 	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
@@ -410,7 +420,7 @@ GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close)
 	return hbox;
 }
 
-void add_new_tab(struct snapshot *s, char *name, struct main_window *w)
+static void add_new_tab(struct snapshot *s, char *name, struct main_window *w)
 {
 	struct output_panel *op = init_output_panel(NULL, s, 5);
 	GtkWidget *label = make_tab_label(name, op);
@@ -425,15 +435,16 @@ void add_new_tab(struct snapshot *s, char *name, struct main_window *w)
 	gtk_widget_set_sensitive(w->close_all_item, TRUE);
 }
 
-void handle_snapshot(GtkButton *b, struct main_window *w)
+static void handle_snapshot(GtkButton *b, struct main_window *w)
 {
+	UNUSED(b);
 	if(w->active_snapshot->calibrate) return;
 	struct snapshot *s = snapshot_clone(w->active_snapshot);
 	s->timestamp = get_timestamp(s->is_light);
 	add_new_tab(s, NULL, w);
 }
 
-void chooser_set_filters(GtkFileChooser *chooser)
+static void chooser_set_filters(GtkFileChooser *chooser)
 {
 	GtkFileFilter *tgj_filter = gtk_file_filter_new();
 	gtk_file_filter_set_name(tgj_filter, ".tgj");
@@ -449,7 +460,7 @@ void chooser_set_filters(GtkFileChooser *chooser)
 	gtk_file_chooser_set_filter(chooser, tgj_filter);
 }
 
-FILE *fopen_check(char *filename, char *mode, struct main_window *w)
+static FILE *fopen_check(char *filename, char *mode, struct main_window *w)
 {
 	FILE *f = NULL;
 
@@ -482,7 +493,7 @@ error:	g_free(name);
 	return f;
 }
 
-FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
+static FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 {
 	FILE *f = NULL;
 	GtkWidget *dialog = gtk_file_chooser_dialog_new (title,
@@ -545,8 +556,9 @@ FILE *choose_file_for_save(struct main_window *w, char *title, char *suggestion)
 	return f;
 }
 
-void save_current(GtkMenuItem *m, struct main_window *w)
+static void save_current(GtkMenuItem *m, struct main_window *w)
 {
+	UNUSED(m);
 	int p = gtk_notebook_get_current_page(GTK_NOTEBOOK(w->notebook));
 	GtkWidget *tab = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), p);
 	struct output_panel *op = g_object_get_data(G_OBJECT(tab), "op-pointer");
@@ -575,8 +587,9 @@ void save_current(GtkMenuItem *m, struct main_window *w)
 	snapshot_destroy(snapshot);
 }
 
-void close_all(GtkMenuItem *m, struct main_window *w)
+static void close_all(GtkMenuItem *m, struct main_window *w)
 {
+	UNUSED(m);
 	int i = 0;
 	while(i < gtk_notebook_get_n_pages(GTK_NOTEBOOK(w->notebook))) {
 		GtkWidget *tab = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), i);
@@ -589,8 +602,9 @@ void close_all(GtkMenuItem *m, struct main_window *w)
 	}
 }
 
-void save_all(GtkMenuItem *m, struct main_window *w)
+static void save_all(GtkMenuItem *m, struct main_window *w)
 {
+	UNUSED(m);
 	FILE *f = choose_file_for_save(w, "Save all snapshots", NULL);
 	if(!f) return;
 
@@ -616,7 +630,7 @@ void save_all(GtkMenuItem *m, struct main_window *w)
 	fclose(f);
 }
 
-void load_snapshots(FILE *f, char *name, struct main_window *w)
+static void load_snapshots(FILE *f, char *name, struct main_window *w)
 {
 	struct snapshot **s;
 	char **names;
@@ -637,7 +651,7 @@ void load_snapshots(FILE *f, char *name, struct main_window *w)
 	}
 }
 
-void load_from_file(char *filename, struct main_window *w)
+static void load_from_file(char *filename, struct main_window *w)
 {
 	FILE *f = fopen_check(filename, "rb", w);
 	if(f) {
@@ -653,8 +667,9 @@ void load_from_file(char *filename, struct main_window *w)
 	}
 }
 
-void load(GtkMenuItem *m, struct main_window *w)
+static void load(GtkMenuItem *m, struct main_window *w)
 {
+	UNUSED(m);
 	GtkWidget *dialog = gtk_file_chooser_dialog_new ("Open",
 			GTK_WINDOW(w->window),
 			GTK_FILE_CHOOSER_ACTION_OPEN,
@@ -680,7 +695,7 @@ void load(GtkMenuItem *m, struct main_window *w)
 }
 
 /* Set up the main window and populate with widgets */
-void init_main_window(struct main_window *w)
+static void init_main_window(struct main_window *w)
 {
 	w->window = gtk_application_window_new(w->app);
 
@@ -888,13 +903,14 @@ guint refresh(struct main_window *w)
 	return FALSE;
 }
 
-void computer_callback(void *w)
+static void computer_callback(void *w)
 {
 	gdk_threads_add_idle((GSourceFunc)refresh,w);
 }
 
-void start_interface(GApplication* app, void *p)
+static void start_interface(GApplication* app, void *p)
 {
+	UNUSED(p);
 	double real_sr;
 
 	initialize_palette();
@@ -952,14 +968,17 @@ void start_interface(GApplication* app, void *p)
 	g_object_set_data(G_OBJECT(app), "main-window", w);
 }
 
-void handle_activate(GApplication* app, void *p)
+static void handle_activate(GApplication* app, void *p)
 {
+	UNUSED(p);
 	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
 	if(w) gtk_window_present(GTK_WINDOW(w->window));
 }
 
-void handle_open(GApplication* app, GFile **files, int cnt, char *hint, void *p)
+static void handle_open(GApplication* app, GFile **files, int cnt, char *hint, void *p)
 {
+	UNUSED(hint);
+	UNUSED(p);
 	struct main_window *w = g_object_get_data(G_OBJECT(app), "main-window");
 	if(w) {
 		int i;
