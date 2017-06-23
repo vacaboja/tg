@@ -682,6 +682,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 #ifdef DEBUG
 static gboolean debug_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
+	UNUSED(widget);
 	cairo_init(c);
 
 	struct snapshot *snst = op->snst;
