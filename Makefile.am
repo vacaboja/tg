@@ -28,10 +28,10 @@ LIBS = $(GTK_LIBS) \
 AM_CPPFLAGS = -DPROGRAM_NAME=\"Tg\" -DVERSION=\"$(PACKAGE_VERSION)\"
 tg_timer_dbg_CPPFLAGS = $(AM_CPPFLAGS) -DDEBUG
 
-AM_CFLAGS += $(GTK_CFLAGS) \
-	     $(GTHREAD_CFLAGS) \
-	     $(PORTAUDIO_CFLAGS) \
-	     $(FFTW_CFLAGS)
+AM_CFLAGS = $(GTK_CFLAGS) \
+	    $(GTHREAD_CFLAGS) \
+	    $(PORTAUDIO_CFLAGS) \
+	    $(FFTW_CFLAGS)
 tg_timer_dbg_CFLAGS = $(AM_CFLAGS) -ggdb
 tg_timer_prf_CFLAGS = $(AM_CFLAGS) -pg
 tg_timer_vlg_CFLAGS = $(AM_CFLAGS) -g
