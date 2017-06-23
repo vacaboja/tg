@@ -52,8 +52,10 @@ tg_timer_vlg_LDFLAGS += -mconsole
 endif
 
 desktopdir = $(datadir)/applications
-dist_desktop_DATA = icons/tg-timer.desktop \
-		    icons/tg-timer.xml
+dist_desktop_DATA = icons/tg-timer.desktop
+
+mimedir = $(datadir)/mime/packages
+dist_mime_DATA = icons/tg-timer.xml
 
 dist_man_MANS = docs/tg-timer.1
 
