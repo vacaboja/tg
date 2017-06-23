@@ -2,7 +2,7 @@ define([tg_version], m4_normalize(m4_include([version])))
 AC_CONFIG_MACRO_DIRS([m4])
 
 AC_INIT([Tg], [tg_version], [vacaboja@gmail.com], [tg-timer], [https://github.com/vacaboja/tg])
-AM_INIT_AUTOMAKE([foreign subdir-objects])
+AM_INIT_AUTOMAKE([-Wall foreign subdir-objects])
 
 AC_PROG_CC
 AC_CHECK_LIB([pthread], [pthread_mutex_init], [], [AC_MSG_ERROR([pthread not found])])
@@ -18,6 +18,8 @@ AM_CONDITIONAL([BE_WINDOWS], [test x$OS = xWindows_NT])
 AM_COND_IF([BE_WINDOWS], [AC_CONFIG_LINKS([icons/tg-timer.ico:icons/tg-timer.ico])]);
 
 CC_CHECK_LDFLAGS([-Wl,--as-needed], [AC_SUBST([AM_LDFLAGS], [-Wl,--as-needed])], [])
+CC_CHECK_CFLAGS([-Wall], [AC_SUBST([AM_CFLAGS], [-Wall])], [])
+CC_CHECK_CFLAGS([-Wextra], [AC_SUBST([AM_CFLAGS], [-Wextra])], [])
 
 AC_OUTPUT([Makefile icons/Makefile])
 
@@ -28,6 +30,6 @@ AC_MSG_RESULT([
         prefix:                 ${prefix}
 
         compiler:               ${CC}
-        cflags:                 ${CFLAGS}${AM_CFLAGS}
-        ldflags:                ${LDFLAGS}${AM_LDFLAGS}
+        cflags:                 ${CFLAGS} ${AM_CFLAGS}
+        ldflags:                ${LDFLAGS} ${AM_LDFLAGS}
 ])

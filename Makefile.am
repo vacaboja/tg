@@ -3,7 +3,7 @@ bin_PROGRAMS = tg-timer
 EXTRA_PROGRAMS = tg-timer-dbg \
 		 tg-timer-prf \
 		 tg-timer-vlg
-MOSTLYCLEANFILES := $(EXTRA_PROGRAMS)
+MOSTLYCLEANFILES = $(EXTRA_PROGRAMS)
 
 tg_timer_SOURCES = src/algo.c \
 		   src/audio.c \
@@ -28,10 +28,10 @@ LIBS = $(GTK_LIBS) \
 AM_CPPFLAGS = -DPROGRAM_NAME=\"Tg\" -DVERSION=\"$(PACKAGE_VERSION)\"
 tg_timer_dbg_CPPFLAGS = $(AM_CPPFLAGS) -DDEBUG
 
-AM_CFLAGS = $(GTK_CFLAGS) \
-	    $(GTHREAD_CFLAGS) \
-	    $(PORTAUDIO_CFLAGS) \
-	    $(FFTW_CFLAGS)
+AM_CFLAGS += $(GTK_CFLAGS) \
+	     $(GTHREAD_CFLAGS) \
+	     $(PORTAUDIO_CFLAGS) \
+	     $(FFTW_CFLAGS)
 tg_timer_dbg_CFLAGS = $(AM_CFLAGS) -ggdb
 tg_timer_prf_CFLAGS = $(AM_CFLAGS) -pg
 tg_timer_vlg_CFLAGS = $(AM_CFLAGS) -g
@@ -57,11 +57,11 @@ dist_desktop_DATA = icons/tg-timer.desktop \
 
 dist_man_MANS = docs/tg-timer.1
 
-EXTRA_DIST := autogen.sh \
-	      icons \
-	      packaging \
-	      LICENSE \
-	      README.md
+EXTRA_DIST = autogen.sh \
+	     icons \
+	     packaging \
+	     LICENSE \
+	     README.md
 
 .rc.o:
 	$(WINDRES) $< -O coff -o $@
