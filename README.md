@@ -99,4 +99,11 @@ known bug (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=718221).
 
 To compile tg on Fedora
 
-	sudo dnf install fftw-devel portaudio-devel gtk3-devel
+```sh
+sudo dnf install fftw-devel portaudio-devel gtk3-devel autoconf automake libtool
+git clone https://github.com/vacaboja/tg.git
+cd tg
+./autogen.sh
+./configure
+make
+```
