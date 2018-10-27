@@ -724,6 +724,8 @@ static void handle_center_trace(GtkButton *b, struct output_panel *op)
 {
 	UNUSED(b);
 	struct snapshot *snst = op->snst;
+	if(!snst || !snst->events)
+		return;
 	uint64_t last_ev = snst->events[snst->events_wp];
 	double new_centering;
 	if(last_ev) {
