@@ -25,6 +25,7 @@ addons:
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      brew cask uninstall oclint || true
       brew update;
       brew install gtk+3;
       brew install portaudio;
