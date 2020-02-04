@@ -951,6 +951,7 @@ static void start_interface(GApplication* app, void *p)
 	w->calibrate = 0;
 	w->is_light = 0;
 	w->vertical_layout = true;
+	w->nominal_sr = 0; // Use default rate, e.g. PA_SAMPLE_RATE
 
 	load_config(w);
 

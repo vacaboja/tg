@@ -26,9 +26,6 @@ unsigned int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
 
-/* Audio input stream object */
-static PaStream *stream;
-
 /** A biquadratic filter.
  * Saves the delay taps to allow the filter to continue across multiple calls. */
 static struct biquad_filter {
@@ -41,6 +38,22 @@ static struct callback_info {
 	int 	channels;	//!< Number of channels
 	bool	light;		//!< Light algorithm in use, copy half data
 } info;
+
+/** Static object for audio device state.
+ * There are calls that need this from the audio callback thread, the GUI thread, and
+ * the computer thread.  Having each thread pass it in correctly would be really hard.
+ * It's better to maintain it in one place here in the audio code.  Lacking class scope
+ * in C, we'll have to settle for static global scope.  We only support once device at a
+ * time, so not supporting multiuple audio contexts isn't much of a drawback.
+ * */
+static struct audio_context {
+	PaStream *stream;	//!< Audio input stream object
+	int device;  		//!< PortAudio device ID number
+	int sample_rate;	//!< Requested sample rate (actual may differ)
+	double real_sample_rate;//!< Real rate as returned by PA
+} actx = {
+	.device = -1,
+};
 
 /* Initialize audio filter */
 static void init_audio_hpf(struct biquad_filter *filter, double cutoff, double sample_rate)
@@ -134,6 +147,151 @@ static int paudio_callback(const void *input_buffer,
 	return 0;
 }
 
+static PaError open_stream(PaDeviceIndex index, unsigned int rate, bool light, PaStream **stream)
+{
+	PaError err;
+
+	long channels = Pa_GetDeviceInfo(index)->maxInputChannels;
+	if(channels == 0) {
+		error("Default audio device has no input channels");
+		return paInvalidChannelCount;
+	}
+	if(channels > 2) channels = 2;
+	info.channels = channels;
+	info.light = light;
+
+	err = Pa_OpenStream(stream,
+			    &(PaStreamParameters){
+			            .device = index,
+				    .channelCount = channels,
+				    .sampleFormat = paFloat32,
+				    .suggestedLatency = Pa_GetDeviceInfo(index)->defaultHighInputLatency,
+			    },
+		            NULL,
+			    rate,
+			    paFramesPerBufferUnspecified,
+			    paNoFlag,
+			    paudio_callback,
+			    &info);
+	return err;
+}
+
+/** Select audio device and enable recording.
+ *
+ * This will select `device` to be the active audio device and capture at the
+ * rate provided in `*nominal_sr`.  If `*normal_sr` is zero, then a default rate
+ * is selected.
+ *
+ * It is safe to call if the device and rate are unchanged.  This will be
+ * detected and nothing will be done.
+ *
+ * Light mode will use simple decimation to cut the sample rate in half.  The
+ * values in nominal and real sr do not reflect this.
+ *
+ * @param device Device number, index of device from get_audio_devices() list
+ * @param[in,out] normal_sr Desired rate, or zero for default.  Rate used on return.
+ * @param[out] real_sr Actual exact rate received, might be different than nominal_sr.
+ * @param[light] light Use light mode (halve normal_sr)
+ * @returns zero or one on success or negative error code.  1 indicates no
+ * change in device or rate was needed.
+ */
+int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light)
+{
+	PaError err;
+
+	// FIXME: Use a list of rates and pick the first supported rate
+	if(*nominal_sr == 0)
+		*nominal_sr = PA_SAMPLE_RATE;
+
+	if(actx.device == device && actx.sample_rate == *nominal_sr) {
+		if(real_sr) *real_sr = actx.real_sample_rate;
+		return 1; // Already using this device at this rate
+	}
+
+	if(actx.device != -1) {
+		// Stop current device
+		Pa_StopStream(actx.stream);
+		Pa_CloseStream(actx.stream);
+		actx.stream = NULL;
+		actx.device = -1;
+	}
+
+	actx.sample_rate = *nominal_sr;
+
+	// Start new one.  It seems it doesn't succeed on the first try sometimes.
+	unsigned int n;
+	for(n = 5; n; n--) {
+		debug("Open device %d at %d Hz with %d tries left\n", device, actx.sample_rate, n);
+		err = open_stream(device, actx.sample_rate, light, &actx.stream);
+		if (err == paNoError)
+			break;
+		if (err != paDeviceUnavailable)
+			goto error;
+		usleep(500000);
+	}
+	if(!n)
+		goto error;
+	actx.real_sample_rate = Pa_GetStreamInfo(actx.stream)->sampleRate;
+
+	init_audio_hpf(&audio_hpf, FILTER_CUTOFF, actx.real_sample_rate / (light ? 2 : 1));
+
+	/* Allocate larger buffer if needed */
+	const size_t buffer_size = actx.sample_rate << (NSTEPS + FIRST_STEP);
+	if(pa_buffer_size < buffer_size) {
+		if(pa_buffers) free(pa_buffers);
+		pa_buffers = calloc(buffer_size, sizeof(*pa_buffers));
+		if(!pa_buffers) {
+			err = paInsufficientMemory;
+			goto error;
+		}
+		pa_buffer_size = buffer_size;
+	}
+
+	err = Pa_StartStream(actx.stream);
+	if(err != paNoError) {
+		Pa_CloseStream(actx.stream);
+		goto error;
+	}
+
+	/* Return sample rates used */
+	*nominal_sr = actx.sample_rate;
+	if(real_sr)
+		*real_sr = actx.real_sample_rate;
+
+	actx.device = device;
+	return 0;
+
+error:
+	actx.stream = NULL;
+	actx.device = -1;
+	actx.sample_rate = 0;
+	actx.real_sample_rate = 0.0;
+
+	const struct PaDeviceInfo* devinfo = Pa_GetDeviceInfo(device);
+	const char *err_str = Pa_GetErrorText(err);
+	error("Error opening audio device '%s' at %d Hz: %s", devinfo->name, *nominal_sr, err_str);
+	return err;
+}
+
+/** Start audio system.
+ *
+ * This will start the recording stream.  Call this first before any other audio
+ * functions, as it initialize PortAudio and fills in the device list.
+ *
+ * A sample rate of 0 will select the default sample rate.
+ *
+ * On error, audio is NOT running.
+ *
+ * The distinction between the nominal and real sample rate is somewhat ill-defined.
+ * Nothing uses real sample rate yet.
+ *
+ * @param[in,out] normal_sample_rate The rate in Hz to use, or 0 for default.  Returns
+ * actual rate selected.
+ * @param[out] real_sample_rate The exact rate used.
+ * @param light Use light mode (decimate to half supplied rate).
+ * @returns 0 on success, 1 on error.
+ *
+ */
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light)
 {
 	if(pthread_mutex_init(&audio_mutex,NULL)) {
@@ -142,8 +300,10 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool lig
 	}
 
 	PaError err = Pa_Initialize();
-	if(err!=paNoError)
+	if(err!=paNoError) {
+		error("Error initializing PortAudio: %s", Pa_GetErrorText(err));
 		goto error;
+	}
 
 #ifdef DEBUG
 	if(testing) {
@@ -156,41 +316,13 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool lig
 	PaDeviceIndex default_input = Pa_GetDefaultInputDevice();
 	if(default_input == paNoDevice) {
 		error("No default audio input device found");
-		return 1;
+		goto error;
 	}
-	long channels = Pa_GetDeviceInfo(default_input)->maxInputChannels;
-	if(channels == 0) {
-		error("Default audio device has no input channels");
-		return 1;
-	}
-	if(channels > 2) channels = 2;
-	info.channels = channels;
-	info.light = light;
-	err = Pa_OpenDefaultStream(&stream,channels,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,&info);
-	if(err!=paNoError)
+
+	err = set_audio_device(default_input, nominal_sample_rate, real_sample_rate, light);
+	if(err!=paNoError && err!=1)
 		goto error;
 
-	const PaStreamInfo *info = Pa_GetStreamInfo(stream);
-	*nominal_sample_rate = PA_SAMPLE_RATE;
-	*real_sample_rate = info->sampleRate;
-
-	init_audio_hpf(&audio_hpf, FILTER_CUTOFF, PA_SAMPLE_RATE / (light ? 2 : 1));
-
-	/* Allocate larger buffer if needed */
-	const size_t buffer_size = *nominal_sample_rate << (NSTEPS + FIRST_STEP);
-	if(pa_buffer_size < buffer_size) {
-		if(pa_buffers) free(pa_buffers);
-		pa_buffers = calloc(buffer_size, sizeof(*pa_buffers));
-		if(!pa_buffers) {
-		       err = paInsufficientMemory;
-		       goto error;
-	       }
-	       pa_buffer_size = buffer_size;
-	}
-
-	err = Pa_StartStream(stream);
-	if(err!=paNoError)
-		goto error;
 #ifdef DEBUG
 end:
 #endif
@@ -199,7 +331,7 @@ end:
 	return 0;
 
 error:
-	error("Error opening audio input: %s", Pa_GetErrorText(err));
+	error("Unable to start audio");
 	return 1;
 }
 
@@ -280,13 +412,12 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
  * buffer.  Nothing will happen if the mode doesn't actually change.
  *
  * @param light True for light mode, false for normal
- * @param sample_rate Nominal sampling rate.  Should take into account any
  * downsampling done in light mode
  */
 void set_audio_light(bool light, int sample_rate)
 {
 	if(info.light != light) {
-		Pa_StopStream(stream);
+		Pa_StopStream(actx.stream);
 		pthread_mutex_lock(&audio_mutex);
 
 		info.light = light;
@@ -297,7 +428,7 @@ void set_audio_light(bool light, int sample_rate)
 		pthread_mutex_unlock(&audio_mutex);
 
 		init_audio_hpf(&audio_hpf, FILTER_CUTOFF, sample_rate);
-		PaError err = Pa_StartStream(stream);
+		PaError err = Pa_StartStream(actx.stream);
 		if(err != paNoError)
 			error("Error re-starting audio input: %s", Pa_GetErrorText(err));
 	}
