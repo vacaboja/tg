@@ -22,13 +22,6 @@ struct filter {
 	double a0,a1,a2,b1,b2;
 };
 
-static int fl_cmp(const void *a, const void *b)
-{
-	float x = *(float*)a;
-	float y = *(float*)b;
-	return x<y ? -1 : x>y ? 1 : 0;
-}
-
 static int int_cmp(const void *a, const void *b)
 {
 	int x = *(int*)a;
@@ -292,7 +285,7 @@ static void noise_suppressor(struct processing_buffers *p)
 	int j = 0;
 	for(i = 0; i + step - 1 < m; i += step)
 		a[j++] = vmax(b, i, i+step, NULL);
-	qsort(a, j, sizeof(float), fl_cmp);
+	quickselect(a, j, j/2);
 	float k = a[j/2];
 
 	for(i = 0; i < p->sample_count; i++) {
@@ -346,9 +339,8 @@ static int peak_detector(float *buff, int a, int b)
 
 	int i;
 	float v[b-a+1];
-	for(i=a; i<=b; i++)
-		v[i-a] = buff[i];
-	qsort(v, b-a+1, sizeof(float), fl_cmp);
+	memcpy(v, buff + a, sizeof(v));
+	quickselect(v, b-a+1, (b-a+1)/2);
 	float med = v[(b-a+1)/2];
 
 	for(i=a+1; i<i_max; i++)
@@ -586,7 +578,7 @@ static void compute_waveform(struct processing_buffers *p, int wf_size)
 	int step = ceil(wf_size / 100);
 	for(i=0; i * step < wf_size; i++)
 		p->waveform_sc[i] = p->waveform[i * step];
-	qsort(p->waveform_sc,i,sizeof(float),fl_cmp);
+	quickselect(p->waveform_sc, i, i/2);
 	double nl = p->waveform_sc[i/2];
 	for(i=0; i<wf_size; i++)
 		p->waveform[i] -= nl;
