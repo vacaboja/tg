@@ -22,13 +22,6 @@ struct filter {
 	double a0,a1,a2,b1,b2;
 };
 
-static int fl_cmp(const void *a, const void *b)
-{
-	float x = *(float*)a;
-	float y = *(float*)b;
-	return x<y ? -1 : x>y ? 1 : 0;
-}
-
 static int int_cmp(const void *a, const void *b)
 {
 	int x = *(int*)a;
@@ -191,6 +184,83 @@ static float vmax(float *v, int a, int b, int *i_max)
 	return max;
 }
 
+/* Choose pivot: use median of first, last, middle elements */
+static int pivot(const float *x, int l, int r)
+{
+	const int m = (l+r)/2;
+	if (x[l] < x[r]) {
+		if (x[m] <= x[l])
+			return l;
+		if (x[m] >= x[r])
+			return r;
+		return m;
+	} else {
+		if (x[m] <= x[r])
+			return r;
+		if (x[m] >= x[l])
+			return l;
+		return m;
+	}
+}
+
+/** Partition list in ascending order at rank k.
+ *
+ * Re-orders the list so that the k'th largest values are in the first k
+ * elements, the (k+1)'th largest value is x[k], and all the values smaller than
+ * x[k] follow it.  Thus, x[0 .. k-1] >= x[k] >= x[k+1 .. n-1].  Note that
+ * x[0 .. k-1] and x[k+1 .. n-1] are not sorted, so this is like, but not the
+ * same as, a quicksort.  If we avoid worst case behavior in choice of pivots,
+ * it's O(n) rather than O(n log n) like quicksort.
+ *
+ * This uses the "median of three" pivot strategy.  I also tried simpler ones,
+ * like always use the last element, but this benchmarked faster.
+ *
+ * @param[in,out] x The values to partition.
+ * @param[in] n The number of values.
+ * @param[in] k The index to partition at.
+ * @returns Nothing, but x will be partitioned.
+ */
+static void quickselect(float* x, int n, int k)
+{
+	int l = 0, r = n - 1;
+	while (1) {
+		if (l == r)
+			return;
+		if (r - l == 1) {
+			/* Only two values left, put them in decending order */
+			if (x[l] < x[r]) {
+				float t = x[r];
+				x[r] = x[l];
+				x[l] = t;
+			}
+			return;
+		}
+
+		int p = pivot(x, l, r);
+		const float pv = x[p];
+		x[p] = x[r];
+		p = l;
+		/* Partition:  Everything greater than pv at start, then pv at
+		 * position p, then everything smaller.  */
+		for (int i = l; i < r; i++) {
+			if (x[i] > pv) {
+				float t = x[i];
+				x[i] = x[p];
+				x[p++] = t;
+			}
+		}
+		/* Swap pivot value into position p */
+		x[r] = x[p];
+		x[p] = pv;
+		if (k == p)
+			return;
+		if (k < p)
+			r = p - 1;
+		else
+			l = p + 1;
+	};
+}
+
 static void noise_suppressor(struct processing_buffers *p)
 {
 	float *a = p->samples_sc;
@@ -215,7 +285,7 @@ static void noise_suppressor(struct processing_buffers *p)
 	int j = 0;
 	for(i = 0; i + step - 1 < m; i += step)
 		a[j++] = vmax(b, i, i+step, NULL);
-	qsort(a, j, sizeof(float), fl_cmp);
+	quickselect(a, j, j/2);
 	float k = a[j/2];
 
 	for(i = 0; i < p->sample_count; i++) {
@@ -269,9 +339,8 @@ static int peak_detector(float *buff, int a, int b)
 
 	int i;
 	float v[b-a+1];
-	for(i=a; i<=b; i++)
-		v[i-a] = buff[i];
-	qsort(v, b-a+1, sizeof(float), fl_cmp);
+	memcpy(v, buff + a, sizeof(v));
+	quickselect(v, b-a+1, (b-a+1)/2);
 	float med = v[(b-a+1)/2];
 
 	for(i=a+1; i<i_max; i++)
@@ -386,30 +455,85 @@ static int compute_period(struct processing_buffers *b, int bph)
 	return 0;
 }
 
-static float tmean(float *x, int n)
+/** Return the mean with the greatest value excluded.
+ *
+ * Finds the mean of the values in x with the greatest value excluded from the
+ * list.  If n <= 5, then this is the same as a the mean of the lower four
+ * quintiles, since the upper quintile is 1 value.
+ *
+ * @param[in] x The values.
+ * @param[in] n Number of values.
+ * @returns The mean with the greatest value excluded.
+ */
+static float mean_less_greatest(const float *x, int n)
 {
-	if(n>16) {
-		qsort(x,16,sizeof(float),fl_cmp);
-		float t = x[12];
-		int i, c1 = 0, c2 = 0;
-		for(i = 0; i < n; i++) {
-			if(x[i] < t) c1++;
-			if(x[i] > t) c2++;
-		}
-		double r = (double)c1/(c1+c2);
-		if(r < .9 && r > .7) {
-			double sum = 0;
-			for(i=0; i < n; i++)
-				if(x[i] < t) sum += x[i];
-			return sum/c1;
+	float greatest = x[0], sum = x[0];
+	for(int i=1; i < n; i++) {
+		sum += x[i];
+		if (x[i] > greatest) greatest = x[i];
+	}
+	return (sum - greatest) / (n-1);
+}
+
+/** Return the mean with the greatest two values excluded.
+ *
+ * Finds the mean of the values in x with the greatest and 2nd greatest values
+ * excluded from the list.  If 5 < n <= 10, then this is the same as a the mean
+ * of the lower four quintiles, since the upper quintile is 2 values.
+ *
+ * @param[in] x The values.
+ * @param[in] n Number of values.
+ * @returns The mean with the greatest two values excluded.
+ */
+static float mean_less_two_greatest(const float *x, int n)
+{
+	float sum = x[0], greatest[2] = {x[0], FLT_MIN};
+	for(int i=1; i < n; i++) {
+		sum += x[i];
+		if (x[i] > greatest[0]) {
+			greatest[1] = greatest[0];
+			greatest[0] = x[i];
+		} else if (x[i] > greatest[1]) {
+			greatest[1] = x[i];
 		}
 	}
-	qsort(x,n,sizeof(float),fl_cmp);
-	int i;
-	double sum = 0;
-	for(i=0; i < n*4/5; i++)
-		sum += x[i];
-	return sum/(n*4/5);
+	return (sum - greatest[0] - greatest[1]) / (n-2);
+}
+
+/** Find the mean of the lower four quintiles.
+ *
+ * Find mean of the lower four quintiles of x, i.e. the mean of the values in x
+ * with the largest 20% excluded.
+ *
+ * @warning This may modify the list to re-order the values.
+ *
+ * @param[in] x The values.
+ * @param[n] n The number of values.
+ * @returns The mean of the lower four quintiles.
+ */
+static float tmean(float *x, int n)
+{
+	/* Use a hybrid approach, where for small lists a specialized function
+	 * is used, since only a few items will be looked at and just one or two
+	 * excluded.  So the simple and linear processing is faster.  For larger
+	 * lists, use a quickselect based algorithm with average case O(n)
+	 * performance rather than the O(n^2) that the first algorithm has.
+	 *
+	 * After size 10, the specialized functions don't provide much benefit.
+	 * */
+	if (n <= 5)
+		return mean_less_greatest(x, n);
+	else if (n <= 10)
+		return mean_less_two_greatest(x, n);
+	else {
+		int k = (n+4)/5;	/* Index of upper quintile */
+		quickselect(x, n, k);
+		/* Now x[0] to x[k-1] should be the values to exclude */
+
+		double sum = 0;
+		for(int i = k; i<n; i++) sum += x[i];
+		return sum / (n-k);
+	}
 }
 
 static void compute_phase(struct processing_buffers *p, double period)
@@ -454,7 +578,7 @@ static void compute_waveform(struct processing_buffers *p, int wf_size)
 	int step = ceil(wf_size / 100);
 	for(i=0; i * step < wf_size; i++)
 		p->waveform_sc[i] = p->waveform[i * step];
-	qsort(p->waveform_sc,i,sizeof(float),fl_cmp);
+	quickselect(p->waveform_sc, i, i/2);
 	double nl = p->waveform_sc[i/2];
 	for(i=0; i<wf_size; i++)
 		p->waveform[i] -= nl;

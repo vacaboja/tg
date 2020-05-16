@@ -19,10 +19,17 @@
 #include "tg.h"
 #include <portaudio.h>
 
-float pa_buffers[2][PA_BUFF_SIZE];
+/* Huge buffer of audio */
+float pa_buffers[PA_BUFF_SIZE];
 int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
+
+/* Data for PA callback to use */
+static struct callback_info {
+	int 	channels;	//!< Number of channels
+	bool	light;		//!< Light algorithm in use, copy half data
+} info;
 
 static int paudio_callback(const void *input_buffer,
 			   void *output_buffer,
@@ -34,19 +41,45 @@ static int paudio_callback(const void *input_buffer,
 	UNUSED(output_buffer);
 	UNUSED(time_info);
 	UNUSED(status_flags);
+	const float *input_samples = (const float*)input_buffer;
 	unsigned long i;
-	long channels = (long)data;
-	int wp = write_pointer;
-	for(i=0; i < frame_count; i++) {
-		if(channels == 1) {
-			pa_buffers[0][wp] = ((float *)input_buffer)[i];
-			pa_buffers[1][wp] = ((float *)input_buffer)[i];
+	const struct callback_info *info = data;
+	unsigned wp = write_pointer;
+
+	if (info->light) {
+		static bool even = true;
+		/* Copy every other sample.  It would be much more efficient to
+		 * just drop the sample rate if the sound hardware supports it.
+		 * This would also avoid the aliasing effects that this simple
+		 * decimation without a low-pass filter causes.  */
+		if(info->channels == 1) {
+			for(i = even ? 0 : 1; i < frame_count; i += 2) {
+				pa_buffers[wp++] = input_samples[i];
+				if (wp >= PA_BUFF_SIZE) wp -= PA_BUFF_SIZE;
+			}
 		} else {
-			pa_buffers[0][wp] = ((float *)input_buffer)[2*i];
-			pa_buffers[1][wp] = ((float *)input_buffer)[2*i + 1];
+			for(i = even ? 0 : 2; i < frame_count*2; i += 4) {
+				pa_buffers[wp++] = input_samples[i] + input_samples[i+1];
+				if (wp >= PA_BUFF_SIZE) wp -= PA_BUFF_SIZE;
+			}
 		}
-		if(wp < PA_BUFF_SIZE - 1) wp++;
-		else wp = 0;
+		/* Keep track if we have processed an even number of frames, so
+		 * we know if we should drop the 1st or 2nd frame next callback. */
+		if(frame_count % 2) even = !even;
+	} else {
+		const unsigned len = MIN(frame_count, PA_BUFF_SIZE - wp);
+		if(info->channels == 1) {
+			memcpy(pa_buffers + wp, input_samples, len * sizeof(*pa_buffers));
+			if(len < frame_count)
+				memcpy(pa_buffers, input_samples + len, (frame_count - len) * sizeof(*pa_buffers));
+		} else {
+			for(i = 0; i < len; i++)
+				pa_buffers[wp + i] = input_samples[2u*i] + input_samples[2u*i + 1u];
+			if(len < frame_count)
+				for(i = len; i < frame_count; i++)
+					pa_buffers[i - len] = input_samples[2u*i] + input_samples[2u*i + 1u];
+		}
+		wp = (wp + frame_count) % PA_BUFF_SIZE;
 	}
 	pthread_mutex_lock(&audio_mutex);
 	write_pointer = wp;
@@ -87,7 +120,9 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 		return 1;
 	}
 	if(channels > 2) channels = 2;
-	err = Pa_OpenDefaultStream(&stream,channels,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,(void*)channels);
+	info.channels = channels;
+	info.light = false;
+	err = Pa_OpenDefaultStream(&stream,channels,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,&info);
 	if(err!=paNoError)
 		goto error;
 
@@ -129,30 +164,25 @@ uint64_t get_timestamp(int light)
 	return ts;
 }
 
-static void fill_buffers(struct processing_buffers *p, int light)
+static void fill_buffers(struct processing_buffers *ps, int light)
 {
 	pthread_mutex_lock(&audio_mutex);
 	uint64_t ts = timestamp;
 	int wp = write_pointer;
 	pthread_mutex_unlock(&audio_mutex);
-	if(wp < 0 || wp >= PA_BUFF_SIZE) wp = 0;
-	if(light) {
-		if(wp % 2) wp--;
-		ts /= 2;
-	}
-	int i;
-	for(i=0; i<NSTEPS; i++) {
-		int j,k;
-		p[i].timestamp = ts;
-		if(light) k = wp - 2*p[i].sample_count;
-		else k = wp - p[i].sample_count;
 
-		if(k < 0) k += PA_BUFF_SIZE;
-		for(j=0; j < p[i].sample_count; j++) {
-			p[i].samples[j] = pa_buffers[0][k] + pa_buffers[1][k];
-			k += light ? 2 : 1;
-			if(k >= PA_BUFF_SIZE) k -= PA_BUFF_SIZE;
-		}
+	if(light)
+		ts /= 2;
+
+	for(int i=0; i<NSTEPS; i++) {
+		ps[i].timestamp = ts;
+
+		int start = wp - ps[i].sample_count;
+		if (start < 0) start += PA_BUFF_SIZE;
+		int len = MIN((unsigned)ps[i].sample_count, PA_BUFF_SIZE - start);
+		memcpy(ps[i].samples, pa_buffers + start, len * sizeof(*pa_buffers));
+		if (len < ps[i].sample_count)
+			memcpy(ps[i].samples + len, pa_buffers, (ps[i].sample_count - len) * sizeof(*pa_buffers));
 	}
 }
 
@@ -192,4 +222,23 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 	if(process_cal(&p[NSTEPS-1], cd))
 		return NSTEPS-1;
 	return NSTEPS;
+}
+
+/** Change to light mode
+ *
+ * Call to enable or disable light mode.  Changing the mode will empty the audio
+ * buffer.  Nothing will happen if the mode doesn't actually change.
+ *
+ * @param light True for light mode, false for normal
+ */
+void set_audio_light(bool light)
+{
+	if(info.light != light) {
+		pthread_mutex_lock(&audio_mutex);
+		info.light = light;
+		memset(pa_buffers, 0, sizeof(pa_buffers));
+		write_pointer = 0;
+		timestamp = 0;
+		pthread_mutex_unlock(&audio_mutex);
+	}
 }
