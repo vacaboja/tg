@@ -242,7 +242,8 @@ static void quickselect(float* x, int n, int k)
 		p = l;
 		/* Partition:  Everything greater than pv at start, then pv at
 		 * position p, then everything smaller.  */
-		for (int i = l; i < r; i++) {
+		int i;
+		for (i = l; i < r; i++) {
 			if (x[i] > pv) {
 				float t = x[i];
 				x[i] = x[p];
