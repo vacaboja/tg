@@ -174,7 +174,8 @@ static void fill_buffers(struct processing_buffers *ps, int light)
 	if(light)
 		ts /= 2;
 
-	for(int i=0; i<NSTEPS; i++) {
+	int i;
+	for(i = 0; i < NSTEPS; i++) {
 		ps[i].timestamp = ts;
 
 		int start = wp - ps[i].sample_count;

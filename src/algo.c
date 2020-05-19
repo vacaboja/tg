@@ -468,7 +468,8 @@ static int compute_period(struct processing_buffers *b, int bph)
 static float mean_less_greatest(const float *x, int n)
 {
 	float greatest = x[0], sum = x[0];
-	for(int i=1; i < n; i++) {
+	int i;
+	for(i = 1; i < n; i++) {
 		sum += x[i];
 		if (x[i] > greatest) greatest = x[i];
 	}
@@ -488,7 +489,8 @@ static float mean_less_greatest(const float *x, int n)
 static float mean_less_two_greatest(const float *x, int n)
 {
 	float sum = x[0], greatest[2] = {x[0], FLT_MIN};
-	for(int i=1; i < n; i++) {
+	int i;
+	for(i = 1; i < n; i++) {
 		sum += x[i];
 		if (x[i] > greatest[0]) {
 			greatest[1] = greatest[0];
@@ -531,7 +533,8 @@ static float tmean(float *x, int n)
 		/* Now x[0] to x[k-1] should be the values to exclude */
 
 		double sum = 0;
-		for(int i = k; i<n; i++) sum += x[i];
+		int i;
+		for(i = k; i < n; i++) sum += x[i];
 		return sum / (n-k);
 	}
 }
