@@ -21,6 +21,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <complex.h>
 #include <fftw3.h>
 #include <stdarg.h>
@@ -41,7 +42,7 @@
 #define FIRST_STEP_LIGHT 0
 
 #define NSTEPS 4
-#define PA_SAMPLE_RATE 44100
+#define PA_SAMPLE_RATE 44100u
 #define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
 #define OUTPUT_FONT 40
@@ -129,6 +130,7 @@ int terminate_portaudio();
 uint64_t get_timestamp(int light);
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
+void set_audio_light(bool light);
 
 /* computer.c */
 struct snapshot {
