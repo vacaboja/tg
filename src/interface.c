@@ -781,7 +781,7 @@ static void init_main_window(struct main_window *w)
 	gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, FALSE, 0);
 
 	// Lift angle spin button
-	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 1);
+	w->la_spin_button = gtk_spin_button_new_with_range(MIN_LA, MAX_LA, 0.5);
 	gtk_box_pack_start(GTK_BOX(hbox), w->la_spin_button, FALSE, FALSE, 0);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->la_spin_button), w->la);
 	g_signal_connect(w->la_spin_button, "value_changed", G_CALLBACK(handle_la_change), w);
