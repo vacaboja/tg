@@ -179,7 +179,7 @@ static guint computer_terminated(struct main_window *w)
 	} else {
 		debug("Restarting computer");
 
-		struct computer *c = start_computer(w->nominal_sr, w->bph, w->la, w->cal, w->is_light);
+		struct computer *c = start_computer(w->nominal_sr, w->bph, w->la, w->cal, w->is_light, w->lpfCutoff, w->hpfCutoff);
 		if(!c) {
 			g_source_remove(w->kick_timeout);
 			g_source_remove(w->save_timeout);
@@ -951,6 +951,21 @@ guint refresh(struct main_window *w)
 	return FALSE;
 }
 
+gboolean interface_setFilter(struct main_window *w, gboolean bLpf, double freq){
+	if(w->computer){
+		if(computer_setFilter(w->computer, bLpf, freq)){
+			if(bLpf)
+				w->lpfCutoff = freq;
+			else
+				w->hpfCutoff = freq;
+			save_config(w);
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+
 static void computer_callback(void *w)
 {
 	gdk_threads_add_idle((GSourceFunc)refresh,w);
@@ -985,6 +1000,9 @@ static void start_interface(GApplication* app, void *p)
 	w->audioInputStr 	= g_strdup(DEFAULT_AUDIOINPUTSTRING);
 	w->audioInterfaceStr= g_strdup(DEFAULT_AUDIOINTERFACESTRING);
 
+	w->lpfCutoff = FILTER_CUTOFF;
+	w->hpfCutoff = FILTER_CUTOFF;
+
 	load_config(w);
 
 
@@ -1012,7 +1030,7 @@ static void start_interface(GApplication* app, void *p)
 
 	w->computer_timeout = 0;
 
-	w->computer = start_computer(w->nominal_sr, w->bph, w->la, w->cal, w->is_light);
+	w->computer = start_computer(w->nominal_sr, w->bph, w->la, w->cal, w->is_light, w->lpfCutoff, w->hpfCutoff);
 	if(!w->computer) {
 		error("Error starting computation thread");
 		g_application_quit(app);

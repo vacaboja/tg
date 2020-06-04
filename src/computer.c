@@ -234,7 +234,17 @@ void computer_destroy(struct computer *c)
 	free(c);
 }
 
-struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light)
+gboolean computer_setFilter(struct computer *c, gboolean bLpf, double freq){
+	if(c->pdata && c->pdata->buffers){
+		struct processing_buffers *p = c->pdata->buffers;
+		for(int i=0; i<NSTEPS; i++)
+			pb_setFilter(&p[i],bLpf, freq);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light, double lpfCutoff, double hpfCutoff)
 {
 
 
@@ -244,7 +254,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int
 	for(i=0; i<NSTEPS; i++) {
 		p[i].sample_rate = nominal_sr;
 		p[i].sample_count = nominal_sr * (1<<(i+first_step));
-		setup_buffers(&p[i]);
+		setup_buffers(&p[i], lpfCutoff, hpfCutoff);
 	}
 
 	struct processing_data *pd = malloc(sizeof(struct processing_data));
