@@ -17,6 +17,7 @@
 */
 
 #include "tg.h"
+#include "audio.h"
 
 static int count_events(struct snapshot *s)
 {
@@ -122,7 +123,7 @@ static void compute_events_cal(struct computer *c)
 		s->events[s->events_wp] = d->events[i];
 		debug("event at %llu\n",s->events[s->events_wp]);
 	}
-	s->events_from = get_timestamp(s->is_light);
+	s->events_from = get_timestamp();
 }
 
 static void compute_events(struct computer *c)
@@ -140,7 +141,7 @@ static void compute_events(struct computer *c)
 			}
 		s->events_from = p->timestamp - ceil(p->period);
 	} else {
-		s->events_from = get_timestamp(s->is_light);
+		s->events_from = get_timestamp();
 	}
 }
 
@@ -235,8 +236,7 @@ void computer_destroy(struct computer *c)
 
 struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light)
 {
-	if(light) nominal_sr /= 2;
-	set_audio_light(light);
+
 
 	struct processing_buffers *p = malloc(NSTEPS * sizeof(struct processing_buffers));
 	int first_step = light ? FIRST_STEP_LIGHT : FIRST_STEP;

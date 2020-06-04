@@ -112,7 +112,7 @@ static double amplitude_to_time(double lift_angle, double amp)
 	return asin(lift_angle / (2 * amp)) / M_PI;
 }
 
-static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
+static double draw_watch_icon(cairo_t *c, int signal, int happy, int light, int sampleRate)
 {
 	happy = !!happy;
 	cairo_set_line_width(c,3);
@@ -148,6 +148,15 @@ static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
 		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 + 0.3*l, OUTPUT_WINDOW_HEIGHT * 0.2 + l + 1);
 		cairo_stroke(c);
 	}
+
+	cairo_set_font_size(c, 12);
+	char sampleRateStr[1024];  sprintf(sampleRateStr,"%d", sampleRate );
+	cairo_text_extents_t extents;
+	cairo_text_extents(c,sampleRateStr,&extents);
+	cairo_move_to(c, (OUTPUT_WINDOW_HEIGHT - extents.width )* 0.5 , OUTPUT_WINDOW_HEIGHT * 0.7);
+
+	cairo_show_text(c,sampleRateStr);
+
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
@@ -194,7 +203,7 @@ static gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 	struct processing_buffers *p = snst->pb;
 	int old = snst->is_old;
 
-	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal, snst->is_light);
+	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal, snst->is_light, snst->nominal_sr);
 
 	cairo_text_extents_t extents;
 
@@ -530,7 +539,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 {
 	int i;
 	struct snapshot *snst = op->snst;
-	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp(snst->is_light);
+	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp();
 	double sweep;
 	int zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display

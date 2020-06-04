@@ -75,6 +75,9 @@ void load_config(struct main_window *w)
 	}
 
 	CONFIG_FIELDS(LOAD);
+
+	w->audioInputStr    = g_key_file_get_string(w->config_file, "tg", "audioInputStr", 	   NULL);
+	w->audioInterfaceStr= g_key_file_get_string(w->config_file, "tg", "audioInterfaceStr",  NULL);
 }
 
 void save_config(struct main_window *w)
@@ -88,6 +91,9 @@ void save_config(struct main_window *w)
 	w -> conf_data -> PLACE = w -> PLACE;
 
 	CONFIG_FIELDS(SAVE);
+
+	g_key_file_set_string(w->config_file, "tg", "audioInputStr",		w->audioInputStr);
+	g_key_file_set_string(w->config_file, "tg", "audioInterfaceStr",	w->audioInterfaceStr);
 
 #ifdef DEBUG
 	GError *ge = NULL;

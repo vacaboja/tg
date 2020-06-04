@@ -436,10 +436,10 @@ static int compute_period(struct processing_buffers *b, int bph)
 		}
 		new_estimate /= cycle;
 		if(new_estimate < estimate - delta || new_estimate > estimate + delta) {
-			debug("cycle = %d new_estimate = %f invalid peak\n",cycle,new_estimate/b->sample_rate);
+			//debug("cycle = %d new_estimate = %f invalid peak\n",cycle,new_estimate/b->sample_rate);
 			return 1;
 		} else
-			debug("cycle = %d new_estimate = %f\n",cycle,new_estimate/b->sample_rate);
+			//debug("cycle = %d new_estimate = %f\n",cycle,new_estimate/b->sample_rate);
 		if(inf > b->sample_count / 3) {
 			sum += new_estimate;
 			sq_sum += new_estimate * new_estimate;

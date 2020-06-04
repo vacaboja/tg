@@ -16,6 +16,9 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#ifndef SRC_TG_H_
+#define SRC_TG_H_
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +30,7 @@
 #include <stdarg.h>
 #include <gtk/gtk.h>
 #include <pthread.h>
+#include "audio.h"
 
 #ifdef __CYGWIN__
 #define _WIN32
@@ -43,7 +47,8 @@
 
 #define NSTEPS 4
 #define PA_SAMPLE_RATE 44100u
-#define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
+#define MAX_PA_SAMPLE_RATE 48000u
+#define PA_BUFF_SIZE (MAX_PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
 #define OUTPUT_FONT 40
 #define OUTPUT_WINDOW_HEIGHT 70
@@ -118,7 +123,7 @@ void cal_data_destroy(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
 
-/* audio.c */
+/* audio.c   moved to audio.h
 struct processing_data {
 	struct processing_buffers *buffers;
 	uint64_t last_tic;
@@ -131,6 +136,8 @@ uint64_t get_timestamp(int light);
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 void set_audio_light(bool light);
+*/
+
 
 /* computer.c */
 struct snapshot {
@@ -256,6 +263,10 @@ struct main_window {
 
 	guint kick_timeout;
 	guint save_timeout;
+
+	char * audioInputStr;
+	char * audioInterfaceStr;
+
 };
 
 extern int preset_bph[];
@@ -266,6 +277,14 @@ extern int testing;
 
 void print_debug(char *format,...);
 void error(char *format,...);
+
+
+//settings.c
+void show_preferences(GtkButton *button, struct main_window *w);
+#define DEFAULT_AUDIOINPUTSTRING "Default Audio Input"
+#define DEFAULT_AUDIOINTERFACESTRING "Default Audio Interface"
+#define DEFAULT_AUDIORATESTRING  "Default Sample Rate"
+#define USE_DEVICE_DEFAULT_AUDIORATE 0    //passes control of the sample rate to the device itself
 
 /* config.c */
 #define CONFIG_FIELDS(OP) \
@@ -287,3 +306,5 @@ void close_config(struct main_window *w);
 /* serializer.c */
 int write_file(FILE *f, struct snapshot **s, char **names, uint64_t cnt);
 int read_file(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt);
+
+#endif /* SRC_TG_H_ */

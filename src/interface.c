@@ -17,6 +17,8 @@
 */
 
 #include "tg.h"
+#include "gtk/gtkHelper.h"
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -35,6 +37,17 @@ void print_debug(char *format,...)
 	va_start(args,format);
 	vfprintf(stderr,format,args);
 	va_end(args);
+}
+
+
+void console(char *format,...)//this is better for eclipse development
+{
+#ifdef DEBUG
+	va_list args;
+	va_start(args,format);
+	vfprintf(stdout,format,args);
+	va_end(args);
+#endif
 }
 
 void error(char *format,...)
@@ -229,7 +242,8 @@ static void recompute(struct main_window *w)
 	w->computer_timeout = 0;
 	lock_computer(w->computer);
 	if(w->computer->recompute >= 0) {
-		if(w->is_light != w->computer->actv->is_light) {
+		if(w->is_light != w->computer->actv->is_light ||
+			w->nominal_sr != w->computer->actv->nominal_sr) {
 			kill_computer(w);
 		} else {
 			w->computer->bph = w->bph;
@@ -261,13 +275,36 @@ static void handle_calibrate(GtkCheckMenuItem *b, struct main_window *w)
 	}
 }
 
-static void handle_light(GtkCheckMenuItem *b, struct main_window *w)
+//audio_settings uses a button not menu item.
+//void handle_light(GtkCheckMenuItem *b, struct main_window *w)
+//{
+//	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
+
+void handle_light(GtkToggleButton *b, struct main_window *w)
 {
-	int button_state = gtk_check_menu_item_get_active(b) == TRUE;
+	int button_state = gtk_toggle_button_get_active(b) == TRUE;
 	if(button_state != w->is_light) {
 		w->is_light = button_state;
 		recompute(w);
 	}
+}
+
+int sampleRateChange( struct main_window *w, int newSampleRate){
+	if(newSampleRate != w->nominal_sr){
+		debug("sampleRateChange %d to %d\n", w->nominal_sr, newSampleRate);
+
+		terminate_portaudio();
+
+		w->nominal_sr = newSampleRate;
+		double real_sr;
+		if(start_portaudio(&w->nominal_sr, &real_sr, w->audioInputStr, w->audioInterfaceStr, FALSE)){
+			//if fails, try the default rate
+			w->nominal_sr = USE_DEVICE_DEFAULT_AUDIORATE; //will be set to actual default value in the method below
+			start_portaudio(&w->nominal_sr, &real_sr, w->audioInputStr, w->audioInterfaceStr, TRUE);
+		}
+		recompute(w);
+	}
+	return w->nominal_sr;
 }
 
 static void controls_active(struct main_window *w, int active)
@@ -440,7 +477,7 @@ static void handle_snapshot(GtkButton *b, struct main_window *w)
 	UNUSED(b);
 	if(w->active_snapshot->calibrate) return;
 	struct snapshot *s = snapshot_clone(w->active_snapshot);
-	s->timestamp = get_timestamp(s->is_light);
+	s->timestamp = get_timestamp();
 	add_new_tab(s, NULL, w);
 }
 
@@ -570,7 +607,7 @@ static void save_current(GtkMenuItem *m, struct main_window *w)
 	snapshot = snapshot_clone(snapshot);
 
 	if(!snapshot->timestamp)
-		snapshot->timestamp = get_timestamp(snapshot->is_light);
+		snapshot->timestamp = get_timestamp();
 
 	FILE *f = choose_file_for_save(w, "Save current display", name);
 
@@ -799,6 +836,16 @@ static void init_main_window(struct main_window *w)
 	gtk_menu_button_set_popup(GTK_MENU_BUTTON(command_menu_button), command_menu);
 	gtk_box_pack_end(GTK_BOX(hbox), command_menu_button, FALSE, FALSE, 0);
 	
+
+	//Audio
+
+	GtkWidget *restartAudio_item = gtk_menu_item_new_with_label("Audio Settings");
+	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), restartAudio_item);
+	g_signal_connect(restartAudio_item, "activate", G_CALLBACK(show_preferences), w);
+
+	addMenuSeperator(command_menu);
+
+
 	// ... Open
 	GtkWidget *open_item = gtk_menu_item_new_with_label("Open");
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), open_item);
@@ -818,12 +865,13 @@ static void init_main_window(struct main_window *w)
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), gtk_separator_menu_item_new());
 
+	/* moved to settings.c
 	// ... Light checkbox
 	GtkWidget *light_checkbox = gtk_check_menu_item_new_with_label("Light algorithm");
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), light_checkbox);
 	g_signal_connect(light_checkbox, "toggled", G_CALLBACK(handle_light), w);
 	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(light_checkbox), w->is_light);
-
+*/
 	// ... Calibrate checkbox
 	w->cal_button = gtk_check_menu_item_new_with_label("Calibrate");
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->cal_button);
@@ -917,10 +965,11 @@ static void start_interface(GApplication* app, void *p)
 
 	struct main_window *w = malloc(sizeof(struct main_window));
 
-	if(start_portaudio(&w->nominal_sr, &real_sr)) {
+	/*moved to after load_config
+	 if(start_portaudio(&w->nominal_sr, &real_sr)) {
 		g_application_quit(app);
 		return;
-	}
+	}*/
 
 	w->app = GTK_APPLICATION(app);
 
@@ -932,7 +981,29 @@ static void start_interface(GApplication* app, void *p)
 	w->calibrate = 0;
 	w->is_light = 0;
 
+	w->nominal_sr = PA_SAMPLE_RATE;
+	w->audioInputStr 	= g_strdup(DEFAULT_AUDIOINPUTSTRING);
+	w->audioInterfaceStr= g_strdup(DEFAULT_AUDIOINTERFACESTRING);
+
 	load_config(w);
+
+
+
+	if(start_portaudio(&w->nominal_sr, &real_sr, w->audioInputStr, w->audioInterfaceStr, FALSE)) {
+		//if it fails, try the default input
+		g_free(w->audioInputStr);	w->audioInputStr = g_strdup(DEFAULT_AUDIOINPUTSTRING);
+		if(start_portaudio(&w->nominal_sr, &real_sr, w->audioInputStr, w->audioInterfaceStr, FALSE)) {
+			//if that fails, try the default interface
+			g_free(w->audioInterfaceStr); w->audioInterfaceStr = g_strdup(DEFAULT_AUDIOINTERFACESTRING);
+			if(start_portaudio(&w->nominal_sr, &real_sr, w->audioInputStr, w->audioInterfaceStr, TRUE)){
+				//if that fails, quit.
+				g_application_quit(app);
+				return;
+			}
+
+		}
+	}
+
 
 	if(w->la < MIN_LA || w->la > MAX_LA) w->la = DEFAULT_LA;
 	if(w->bph < MIN_BPH || w->bph > MAX_BPH) w->bph = 0;
