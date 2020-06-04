@@ -18,6 +18,8 @@
 
 #include "tg.h"
 
+#define PERIOD_SHIFT  16
+
 struct filter {
 	double a0,a1,a2,b1,b2;
 };
@@ -542,17 +544,20 @@ static float tmean(float *x, int n)
 
 static void compute_phase(struct processing_buffers *p, double period)
 {
-	int i;
+	long i;
 	double x = 0, y = 0;
+	long long periodShifted = lround(period * (1L<<PERIOD_SHIFT)); //using integer arithmetic to avoid rounding
+	long long j; long long n;
 	for(i = 0; i < period; i++) {
-		int j;
-		p->waveform[i] = 0;
+
+		float total = 0.0;
 		for(j=0;;j++) {
-			int n = round(i + j * period);
-			if(n >= p->sample_count) break;
-			p->waveform[i] += p->samples[n];
+			n = i+((j * periodShifted) >> PERIOD_SHIFT);
+			if(n >= p->sample_count)
+				break;
+			total += p->samples[n];
 		}
-		p->waveform[i] /= j;
+		p->waveform[i] = total / j;
 	}
 	for(i=0; i<period; i++) {
 		double a = i * 2 * M_PI / period;
@@ -567,12 +572,12 @@ static void compute_waveform(struct processing_buffers *p, int wf_size)
 	int i;
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
+	float bin[(int)ceil(1 + p->sample_count / wf_size)];
 	for(i=0; i < wf_size; i++) {
-		float bin[(int)ceil(1 + p->sample_count / wf_size)];
 		int j;
-		double k = fmod(i+p->phase,wf_size);
+		int k = round(fmod(i+p->phase,wf_size)); //moving the round() here speeds up the loop below
 		for(j=0;;j++) {
-			int n = round(k+j*wf_size);
+			int n = k+j*wf_size;
 			if(n >= p->sample_count) break;
 			bin[j] = p->samples[n];
 		}
