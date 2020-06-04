@@ -69,16 +69,16 @@ static void run_filter(struct filter *f, float *buff, int size)
 void setup_buffers(struct processing_buffers *b)
 {
 	b->samples = fftwf_malloc(2 * b->sample_count * sizeof(float));
-	b->samples_sc = malloc(2 * b->sample_count * sizeof(float));
-	b->waveform = malloc(2 * b->sample_rate * sizeof(float));
-	b->waveform_sc = malloc(2 * b->sample_rate * sizeof(float));
+	b->samples_sc = fftwf_malloc(2 * b->sample_count * sizeof(float));
+	b->waveform = fftwf_malloc(2 * b->sample_rate * sizeof(float));
+	b->waveform_sc = fftwf_malloc(2 * b->sample_rate * sizeof(float));
 	b->fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
 	b->sc_fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
 	b->tic_wf = fftwf_malloc(b->sample_rate * sizeof(float));
 	b->slice_wf = fftwf_malloc(b->sample_rate * sizeof(float));
 	b->tic_fft = fftwf_malloc((b->sample_rate/2 + 1) * sizeof(fftwf_complex));
 	b->slice_fft = fftwf_malloc((b->sample_rate/2 + 1) * sizeof(fftwf_complex));
-	b->tic_c = malloc(2 * b->sample_count * sizeof(float));
+	b->tic_c = fftwf_malloc(2 * b->sample_count * sizeof(float));
 	b->plan_a = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
 	b->plan_b = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->sc_fft, b->samples_sc, FFTW_ESTIMATE);
 	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_rate, b->waveform, b->sc_fft, FFTW_ESTIMATE);
@@ -101,16 +101,16 @@ void setup_buffers(struct processing_buffers *b)
 void pb_destroy(struct processing_buffers *b)
 {
 	fftwf_free(b->samples);
-	free(b->samples_sc);
-	free(b->waveform);
-	free(b->waveform_sc);
+	fftwf_free(b->samples_sc);
+	fftwf_free(b->waveform);
+	fftwf_free(b->waveform_sc);
 	fftwf_free(b->fft);
 	fftwf_free(b->sc_fft);
 	fftwf_free(b->tic_wf);
 	fftwf_free(b->slice_wf);
 	fftwf_free(b->tic_fft);
 	fftwf_free(b->slice_fft);
-	free(b->tic_c);
+	fftwf_free(b->tic_c);
 	fftwf_destroy_plan(b->plan_a);
 	fftwf_destroy_plan(b->plan_b);
 	fftwf_destroy_plan(b->plan_c);
