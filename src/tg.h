@@ -36,7 +36,6 @@
 #define _WIN32
 #endif
 
-
 #define CONFIG_FILE_NAME "tg-timer.ini"
 
 #define FILTER_CUTOFF 3000
@@ -119,7 +118,7 @@ struct calibration_data {
 	uint64_t *events;
 };
 
-void setup_buffers(struct processing_buffers *b);
+void setup_buffers(struct processing_buffers *b, double lpfCutoff, double hpfCutoff);
 void pb_destroy(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
@@ -130,6 +129,8 @@ int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
 int absEventTime(int eventTime);
 int event_is_TIC_or_TOC(int eventTime);
+void setFilter(gboolean bLpf, double freq);
+void pb_setFilter(struct processing_buffers *b, gboolean bLpf, double freq);
 
 /* audio.c   moved to audio.h
 struct processing_data {
@@ -205,10 +206,11 @@ struct computer {
 struct snapshot *snapshot_clone(struct snapshot *s);
 void snapshot_destroy(struct snapshot *s);
 void computer_destroy(struct computer *c);
-struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light);
+struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light, double lpfCutoff, double hpfCutoff);
 void lock_computer(struct computer *c);
 void unlock_computer(struct computer *c);
 void compute_results(struct snapshot *s);
+gboolean computer_setFilter(struct computer *c, gboolean bLpf, double freq);
 
 /* output_panel.c */
 struct output_panel {
@@ -275,6 +277,9 @@ struct main_window {
 	char * audioInputStr;
 	char * audioInterfaceStr;
 
+	double lpfCutoff;
+	double hpfCutoff;
+
 };
 
 extern int preset_bph[];
@@ -285,7 +290,7 @@ extern int testing;
 
 void print_debug(char *format,...);
 void error(char *format,...);
-
+gboolean interface_setFilter(struct main_window *w, gboolean bLpf, double freq);
 
 //settings.c
 void show_preferences(GtkButton *button, struct main_window *w);
@@ -299,7 +304,9 @@ void show_preferences(GtkButton *button, struct main_window *w);
 	OP(bph, bph, int) \
 	OP(lift_angle, la, double) \
 	OP(calibration, cal, int) \
-	OP(light_algorithm, is_light, int)
+	OP(light_algorithm, is_light, int) \
+	OP(lpfCutoff, lpfCutoff, double) \
+	OP(hpfCutoff, hpfCutoff, double)
 
 struct conf_data {
 #define DEF(NAME,PLACE,TYPE) TYPE PLACE;

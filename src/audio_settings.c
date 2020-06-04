@@ -26,6 +26,15 @@ void handle_SampleRateChange(GtkComboBox *Combo, struct main_window *w);
 GtkWidget *audioSampleRateCombo;
 GtkWidget *audioInputCombo;
 
+static void handle_LPF_valueChanged(GtkRange *r, gpointer _w){
+	struct main_window * w = _w;
+	interface_setFilter(w, TRUE, gtk_range_get_value (r));
+}
+
+static void handle_HPF_valueChanged(GtkRange *r, gpointer _w){
+	struct main_window * w = _w;
+	interface_setFilter(w, FALSE, gtk_range_get_value (r));
+}
 
 
 
@@ -238,6 +247,11 @@ void show_preferences(GtkButton *button, struct main_window *w) {
 	gtk_grid_attach_next_to(GTK_GRID(prefs_grid), audioSampleRateCombo, sample_label, GTK_POS_RIGHT, 2, 1);
 
 
+	// PASS FILTER
+	GtkWidget *lpfScale = addScaleCallback("Low Pass Filter", 256,  8192, w->lpfCutoff, G_CALLBACK(handle_LPF_valueChanged), w );
+	gtk_grid_attach(GTK_GRID(prefs_grid),  lpfScale,  0, yPos++, 2, 1);
+	GtkWidget *hpfScale = addScaleCallback("High Pass Filter", 128, 8192, w->hpfCutoff, G_CALLBACK(handle_HPF_valueChanged), w );
+	gtk_grid_attach(GTK_GRID(prefs_grid),  hpfScale,  0, yPos++, 2, 1);
 
 	//check boxes
 
