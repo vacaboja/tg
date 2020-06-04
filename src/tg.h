@@ -36,6 +36,7 @@
 #define _WIN32
 #endif
 
+
 #define CONFIG_FILE_NAME "tg-timer.ini"
 
 #define FILTER_CUTOFF 3000
@@ -81,6 +82,11 @@
 
 #define UNUSED(X) (void)(X)
 
+#define TIC 1
+#define TOC -1
+#define BAD_EVENT_TIME -1
+#define NULL_EVENT_TIME 0
+
 /* algo.c */
 struct processing_buffers {
 	int sample_rate;
@@ -122,6 +128,8 @@ void setup_cal_data(struct calibration_data *cd);
 void cal_data_destroy(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
+int absEventTime(int eventTime);
+int event_is_TIC_or_TOC(int eventTime);
 
 /* audio.c   moved to audio.h
 struct processing_data {

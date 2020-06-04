@@ -929,7 +929,7 @@ guint refresh(struct main_window *w)
 		w->computer->curr = NULL;
 		s->trace_centering = trace_centering;
 		if(w->computer->clear_trace && !s->calibrate)
-			memset(s->events,0,s->events_count*sizeof(uint64_t));
+			memset(s->events,NULL_EVENT_TIME,s->events_count*sizeof(uint64_t));
 		if(s->calibrate && s->cal_state == 1 && s->cal_result != w->cal) {
 			w->cal = s->cal_result;
 			gtk_spin_button_set_value(GTK_SPIN_BUTTON(w->cal_spin_button), s->cal_result);

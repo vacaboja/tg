@@ -18,7 +18,7 @@
 
 #include "tg.h"
 
-cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
+cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow, *ticColor, *tocColor;
 
 static void define_color(cairo_pattern_t **gc,double r,double g,double b)
 {
@@ -34,6 +34,9 @@ void initialize_palette()
 	define_color(&blue,0,0,1);
 	define_color(&blueish,0,0,.5);
 	define_color(&yellow,1,1,0);
+
+	define_color(&ticColor, 0.5, 1, 1);//cyan
+	define_color(&tocColor, 1, 0.5, 1);//magenta
 }
 
 static void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
@@ -321,7 +324,8 @@ static void expose_waveform(
 			GtkWidget *da,
 			cairo_t *c,
 			int (*get_offset)(struct processing_buffers*),
-			double (*get_pulse)(struct processing_buffers*))
+			double (*get_pulse)(struct processing_buffers*),
+			cairo_pattern_t *tictocColor)
 {
 	cairo_init(c);
 
@@ -415,7 +419,7 @@ static void expose_waveform(
 
 		draw_graph(a,b,c,p,da);
 
-		cairo_set_source(c,old?yellow:white);
+		cairo_set_source(c,old?yellow: tictocColor);
 		cairo_stroke_preserve(c);
 		cairo_fill(c);
 
@@ -459,14 +463,14 @@ static double get_toc_pulse(struct processing_buffers *p)
 static gboolean tic_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	UNUSED(widget);
-	expose_waveform(op, op->tic_drawing_area, c, get_tic, get_tic_pulse);
+	expose_waveform(op, op->tic_drawing_area, c, get_tic, get_tic_pulse, ticColor);
 	return FALSE;
 }
 
 static gboolean toc_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	UNUSED(widget);
-	expose_waveform(op, op->toc_drawing_area, c, get_toc, get_toc_pulse);
+	expose_waveform(op, op->toc_drawing_area, c, get_toc, get_toc_pulse, tocColor);
 	return FALSE;
 }
 
@@ -496,14 +500,14 @@ static gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 		cairo_line_to(c, (p->tic - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
-		cairo_set_source(c,blueish);
+		cairo_set_source(c,ticColor);
 		cairo_fill(c);
 
 		cairo_move_to(c, (toc - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
 		cairo_line_to(c, (toc - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
-		cairo_set_source(c,blueish);
+		cairo_set_source(c,tocColor);
 		cairo_fill(c);
 	}
 
@@ -550,7 +554,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	} else {
 		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
 		zoom_factor = PAPERSTRIP_ZOOM;
-		if(snst->events_count && snst->events[snst->events_wp])
+		if(snst->events_count && snst->events[snst->events_wp]!=NULL_EVENT_TIME)
 			slope = - snst->rate * zoom_factor / (3600. * 24.);
 	}
 
@@ -564,9 +568,9 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	int stopped = 0;
 	if( snst->events_count &&
-	    snst->events[snst->events_wp] &&
-	    time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
-		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
+	    snst->events[snst->events_wp] != NULL_EVENT_TIME &&
+	    time > 5 * snst->nominal_sr + absEventTime(snst->events[snst->events_wp])) {
+		time = 5 * snst->nominal_sr + absEventTime(snst->events[snst->events_wp]);
 		stopped = 1;
 	}
 
@@ -627,8 +631,11 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	cairo_set_source(c,stopped?yellow:white);
 	for(i = snst->events_wp;;) {
-		if(!snst->events_count || !snst->events[i]) break;
-		double event = now - snst->events[i] + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
+		if(!snst->events_count || snst->events[i]==NULL_EVENT_TIME) break;
+		double event = now - absEventTime(snst->events[i]) + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
+		if(!stopped){
+			cairo_set_source(c, event_is_TIC_or_TOC(snst->events[i])==TIC?ticColor:tocColor);
+		}
 		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
 		int row = floor(event / sweep);
 		if(row >= height) break;
@@ -721,7 +728,7 @@ static void handle_clear_trace(GtkButton *b, struct output_panel *op)
 	if(op->computer) {
 		lock_computer(op->computer);
 		if(!op->snst->calibrate) {
-			memset(op->snst->events,0,op->snst->events_count*sizeof(uint64_t));
+			memset(op->snst->events,NULL_EVENT_TIME,op->snst->events_count*sizeof(uint64_t));
 			op->computer->clear_trace = 1;
 		}
 		unlock_computer(op->computer);
@@ -735,7 +742,7 @@ static void handle_center_trace(GtkButton *b, struct output_panel *op)
 	struct snapshot *snst = op->snst;
 	if(!snst || !snst->events)
 		return;
-	uint64_t last_ev = snst->events[snst->events_wp];
+	uint64_t last_ev = absEventTime(snst->events[snst->events_wp]);
 	double new_centering;
 	if(last_ev) {
 		double sweep;
