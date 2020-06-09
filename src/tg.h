@@ -245,6 +245,9 @@ void op_set_border(struct output_panel *op, int i);
 void op_destroy(struct output_panel *op);
 
 /* interface.c */
+
+#define POSITIONS 6
+
 struct main_window {
 	GtkApplication *app;
 
@@ -253,6 +256,7 @@ struct main_window {
 	GtkWidget *la_spin_button;
 	GtkWidget *cal_spin_button;
 	GtkWidget *snapshot_button;
+	GtkWidget *snapshot_POS_button[POSITIONS];
 	GtkWidget *snapshot_name;
 	GtkWidget *snapshot_name_entry;
 	GtkWidget *cal_button;

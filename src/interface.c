@@ -316,9 +316,14 @@ static void controls_active(struct main_window *w, int active)
 	gtk_widget_set_sensitive(w->cal_button, active);
 	if(active) {
 		gtk_widget_show(w->snapshot_button);
+		for (int i = 0; i < POSITIONS; i++)
+			gtk_widget_show( w->snapshot_POS_button[i]);
 		gtk_widget_hide(w->snapshot_name);
 	} else {
 		gtk_widget_hide(w->snapshot_button);
+		for (int i = 0; i < POSITIONS; i++)
+			if(w->snapshot_POS_button[i] != NULL)
+		gtk_widget_hide( w->snapshot_POS_button[i]);
 		gtk_widget_show(w->snapshot_name);
 	}
 }
@@ -480,6 +485,17 @@ static void handle_snapshot(GtkButton *b, struct main_window *w)
 	s->timestamp = get_timestamp();
 	add_new_tab(s, NULL, w);
 }
+
+static void handle_Positionsnapshot(GtkButton *b, struct main_window *w)
+{
+	UNUSED(b);
+	if(w->active_snapshot->calibrate) return;
+	struct snapshot *s = snapshot_clone(w->active_snapshot);
+	s->timestamp = get_timestamp();
+	char* name = (char *)gtk_button_get_label(b);
+	add_new_tab(s, name , w);
+}
+
 
 static void chooser_set_filters(GtkFileChooser *chooser)
 {
@@ -810,6 +826,22 @@ static void init_main_window(struct main_window *w)
 	gtk_widget_set_sensitive(w->snapshot_button, FALSE);
 	g_signal_connect(w->snapshot_button, "clicked", G_CALLBACK(handle_snapshot), w);
 
+	w->snapshot_POS_button[0] = gtk_button_new_with_label("DD");
+	w->snapshot_POS_button[1] = gtk_button_new_with_label("DU");
+	w->snapshot_POS_button[2] = gtk_button_new_with_label("3U");
+	w->snapshot_POS_button[3] = gtk_button_new_with_label("6U");
+	w->snapshot_POS_button[4] = gtk_button_new_with_label("9U");
+	w->snapshot_POS_button[5] = gtk_button_new_with_label("12U");
+	for (int i = 0; i < POSITIONS; i++) {
+			GtkWidget *button = w->snapshot_POS_button[i];
+			if(button != NULL){
+				gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 0);
+				gtk_widget_set_sensitive(button, FALSE);
+				g_signal_connect(button, "clicked", G_CALLBACK(handle_Positionsnapshot), w);
+			}
+		}
+
+
 	// Snapshot name field
 	GtkWidget *name_label = gtk_label_new("Current snapshot:");
 	w->snapshot_name_entry = gtk_entry_new();
@@ -948,6 +980,8 @@ guint refresh(struct main_window *w)
 		gtk_widget_queue_draw(w->notebook);
 	}
 	gtk_widget_set_sensitive(w->snapshot_button, photogenic);
+	for (int i = 0; i < POSITIONS; i++)
+		gtk_widget_set_sensitive(w->snapshot_POS_button[i], photogenic);
 	return FALSE;
 }
 
