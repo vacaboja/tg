@@ -17,6 +17,7 @@
 */
 
 #include "tg.h"
+#include "audio.h"
 #include <portaudio.h>
 
 /* Huge buffer of audio */
@@ -25,11 +26,111 @@ int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
 
+PaStream *stream = NULL;
+
 /* Data for PA callback to use */
 static struct callback_info {
 	int 	channels;	//!< Number of channels
-	bool	light;		//!< Light algorithm in use, copy half data
+	//bool	light;		//!< Light algorithm in use, copy half data
 } info;
+
+
+//audio interfaces
+int audio_num_interfaces(){
+	return Pa_GetHostApiCount();
+}
+
+const char * audio_interface_name(PaHostApiIndex i){
+	const PaHostApiInfo *hostInfo = Pa_GetHostApiInfo(i);
+	return (hostInfo!=NULL)?hostInfo->name : NULL;
+}
+
+PaHostApiIndex getHostAPIindex(const char* hostAPIname){
+	if(hostAPIname != NULL){
+		for(PaHostApiIndex i = 0; i < audio_num_interfaces(); i++){
+			const char* iname = audio_interface_name(i);
+			if(iname && strcmp(hostAPIname, iname)==0)
+				return i;
+		}
+	}
+	return Pa_GetDefaultHostApi();
+}
+
+
+
+
+//audio inputs
+int audio_num_inputs(const char* hostAPIname){
+	const PaHostApiInfo *hostInfo = Pa_GetHostApiInfo(getHostAPIindex(hostAPIname));
+	return (hostInfo)?hostInfo->deviceCount:0;
+}
+
+const char * audio_InputDeviceName(const char* hostAPIname, int hostDevIndex) {
+	PaDeviceIndex devIndex = Pa_HostApiDeviceIndexToDeviceIndex(getHostAPIindex(hostAPIname), hostDevIndex);
+	if(devIndex >= 0){
+		const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(devIndex);
+		if(deviceInfo)
+			return deviceInfo->name;
+	}
+	return NULL;
+}
+
+
+
+static const char * filterDev( PaDeviceIndex devIndex, int nominal_sample_rate){
+	const PaDeviceInfo *info = Pa_GetDeviceInfo(devIndex);
+		if (info->maxInputChannels > 0){
+			PaStreamParameters inputParameters;
+			inputParameters.channelCount = 2; // Stereo
+			inputParameters.sampleFormat = paFloat32;
+			// inputParameters.suggestedLatency = ;
+			inputParameters.hostApiSpecificStreamInfo = NULL;
+			inputParameters.device = devIndex;
+			if( nominal_sample_rate < 0   || Pa_IsFormatSupported( &inputParameters, NULL, nominal_sample_rate ))
+				return info->name;
+			debug("%d is not supported by dev %s \n", nominal_sample_rate, info->name);
+		}
+		return NULL;
+	}
+//filterHostDev
+
+static gboolean audio_device_supports_rate(int devIndex, int nominal_sr){
+
+	if(devIndex >= 0){
+		return filterDev(devIndex, nominal_sr)!=NULL;
+	}
+	return FALSE;
+}
+
+
+/*
+ *  returns hostDevIndex
+*/
+static PaDeviceIndex audio_deviceIndex(const char *hostAPIname, const char *hostdeviceName){
+	PaHostApiIndex hostApiIndex = getHostAPIindex(hostAPIname);
+	if (!hostdeviceName || !strcmp(hostdeviceName,DEFAULT_AUDIOINPUTSTRING)){
+		const PaHostApiInfo *hostInfo = Pa_GetHostApiInfo(hostApiIndex);
+		if(hostInfo!=NULL){
+			return  hostInfo->defaultInputDevice;
+		}
+	}
+	int nInputs = audio_num_inputs(hostAPIname);
+	for(int hostDevIndex=0; hostDevIndex<nInputs; hostDevIndex++){
+		const char *name = audio_InputDeviceName(hostAPIname, hostDevIndex);
+		if(name && !strcmp(name, hostdeviceName))
+			return Pa_HostApiDeviceIndexToDeviceIndex(hostApiIndex, hostDevIndex);
+	}
+	return -1;
+}
+
+gboolean audio_devicename_supports_rate(const char *hostAPIname, const char* hostDevName, int nominal_sr){
+	int devIndex = audio_deviceIndex(hostAPIname, hostDevName);
+	gboolean supports =  audio_device_supports_rate(devIndex, nominal_sr);
+	 //debug("supports_rate %s %s %d %d %d \n", hostAPIname, hostDevName, devIndex, nominal_sr, supports);
+	 return supports;
+}
+
+
 
 static int paudio_callback(const void *input_buffer,
 			   void *output_buffer,
@@ -46,41 +147,21 @@ static int paudio_callback(const void *input_buffer,
 	const struct callback_info *info = data;
 	unsigned wp = write_pointer;
 
-	if (info->light) {
-		static bool even = true;
-		/* Copy every other sample.  It would be much more efficient to
-		 * just drop the sample rate if the sound hardware supports it.
-		 * This would also avoid the aliasing effects that this simple
-		 * decimation without a low-pass filter causes.  */
-		if(info->channels == 1) {
-			for(i = even ? 0 : 1; i < frame_count; i += 2) {
-				pa_buffers[wp++] = input_samples[i];
-				if (wp >= PA_BUFF_SIZE) wp -= PA_BUFF_SIZE;
-			}
-		} else {
-			for(i = even ? 0 : 2; i < frame_count*2; i += 4) {
-				pa_buffers[wp++] = input_samples[i] + input_samples[i+1];
-				if (wp >= PA_BUFF_SIZE) wp -= PA_BUFF_SIZE;
-			}
-		}
-		/* Keep track if we have processed an even number of frames, so
-		 * we know if we should drop the 1st or 2nd frame next callback. */
-		if(frame_count % 2) even = !even;
+
+	const unsigned len = MIN(frame_count, PA_BUFF_SIZE - wp);
+	if(info->channels == 1) {
+		memcpy(pa_buffers + wp, input_samples, len * sizeof(*pa_buffers));
+		if(len < frame_count)
+			memcpy(pa_buffers, input_samples + len, (frame_count - len) * sizeof(*pa_buffers));
 	} else {
-		const unsigned len = MIN(frame_count, PA_BUFF_SIZE - wp);
-		if(info->channels == 1) {
-			memcpy(pa_buffers + wp, input_samples, len * sizeof(*pa_buffers));
-			if(len < frame_count)
-				memcpy(pa_buffers, input_samples + len, (frame_count - len) * sizeof(*pa_buffers));
-		} else {
-			for(i = 0; i < len; i++)
-				pa_buffers[wp + i] = input_samples[2u*i] + input_samples[2u*i + 1u];
-			if(len < frame_count)
-				for(i = len; i < frame_count; i++)
-					pa_buffers[i - len] = input_samples[2u*i] + input_samples[2u*i + 1u];
-		}
-		wp = (wp + frame_count) % PA_BUFF_SIZE;
+		for(i = 0; i < len; i++)
+			pa_buffers[wp + i] = input_samples[2u*i] + input_samples[2u*i + 1u];
+		if(len < frame_count)
+			for(i = len; i < frame_count; i++)
+				pa_buffers[i - len] = input_samples[2u*i] + input_samples[2u*i + 1u];
 	}
+	wp = (wp + frame_count) % PA_BUFF_SIZE;
+
 	pthread_mutex_lock(&audio_mutex);
 	write_pointer = wp;
 	timestamp += frame_count;
@@ -88,41 +169,105 @@ static int paudio_callback(const void *input_buffer,
 	return 0;
 }
 
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
+
+void resetBuffers(){
+	pthread_mutex_lock(&audio_mutex);
+		memset(pa_buffers, 0, sizeof(pa_buffers));
+		write_pointer = 0;
+
+		timestamp = 0;
+
+	pthread_mutex_unlock(&audio_mutex);
+}
+
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate,
+					char* hostdeviceName, char*hostAPIname,
+					gboolean bShowError)
 {
-	PaStream *stream;
+
+    debug("start_portaudio %d   %s   %s \n", *nominal_sample_rate, hostAPIname, hostdeviceName);
+
 
 	if(pthread_mutex_init(&audio_mutex,NULL)) {
 		error("Failed to setup audio mutex");
 		return 1;
 	}
 
+
+
 	PaError err = Pa_Initialize();
 	if(err!=paNoError)
 		goto error;
 
-#ifdef DEBUG
-	if(testing) {
-		*nominal_sample_rate = PA_SAMPLE_RATE;
-		*real_sample_rate = PA_SAMPLE_RATE;
-		goto end;
-	}
-#endif
+	resetBuffers();
 
-	PaDeviceIndex default_input = Pa_GetDefaultInputDevice();
-	if(default_input == paNoDevice) {
-		error("No default audio input device found");
-		return 1;
+
+	PaStreamParameters inputParameters;
+	inputParameters.channelCount = 2; // Stereo
+	inputParameters.sampleFormat = paFloat32;
+	// inputParameters.suggestedLatency = ;
+	inputParameters.hostApiSpecificStreamInfo = NULL;
+	inputParameters.device = Pa_GetDefaultInputDevice();
+
+	debug("Default Input Device %d\n",inputParameters.device);
+
+
+
+
+	PaDeviceIndex selectedDeviceIndex = audio_deviceIndex(hostAPIname, hostdeviceName);
+	if(selectedDeviceIndex >= 0)
+		inputParameters.device = selectedDeviceIndex;
+
+	if(inputParameters.device == paNoDevice) {
+			error("No default audio input device found");
+			return 1;
 	}
-	long channels = Pa_GetDeviceInfo(default_input)->maxInputChannels;
+
+	const PaDeviceInfo *deviceInfo = Pa_GetDeviceInfo(inputParameters.device);
+	long long channels = deviceInfo->maxInputChannels;
 	if(channels == 0) {
-		error("Default audio device has no input channels");
+		error(" audio device has no input channels");
 		return 1;
 	}
 	if(channels > 2) channels = 2;
-	info.channels = channels;
-	info.light = false;
-	err = Pa_OpenDefaultStream(&stream,channels,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,&info);
+
+	if(*nominal_sample_rate == USE_DEVICE_DEFAULT_AUDIORATE){
+		*nominal_sample_rate = round(deviceInfo->defaultSampleRate);
+		if(*nominal_sample_rate > MAX_PA_SAMPLE_RATE)
+			*nominal_sample_rate = MAX_PA_SAMPLE_RATE;
+		debug("Using Device defaultSampleRate %d\n", *nominal_sample_rate);
+	}
+
+	inputParameters.channelCount = info.channels = channels;
+
+	if(inputParameters.device == Pa_GetDefaultInputDevice()){
+		debug("Pa_OpenDefaultStream dev:%d channels:%d\n",inputParameters.device, inputParameters.channelCount);
+		err = Pa_OpenDefaultStream(&stream,
+				inputParameters.channelCount,0,
+				inputParameters.sampleFormat,
+				*nominal_sample_rate,
+				paFramesPerBufferUnspecified,
+				paudio_callback,
+				&info);
+
+	}else{
+
+
+	//if(audioDeviceName != NULL){
+	    debug("Pa_OpenStream dev:%d channels:%d\n",inputParameters.device, inputParameters.channelCount);
+	    err = Pa_OpenStream(&stream,
+							&inputParameters,
+							NULL,							// outputParameters
+							*nominal_sample_rate,
+							paFramesPerBufferUnspecified,	// Frames per buffer
+							paNoFlag,
+							paudio_callback,
+							&info
+							);
+	}
+	/*if(err==paNoError)
+		workingAudioDeviceName = g_strdup(audioDeviceName);
+	*/
 	if(err!=paNoError)
 		goto error;
 
@@ -131,23 +276,39 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 		goto error;
 
 	const PaStreamInfo *info = Pa_GetStreamInfo(stream);
-	*nominal_sample_rate = PA_SAMPLE_RATE;
 	*real_sample_rate = info->sampleRate;
-#ifdef DEBUG
-end:
-#endif
+
+
+
 	debug("sample rate: nominal = %d real = %f\n",*nominal_sample_rate,*real_sample_rate);
 
 	return 0;
 
 error:
-	error("Error opening audio input: %s", Pa_GetErrorText(err));
+
+	if(bShowError)
+		error("Error opening audio input: %s", Pa_GetErrorText(err));
+	else
+		debug("Error attempting audio input: %s\n", Pa_GetErrorText(err));
 	return 1;
 }
 
 int terminate_portaudio()
 {
+
 	debug("Closing portaudio\n");
+
+	if(stream){
+		PaError closeErr = Pa_CloseStream(stream);
+		if(closeErr != paNoError) {
+			error("Error closing audio: %s", Pa_GetErrorText(closeErr));
+			return 1;
+		}
+	}
+	stream = NULL;
+
+	///free (lpf);  lpf = NULL; //this wasn't working as they may be being used in fill_buffers
+	///free (hpf);  hpf = NULL;
 	PaError err = Pa_Terminate();
 	if(err != paNoError) {
 		error("Error closing audio: %s", Pa_GetErrorText(err));
@@ -156,10 +317,10 @@ int terminate_portaudio()
 	return 0;
 }
 
-uint64_t get_timestamp(int light)
+uint64_t get_timestamp()
 {
 	pthread_mutex_lock(&audio_mutex);
-	uint64_t ts = light ? timestamp / 2 : timestamp;
+	uint64_t ts = timestamp;
 	pthread_mutex_unlock(&audio_mutex);
 	return ts;
 }
@@ -170,9 +331,6 @@ static void fill_buffers(struct processing_buffers *ps, int light)
 	uint64_t ts = timestamp;
 	int wp = write_pointer;
 	pthread_mutex_unlock(&audio_mutex);
-
-	if(light)
-		ts /= 2;
 
 	int i;
 	for(i = 0; i < NSTEPS; i++) {
@@ -225,21 +383,4 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 	return NSTEPS;
 }
 
-/** Change to light mode
- *
- * Call to enable or disable light mode.  Changing the mode will empty the audio
- * buffer.  Nothing will happen if the mode doesn't actually change.
- *
- * @param light True for light mode, false for normal
- */
-void set_audio_light(bool light)
-{
-	if(info.light != light) {
-		pthread_mutex_lock(&audio_mutex);
-		info.light = light;
-		memset(pa_buffers, 0, sizeof(pa_buffers));
-		write_pointer = 0;
-		timestamp = 0;
-		pthread_mutex_unlock(&audio_mutex);
-	}
-}
+
