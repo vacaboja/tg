@@ -18,7 +18,7 @@
 
 #include "tg.h"
 
-#define PERIOD_SHIFT  16
+#define PERIOD_SHIFT  15
 
 struct filter {
 	double a0,a1,a2,b1,b2;
