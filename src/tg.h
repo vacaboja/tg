@@ -36,13 +36,6 @@
 #define _WIN32
 #endif
 
-#ifdef ECLIPSE
-#define VERSION "0.5.2"
-#define PROGRAM_NAME "TG"
-#define PACKAGE "TG"
-
-
-#endif
 
 #define CONFIG_FILE_NAME "tg-timer.ini"
 
