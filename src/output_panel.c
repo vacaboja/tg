@@ -18,7 +18,13 @@
 
 #include "tg.h"
 
+#define MAG_INC "Mag+"
+#define MAG_DEC "Mag-"
+#define MAG_SCALE 2.0
+float paperstrip_zoom_var = 1.0;
+
 cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow, *ticColor, *tocColor;
+
 
 static void define_color(cairo_pattern_t **gc,double r,double g,double b)
 {
@@ -545,17 +551,18 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	struct snapshot *snst = op->snst;
 	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp();
 	double sweep;
-	int zoom_factor;
+	double zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display
 	if(snst->calibrate) {
+		paperstrip_zoom_var = 1.0;
 		sweep = snst->nominal_sr;
 		zoom_factor = PAPERSTRIP_ZOOM_CAL;
 		slope = (double) snst->cal * zoom_factor / (10 * 3600 * 24);
 	} else {
 		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
-		zoom_factor = PAPERSTRIP_ZOOM;
+		zoom_factor = PAPERSTRIP_ZOOM * paperstrip_zoom_var;
 		if(snst->events_count && snst->events[snst->events_wp]!=NULL_EVENT_TIME)
-			slope = - snst->rate * zoom_factor / (3600. * 24.);
+			slope = - snst->rate * PAPERSTRIP_ZOOM / (3600. * 24.);
 	}
 
 	cairo_init(c);
@@ -621,7 +628,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	double last_line = fmod(now/sweep, ten_s);
 	int last_tenth = floor(now/(sweep*ten_s));
 	for(i=0;;i++) {
-		double y = 0.5 + round(last_line + i*ten_s);
+		double y = 0.5 + round((last_line + i*ten_s)*paperstrip_zoom_var);
 		if(y > height) break;
 		cairo_move_to(c, .5, y);
 		cairo_line_to(c, width-.5, y);
@@ -632,26 +639,31 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_set_source(c,stopped?yellow:white);
 	for(i = snst->events_wp;;) {
 		if(!snst->events_count || snst->events[i]==NULL_EVENT_TIME) break;
-		double event = now - absEventTime(snst->events[i]) + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
+		double event = now - absEventTime(snst->events[i]) + snst->trace_centering  + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
 		if(!stopped){
 			cairo_set_source(c, event_is_TIC_or_TOC(snst->events[i])==TIC?ticColor:tocColor);
 		}
-		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
-		int row = floor(event / sweep);
+		double phase = fmod(event, sweep) / sweep;   // 0.0 -> 1.0
+		double cycle =  strip_width * ( 0.5 + (phase - 0.5) * zoom_factor);
+		int column = floor(fmod(cycle, strip_width));
+
+
+		int row = floor(event * paperstrip_zoom_var / sweep);
 		if(row >= height) break;
+		float tickSize = fmax(1.0, paperstrip_zoom_var);
 		cairo_move_to(c,column,row);
-		cairo_line_to(c,column+1,row);
-		cairo_line_to(c,column+1,row+1);
-		cairo_line_to(c,column,row+1);
+		cairo_line_to(c,column+tickSize,row);
+		cairo_line_to(c,column+tickSize,row+tickSize);
+		cairo_line_to(c,column,row+tickSize);
 		cairo_line_to(c,column,row);
 		cairo_fill(c);
 		if(column < width - strip_width && row > 0) {
 			column += strip_width;
 			row -= 1;
 			cairo_move_to(c,column,row);
-			cairo_line_to(c,column+1,row);
-			cairo_line_to(c,column+1,row+1);
-			cairo_line_to(c,column,row+1);
+			cairo_line_to(c,column+tickSize,row);
+			cairo_line_to(c,column+tickSize,row+tickSize);
+			cairo_line_to(c,column,row+tickSize);
 			cairo_line_to(c,column,row);
 			cairo_fill(c);
 		}
@@ -742,15 +754,15 @@ static void handle_center_trace(GtkButton *b, struct output_panel *op)
 	struct snapshot *snst = op->snst;
 	if(!snst || !snst->events)
 		return;
-	uint64_t last_ev = absEventTime(snst->events[snst->events_wp]);
+	uint64_t last_ev =  absEventTime(snst->events[snst->events_wp]);
 	double new_centering;
 	if(last_ev) {
 		double sweep;
 		if(snst->calibrate)
-			sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
+			sweep = (double) snst->nominal_sr;
 		else
-			sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-		new_centering = fmod(last_ev + .5*sweep , sweep);
+			sweep = snst->sample_rate * 3600. / snst->guessed_bph;
+		new_centering = fmod(last_ev + .5 * sweep , sweep);
 	} else 
 		new_centering = 0;
 	snst->trace_centering = new_centering;
@@ -762,10 +774,10 @@ static void shift_trace(struct output_panel *op, double direction)
 	struct snapshot *snst = op->snst;
 	double sweep;
 	if(snst->calibrate)
-		sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
+		sweep = (double) snst->nominal_sr;
 	else
-		sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-	snst->trace_centering = fmod(snst->trace_centering + sweep * (1.+.1*direction), sweep);
+		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
+	snst->trace_centering = fmod(snst->trace_centering + sweep * (1.+.1*direction/(PAPERSTRIP_ZOOM * paperstrip_zoom_var)), sweep);
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
@@ -779,6 +791,18 @@ static void handle_right(GtkButton *b, struct output_panel *op)
 {
 	UNUSED(b);
 	shift_trace(op,1);
+}
+
+static void handle_zoom(GtkButton *b, struct output_panel *op)
+{
+
+	UNUSED(b);
+
+	if( strcmp(gtk_button_get_label(b) , MAG_INC)==0)
+		paperstrip_zoom_var *= MAG_SCALE;
+	else
+	    paperstrip_zoom_var /= MAG_SCALE;
+	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
 void op_set_snapshot(struct output_panel *op, struct snapshot *snst)
@@ -835,6 +859,16 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	GtkWidget *left_button = gtk_button_new_with_label("<");
 	gtk_box_pack_start(GTK_BOX(hbox3), left_button, TRUE, TRUE, 0);
 	g_signal_connect (left_button, "clicked", G_CALLBACK(handle_left), op);
+
+
+	GtkWidget *magInc_button = gtk_button_new_with_label(MAG_INC);
+	gtk_box_pack_start(GTK_BOX(hbox3), magInc_button, TRUE, TRUE, 0);
+	g_signal_connect (magInc_button, "clicked", G_CALLBACK(handle_zoom), op);
+	// < button
+	GtkWidget *magDec_button = gtk_button_new_with_label(MAG_DEC);
+	gtk_box_pack_start(GTK_BOX(hbox3), magDec_button, TRUE, TRUE, 0);
+	g_signal_connect (magDec_button, "clicked", G_CALLBACK(handle_zoom), op);
+
 
 	// CLEAR button
 	if(comp) {
