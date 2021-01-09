@@ -83,7 +83,7 @@ struct processing_buffers {
 	float *samples, *samples_sc, *waveform, *waveform_sc, *tic_wf, *slice_wf, *tic_c;
 	fftwf_complex *fft, *sc_fft, *tic_fft, *slice_fft;
 	fftwf_plan plan_a, plan_b, plan_c, plan_d, plan_e, plan_f, plan_g;
-	struct filter *hpf, *lpf;
+	struct filter *lpf;
 	double period,sigma,be,waveform_max,phase,tic_pulse,toc_pulse,amp;
 	double cal_phase;
 	int waveform_max_i;
@@ -108,6 +108,10 @@ struct calibration_data {
 	uint64_t *events;
 };
 
+struct filter {
+	double a0,a1,a2,b1,b2;
+};
+
 void setup_buffers(struct processing_buffers *b);
 void pb_destroy(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
@@ -117,6 +121,7 @@ void setup_cal_data(struct calibration_data *cd);
 void cal_data_destroy(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
+void make_hp(struct filter *f, double freq);
 
 /* audio.c */
 struct processing_data {
@@ -130,7 +135,7 @@ int terminate_portaudio();
 uint64_t get_timestamp(int light);
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
-void set_audio_light(bool light);
+void set_audio_light(bool light, int sample_rate);
 
 /* computer.c */
 struct snapshot {

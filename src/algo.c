@@ -18,10 +18,6 @@
 
 #include "tg.h"
 
-struct filter {
-	double a0,a1,a2,b1,b2;
-};
-
 static int int_cmp(const void *a, const void *b)
 {
 	int x = *(int*)a;
@@ -29,7 +25,7 @@ static int int_cmp(const void *a, const void *b)
 	return x<y ? -1 : x>y ? 1 : 0;
 }
 
-static void make_hp(struct filter *f, double freq)
+void make_hp(struct filter *f, double freq)
 {
 	double K = tan(M_PI * freq);
 	double norm = 1 / (1 + K * sqrt(2) + K * K);
@@ -84,8 +80,6 @@ void setup_buffers(struct processing_buffers *b)
 	b->plan_e = fftwf_plan_dft_r2c_1d(b->sample_rate, b->tic_wf, b->tic_fft, FFTW_ESTIMATE);
 	b->plan_f = fftwf_plan_dft_r2c_1d(b->sample_rate, b->slice_wf, b->slice_fft, FFTW_ESTIMATE);
 	b->plan_g = fftwf_plan_dft_c2r_1d(b->sample_rate, b->slice_fft, b->slice_wf, FFTW_ESTIMATE);
-	b->hpf = malloc(sizeof(struct filter));
-	make_hp(b->hpf,(double)FILTER_CUTOFF/b->sample_rate);
 	b->lpf = malloc(sizeof(struct filter));
 	make_lp(b->lpf,(double)FILTER_CUTOFF/b->sample_rate);
 	b->events = malloc(EVENTS_MAX * sizeof(uint64_t));
@@ -116,7 +110,6 @@ void pb_destroy(struct processing_buffers *b)
 	fftwf_destroy_plan(b->plan_e);
 	fftwf_destroy_plan(b->plan_f);
 	fftwf_destroy_plan(b->plan_g);
-	free(b->hpf);
 	free(b->lpf);
 	free(b->events);
 #ifdef DEBUG
@@ -301,7 +294,6 @@ static void prepare_data(struct processing_buffers *b, int run_noise_suppressor)
 	int i;
 
 	memset(b->samples + b->sample_count, 0, b->sample_count * sizeof(float));
-	run_filter(b->hpf, b->samples, b->sample_count);
 	if(run_noise_suppressor) noise_suppressor(b);
 
 	for(i=0; i < b->sample_count; i++)

@@ -21,18 +21,51 @@
 
 /* Huge buffer of audio */
 float pa_buffers[PA_BUFF_SIZE];
-int write_pointer = 0;
+unsigned int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
 
 /* Audio input stream object */
 static PaStream *stream;
 
+/** A biquadratic filter.
+ * Saves the delay taps to allow the filter to continue across multiple calls. */
+static struct biquad_filter {
+	struct filter f;	//!< Filter coefficients, F(z) = a(z) / b(z)
+	double        z1, z2;	//!< Delay taps
+} audio_hpf;
+
 /* Data for PA callback to use */
 static struct callback_info {
 	int 	channels;	//!< Number of channels
 	bool	light;		//!< Light algorithm in use, copy half data
 } info;
+
+/* Initialize audio filter */
+static void init_audio_hpf(struct biquad_filter *filter, double cutoff, double sample_rate)
+{
+	make_hp(&filter->f, cutoff/sample_rate);
+	filter->z1 = 0.0;
+	filter->z2 = 0.0;
+}
+
+/* Apply a biquadratic filter to data.  The delay values are updated in f, so
+ * that it is possible to process data in chunks using multiple calls.
+ */
+static void apply_biquad(struct biquad_filter *f, float *data, unsigned int count)
+{
+	unsigned int i;
+	double z1 = f->z1, z2 = f->z2;
+	for(i=0; i<count; i++) {
+		double in = data[i];
+		double out = in * f->f.a0 + z1;
+		z1 = in * f->f.a1 + z2 - f->f.b1 * out;
+		z2 = in * f->f.a2 - f->f.b2 * out;
+		data[i] = out;
+	}
+	f->z1 = z1;
+	f->z2 = z2;
+}
 
 static int paudio_callback(const void *input_buffer,
 			   void *output_buffer,
@@ -84,6 +117,15 @@ static int paudio_callback(const void *input_buffer,
 		}
 		wp = (wp + frame_count) % PA_BUFF_SIZE;
 	}
+
+	/* Apply HPF to new data */
+	if(write_pointer < wp) {
+		apply_biquad(&audio_hpf, pa_buffers + write_pointer, wp - write_pointer);
+	} else {
+		apply_biquad(&audio_hpf, pa_buffers + write_pointer, PA_BUFF_SIZE - write_pointer);
+		apply_biquad(&audio_hpf, pa_buffers, wp);
+	}
+
 	pthread_mutex_lock(&audio_mutex);
 	write_pointer = wp;
 	timestamp += frame_count;
@@ -127,13 +169,15 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool lig
 	if(err!=paNoError)
 		goto error;
 
-	err = Pa_StartStream(stream);
-	if(err!=paNoError)
-		goto error;
-
 	const PaStreamInfo *info = Pa_GetStreamInfo(stream);
 	*nominal_sample_rate = PA_SAMPLE_RATE;
 	*real_sample_rate = info->sampleRate;
+
+	init_audio_hpf(&audio_hpf, FILTER_CUTOFF, PA_SAMPLE_RATE / (light ? 2 : 1));
+
+	err = Pa_StartStream(stream);
+	if(err!=paNoError)
+		goto error;
 #ifdef DEBUG
 end:
 #endif
@@ -232,8 +276,10 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
  * buffer.  Nothing will happen if the mode doesn't actually change.
  *
  * @param light True for light mode, false for normal
+ * @param sample_rate Nominal sampling rate.  Should take into account any
+ * downsampling done in light mode
  */
-void set_audio_light(bool light)
+void set_audio_light(bool light, int sample_rate)
 {
 	if(info.light != light) {
 		Pa_StopStream(stream);
@@ -246,6 +292,7 @@ void set_audio_light(bool light)
 
 		pthread_mutex_unlock(&audio_mutex);
 
+		init_audio_hpf(&audio_hpf, FILTER_CUTOFF, sample_rate);
 		PaError err = Pa_StartStream(stream);
 		if(err != paNoError)
 			error("Error re-starting audio input: %s", Pa_GetErrorText(err));
