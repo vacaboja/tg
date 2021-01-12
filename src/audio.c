@@ -25,6 +25,9 @@ int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
 
+/* Audio input stream object */
+static PaStream *stream;
+
 /* Data for PA callback to use */
 static struct callback_info {
 	int 	channels;	//!< Number of channels
@@ -90,8 +93,6 @@ static int paudio_callback(const void *input_buffer,
 
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 {
-	PaStream *stream;
-
 	if(pthread_mutex_init(&audio_mutex,NULL)) {
 		error("Failed to setup audio mutex");
 		return 1;
@@ -235,11 +236,18 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 void set_audio_light(bool light)
 {
 	if(info.light != light) {
+		Pa_StopStream(stream);
 		pthread_mutex_lock(&audio_mutex);
+
 		info.light = light;
 		memset(pa_buffers, 0, sizeof(pa_buffers));
 		write_pointer = 0;
 		timestamp = 0;
+
 		pthread_mutex_unlock(&audio_mutex);
+
+		PaError err = Pa_StartStream(stream);
+		if(err != paNoError)
+			error("Error re-starting audio input: %s", Pa_GetErrorText(err));
 	}
 }
