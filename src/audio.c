@@ -91,7 +91,7 @@ static int paudio_callback(const void *input_buffer,
 	return 0;
 }
 
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light)
 {
 	if(pthread_mutex_init(&audio_mutex,NULL)) {
 		error("Failed to setup audio mutex");
@@ -122,7 +122,7 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	}
 	if(channels > 2) channels = 2;
 	info.channels = channels;
-	info.light = false;
+	info.light = light;
 	err = Pa_OpenDefaultStream(&stream,channels,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,&info);
 	if(err!=paNoError)
 		goto error;
