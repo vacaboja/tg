@@ -549,9 +549,19 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	GtkAllocation temp;
 	gtk_widget_get_allocation (op->paperstrip_drawing_area, &temp);
+	int width, height;
 
-	int width = temp.width;
-	int height = temp.height;
+	/* The paperstrip is coded to be vertical; horizontal uses cairo to rotate it. */
+	if(op->vertical_layout) {
+		width = temp.width;
+		height = temp.height;
+	} else {
+		width = temp.height;
+		height = temp.width;
+
+		cairo_translate(c, height, 0);
+		cairo_rotate(c, M_PI/2);
+	}
 
 	int stopped = 0;
 	if( snst->events_count &&
@@ -790,7 +800,7 @@ static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
 
 	// Paperstrip
 	op->paperstrip_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->paperstrip_drawing_area, 300, 0);
+	gtk_widget_set_size_request(op->paperstrip_drawing_area, 150, 150);
 	gtk_box_pack_start(GTK_BOX(vbox), op->paperstrip_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
 	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
@@ -831,7 +841,7 @@ static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
  * them.  Vertical controls how the waves are stacked.  */
 static GtkWidget* create_waveforms(struct output_panel *op, bool vertical)
 {
-	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+	GtkWidget *box = gtk_box_new(vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, 10);
 
 	// Tic waveform area
 	op->tic_drawing_area = gtk_drawing_area_new();
@@ -868,10 +878,23 @@ static GtkWidget* create_waveforms(struct output_panel *op, bool vertical)
  * horizontal paperstrip orientation.  Puts container in the panel and shows it. */
 static void place_displays(struct output_panel *op, GtkWidget *paperstrip, GtkWidget *waveforms, bool vertical)
 {
-	op->displays = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+	op->vertical_layout = vertical;
+
+	op->displays = gtk_paned_new(vertical ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
 	gtk_paned_set_wide_handle(GTK_PANED(op->displays), TRUE);
-	gtk_paned_pack1(GTK_PANED(op->displays), paperstrip, FALSE, FALSE);
+
+	gtk_paned_pack1(GTK_PANED(op->displays), paperstrip, vertical ? FALSE : TRUE, FALSE);
+
+	gtk_orientable_set_orientation(GTK_ORIENTABLE(waveforms), vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
 	gtk_paned_pack2(GTK_PANED(op->displays), waveforms, TRUE, FALSE);
+
+	/* Make paperstrip arrows buttons point correct way */
+	GtkWidget *left_arrow = gtk_button_get_image(GTK_BUTTON(op->left_button));
+	gtk_image_set_from_icon_name(GTK_IMAGE(left_arrow),
+		vertical ? "pan-start-symbolic" : "pan-up-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	GtkWidget *right_arrow = gtk_button_get_image(GTK_BUTTON(op->right_button));
+	gtk_image_set_from_icon_name(GTK_IMAGE(right_arrow),
+		vertical ? "pan-end-symbolic" : "pan-down-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
 
 	gtk_box_pack_end(GTK_BOX(op->panel), op->displays, TRUE, TRUE, 0);
 	gtk_widget_show(op->displays);
@@ -883,16 +906,41 @@ static void place_displays(struct output_panel *op, GtkWidget *paperstrip, GtkWi
 static GtkWidget *create_displays(struct output_panel *op, bool vertical)
 {
 	// The paperstrip and buttons
-	GtkWidget *paperstrip = create_paperstrip(op, vertical);
+	op->paperstrip_box = create_paperstrip(op, vertical);
 	// Tic/toc/period waveform area
-	GtkWidget *waveforms = create_waveforms(op, vertical);
+	op->waveforms_box = create_waveforms(op, vertical);
 
-	place_displays(op, paperstrip, waveforms, vertical);
+	place_displays(op, op->paperstrip_box, op->waveforms_box, vertical);
 
 	return op->displays;
 }
 
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border)
+/* Change orientation of existing output panel.  Is a no-op if orientation is
+ * not changed.  */
+void set_panel_layout(struct output_panel *op, bool vertical)
+{
+	if (op->vertical_layout == vertical)
+		return;
+
+	/* Remove waveforms and paperstrip containers from displays container,
+	 * then use place_displays() to put them into a new displays container. 
+	 * The need to be refed so they are not deleted when removed from the
+	 * container.  */
+	g_object_ref(op->waveforms_box);
+	gtk_container_remove(GTK_CONTAINER(op->displays), op->waveforms_box);
+
+	g_object_ref(op->paperstrip_box);
+	gtk_container_remove(GTK_CONTAINER(op->displays), op->paperstrip_box);
+
+	gtk_widget_destroy(op->displays); op->displays = NULL;
+	place_displays(op, op->paperstrip_box, op->waveforms_box, vertical);
+
+	/* They are now refed by op->displays so we don't need our refs anymore */
+	g_object_unref(op->paperstrip_box);
+	g_object_unref(op->waveforms_box);
+}
+
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border, bool vertical)
 {
 	struct output_panel *op = malloc(sizeof(struct output_panel));
 
@@ -909,7 +957,7 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	g_signal_connect (op->output_drawing_area, "draw", G_CALLBACK(output_draw_event), op);
 	gtk_widget_set_events(op->output_drawing_area, GDK_EXPOSURE_MASK);
 
-	create_displays(op, true);
+	create_displays(op, vertical);
 
 	return op;
 }

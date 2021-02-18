@@ -201,22 +201,28 @@ struct output_panel {
 
 	GtkWidget *output_drawing_area;
 	GtkWidget *displays;
+	GtkWidget *waveforms_box;
 	GtkWidget *tic_drawing_area;
 	GtkWidget *toc_drawing_area;
 	GtkWidget *period_drawing_area;
+	GtkWidget *paperstrip_box;
 	GtkWidget *paperstrip_drawing_area;
 	GtkWidget *clear_button;
 	GtkWidget *left_button;
 	GtkWidget *right_button;
+	GtkWidget *zoom_button;
 #ifdef DEBUG
 	GtkWidget *debug_drawing_area;
 #endif
+	bool vertical_layout;
+
 	struct computer *computer;
 	struct snapshot *snst;
 };
 
 void initialize_palette();
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border);
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border, bool vertical_layout);
+void set_panel_layout(struct output_panel *op, bool vertical);
 void redraw_op(struct output_panel *op);
 void op_set_snapshot(struct output_panel *op, struct snapshot *snst);
 void op_set_border(struct output_panel *op, int i);
@@ -253,6 +259,8 @@ struct main_window {
 	int cal; // 0.1 s/d
 	int nominal_sr;
 
+	bool vertical_layout;
+
 	GKeyFile *config_file;
 	gchar *config_file_name;
 	struct conf_data *conf_data;
@@ -275,7 +283,8 @@ void error(char *format,...);
 	OP(bph, bph, int) \
 	OP(lift_angle, la, double) \
 	OP(calibration, cal, int) \
-	OP(light_algorithm, is_light, int)
+	OP(light_algorithm, is_light, int) \
+	OP(vertical_paperstrip, vertical_layout, bool)
 
 struct conf_data {
 #define DEF(NAME,PLACE,TYPE) TYPE PLACE;

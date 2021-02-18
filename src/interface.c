@@ -422,7 +422,7 @@ static GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close
 
 static void add_new_tab(struct snapshot *s, char *name, struct main_window *w)
 {
-	struct output_panel *op = init_output_panel(NULL, s, 5);
+	struct output_panel *op = init_output_panel(NULL, s, 5, w->vertical_layout);
 	GtkWidget *label = make_tab_label(name, op);
 	gtk_widget_show_all(op->panel);
 
@@ -694,6 +694,22 @@ static void load(GtkMenuItem *m, struct main_window *w)
 	gtk_widget_destroy(dialog);
 }
 
+static void handle_layout(GtkCheckMenuItem *b, struct main_window *w)
+{
+	const bool vertical = gtk_check_menu_item_get_active(b) == TRUE;
+
+	w->vertical_layout = vertical;
+	set_panel_layout(w->active_panel, vertical);
+
+	int n = 0;
+	GtkWidget *panel;
+	while ((panel = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), n++))) {
+		struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
+		if(op)
+			set_panel_layout(op, vertical);
+	}
+}
+
 /* Add a checkbox with name to the given menu, with initial state active and
  * attach the supplied callback and parameter to the toggled signal.  Set is set
  * before attaching the signal, so the callback is not called when created.  */
@@ -839,6 +855,9 @@ static void init_main_window(struct main_window *w)
 	// ... Calibrate checkbox
 	w->cal_button = add_checkbox(command_menu, "Calibrate", false, G_CALLBACK(handle_calibrate), w);
 
+	// Layout checkbox
+	add_checkbox(command_menu, "Vertical", w->vertical_layout, G_CALLBACK(handle_layout), w);
+
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), gtk_separator_menu_item_new());
 
 	// ... Close all
@@ -936,6 +955,7 @@ static void start_interface(GApplication* app, void *p)
 	w->la = DEFAULT_LA;
 	w->calibrate = 0;
 	w->is_light = 0;
+	w->vertical_layout = true;
 
 	load_config(w);
 
@@ -959,7 +979,7 @@ static void start_interface(GApplication* app, void *p)
 	w->computer->curr = NULL;
 	compute_results(w->active_snapshot);
 
-	w->active_panel = init_output_panel(w->computer, w->active_snapshot, 0);
+	w->active_panel = init_output_panel(w->computer, w->active_snapshot, 0, w->vertical_layout);
 
 	init_main_window(w);
 
