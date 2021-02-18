@@ -200,11 +200,14 @@ struct output_panel {
 	GtkWidget *panel;
 
 	GtkWidget *output_drawing_area;
+	GtkWidget *displays;
 	GtkWidget *tic_drawing_area;
 	GtkWidget *toc_drawing_area;
 	GtkWidget *period_drawing_area;
 	GtkWidget *paperstrip_drawing_area;
 	GtkWidget *clear_button;
+	GtkWidget *left_button;
+	GtkWidget *right_button;
 #ifdef DEBUG
 	GtkWidget *debug_drawing_area;
 #endif
