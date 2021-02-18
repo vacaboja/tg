@@ -835,18 +835,21 @@ static GtkWidget* create_waveforms(struct output_panel *op, bool vertical)
 
 	// Tic waveform area
 	op->tic_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->tic_drawing_area, 300, 150);
 	gtk_box_pack_start(GTK_BOX(box), op->tic_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), op);
 	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
 
 	// Toc waveform area
 	op->toc_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->toc_drawing_area, 300, 150);
 	gtk_box_pack_start(GTK_BOX(box), op->toc_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), op);
 	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
 
 	// Period waveform area
 	op->period_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->period_drawing_area, 300, 150);
 	gtk_box_pack_start(GTK_BOX(box), op->period_drawing_area, TRUE, TRUE, 0);
 	g_signal_connect (op->period_drawing_area, "draw", G_CALLBACK(period_draw_event), op);
 	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
@@ -865,9 +868,10 @@ static GtkWidget* create_waveforms(struct output_panel *op, bool vertical)
  * horizontal paperstrip orientation.  Puts container in the panel and shows it. */
 static void place_displays(struct output_panel *op, GtkWidget *paperstrip, GtkWidget *waveforms, bool vertical)
 {
-	op->displays = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-	gtk_box_pack_start(GTK_BOX(op->displays), paperstrip, FALSE, TRUE, 0);
-	gtk_box_pack_start(GTK_BOX(op->displays), waveforms, TRUE, TRUE, 0);
+	op->displays = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+	gtk_paned_set_wide_handle(GTK_PANED(op->displays), TRUE);
+	gtk_paned_pack1(GTK_PANED(op->displays), paperstrip, FALSE, FALSE);
+	gtk_paned_pack2(GTK_PANED(op->displays), waveforms, TRUE, FALSE);
 
 	gtk_box_pack_end(GTK_BOX(op->panel), op->displays, TRUE, TRUE, 0);
 	gtk_widget_show(op->displays);
