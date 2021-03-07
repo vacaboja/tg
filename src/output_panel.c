@@ -528,11 +528,19 @@ static gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	int i;
-	struct snapshot *snst = op->snst;
+	const struct snapshot *snst = op->snst;
+	struct display *ssd = snst->d;
 	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp(snst->is_light);
 	double sweep;
 	int zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display
+
+	// Allocate initial display parameters.  Will persist across each new
+	// snapshot after this.
+	if (!ssd) {
+		ssd = op->snst->d = calloc(1, sizeof(*snst->d));
+	}
+
 	if(snst->calibrate) {
 		sweep = snst->nominal_sr;
 		zoom_factor = PAPERSTRIP_ZOOM_CAL;
@@ -628,7 +636,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_set_source(c,stopped?yellow:white);
 	for(i = snst->events_wp;;) {
 		if(!snst->events_count || !snst->events[i]) break;
-		double event = now - snst->events[i] + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
+		double event = now - snst->events[i] + snst->d->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
 		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
 		int row = floor(event / sweep);
 		if(row >= height) break;
@@ -742,7 +750,7 @@ static void handle_center_trace(GtkButton *b, struct output_panel *op)
 		new_centering = fmod(last_ev + .5*sweep , sweep);
 	} else 
 		new_centering = 0;
-	snst->trace_centering = new_centering;
+	snst->d->trace_centering = new_centering;
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
@@ -754,7 +762,7 @@ static void shift_trace(struct output_panel *op, double direction)
 		sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
 	else
 		sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-	snst->trace_centering = fmod(snst->trace_centering + sweep * (1.+.1*direction), sweep);
+	snst->d->trace_centering = fmod(snst->d->trace_centering + sweep * (1.+.1*direction), sweep);
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 

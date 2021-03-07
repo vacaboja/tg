@@ -899,11 +899,11 @@ guint refresh(struct main_window *w)
 	lock_computer(w->computer);
 	struct snapshot *s = w->computer->curr;
 	if(s) {
-		double trace_centering = w->active_snapshot->trace_centering;
+		s->d = w->active_snapshot->d;
+		w->active_snapshot->d = NULL;
 		snapshot_destroy(w->active_snapshot);
 		w->active_snapshot = s;
 		w->computer->curr = NULL;
-		s->trace_centering = trace_centering;
 		if(w->computer->clear_trace && !s->calibrate)
 			memset(s->events,0,s->events_count*sizeof(uint64_t));
 		if(s->calibrate && s->cal_state == 1 && s->cal_result != w->cal) {
