@@ -322,10 +322,9 @@ static void expose_waveform(
 	int width = temp.width;
 	int height = temp.height;
 
-	gtk_widget_get_allocation(gtk_widget_get_toplevel(da), &temp);
-	int font = temp.width / 90;
-	if(font < 12)
-		font = 12;
+	int font = width / 25;
+	font = font < 12 ? 12 : font > 24 ? 24 : font;
+
 	int i;
 
 	cairo_set_font_size(c,font);
@@ -670,18 +669,14 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_line_to(c, right_margin + .5, height - 20.5);
 	cairo_fill(c);
 
-	char s[100];
-	cairo_text_extents_t extents;
+	int font = width / 25;
+	cairo_set_font_size(c, font < 12 ? 12 : font > 24 ? 24 : font);
 
-	gtk_widget_get_allocation(gtk_widget_get_toplevel(widget), &temp);
-	int font = temp.width / 90;
-	if(font < 12)
-		font = 12;
-	cairo_set_font_size(c,font);
-
-	sprintf(s, "%.1f ms", snst->calibrate ?
+	char s[32];
+	snprintf(s, sizeof(s), "%.1f ms", snst->calibrate ?
 				1000. / zoom_factor :
 				3600000. / (snst->guessed_bph * zoom_factor));
+	cairo_text_extents_t extents;
 	cairo_text_extents(c,s,&extents);
 	cairo_move_to(c, (width - extents.x_advance)/2, height - 30);
 	cairo_show_text(c,s);
