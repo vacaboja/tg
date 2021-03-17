@@ -319,16 +319,21 @@ static void expose_waveform(
 	GtkAllocation temp;
 	gtk_widget_get_allocation(da, &temp);
 
-	int width = temp.width;
-	int height = temp.height;
+	const int width = temp.width, height = temp.height;
 
-	int font = width / 25;
-	font = font < 12 ? 12 : font > 24 ? 24 : font;
+	int fontw = width / 40;
+	fontw = fontw < 12 ? 12 : fontw > 20 ? 20 : fontw;
+	int fonth = height / 12;
+	fonth = fonth < 12 ? 12 : fonth > 20 ? 20 : fonth;
+	const int font = MIN(fontw, fonth);
+	cairo_set_font_size(c, font);
+
+	cairo_font_extents_t fextents;
+	cairo_font_extents(c, &fextents);
+
+	const int margin = 6;
 
 	int i;
-
-	cairo_set_font_size(c,font);
-
 	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
 		int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 		cairo_move_to(c, x + .5, height / 2 + .5);
@@ -345,7 +350,7 @@ static void expose_waveform(
 			int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 			char s[10];
 			sprintf(s,"%d",i);
-			cairo_move_to(c,x+font/4,height-font/2);
+			cairo_move_to(c,x+font/4, height - margin);
 			cairo_show_text(c,s);
 		}
 	}
@@ -353,7 +358,7 @@ static void expose_waveform(
 	cairo_text_extents_t extents;
 
 	cairo_text_extents(c,"ms",&extents);
-	cairo_move_to(c,width - extents.x_advance - font/4,height-font/2);
+	cairo_move_to(c,width - extents.x_advance - font/4, height - margin);
 	cairo_show_text(c,"ms");
 
 	struct snapshot *snst = op->snst;
@@ -385,7 +390,7 @@ static void expose_waveform(
 			char s[10];
 
 			sprintf(s,"%d",abs(i));
-			cairo_move_to(c, x + font/4, font * 3 / 2);
+			cairo_move_to(c, x + font/4, margin + fextents.ascent);
 			cairo_show_text(c,s);
 			cairo_text_extents(c,s,&extents);
 			last_x = x + font/4 + extents.x_advance;
@@ -393,7 +398,7 @@ static void expose_waveform(
 	}
 
 	cairo_text_extents(c,"deg",&extents);
-	cairo_move_to(c,width - extents.x_advance - font/4,font * 3 / 2);
+	cairo_move_to(c,width - extents.x_advance - font/4, margin + fextents.ascent);
 	cairo_show_text(c,"deg");
 
 	if(p) {
@@ -685,8 +690,10 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 				1000. / zoom_factor :
 				3600000. / (snst->guessed_bph * zoom_factor));
 	cairo_text_extents_t extents;
-	cairo_text_extents(c,s,&extents);
-	cairo_move_to(c, (width - extents.x_advance)/2, height - 30);
+	cairo_font_extents_t fextents;
+	cairo_text_extents(c, s, &extents);
+	cairo_font_extents(c, &fextents);
+	cairo_move_to(c, (width - extents.width)/2 - extents.x_bearing, (height - 25.5) + fextents.ascent - fextents.height);
 	cairo_show_text(c,s);
 
 	return FALSE;
