@@ -560,7 +560,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_init(c);
 
 	GtkAllocation temp;
-	gtk_widget_get_allocation (op->paperstrip_drawing_area, &temp);
+	gtk_widget_get_allocation(widget, &temp);
 	int width, height;
 
 	/* The paperstrip is coded to be vertical; horizontal uses cairo to rotate it. */
