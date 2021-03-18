@@ -548,8 +548,7 @@ static double get_beatscale(GtkScaleButton *b)
 	const double scale = ω * exp(σ*zoom);
 	debug("Zoom slider %.0f to scale %.03f = %.0fx\n", zoom, scale, 1/scale);
 
-	// Zoom must be integral fraction for display to work
-	return 1.0 / round(1.0 / scale);
+	return scale;
 }
 
 // Convert value in samples to milliseconds.
@@ -558,15 +557,40 @@ static inline double s2ms(const struct snapshot *snst, double samples)
 	return samples * 1000.0 / snst->sample_rate;
 }
 
+// Samples per beat
+static inline double spb(const struct snapshot *snst)
+{
+	if (snst->calibrate)
+		return snst->nominal_sr; // one second per beat, no calibration applied
+
+	return (snst->sample_rate * 3600) / snst->guessed_bph;
+}
+
+// 1x1 box with upper left corner at x, y
+static void box(cairo_t *c, double x, double y)
+{
+	cairo_move_to(c, x,   y);
+	cairo_line_to(c, x+1, y);
+	cairo_line_to(c, x+1, y+1);
+	cairo_line_to(c, x,   y+1);
+	cairo_close_path(c);
+	cairo_fill(c);
+}
+
 static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	int i;
 	const struct snapshot *snst = op->snst;
 	struct display *ssd = snst->d;
 	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp(snst->is_light);
-	double sweep;
-	double zoom_factor;
-	double slope = 1000; // detected rate: 1000 -> do not display
+
+	bool stopped = false;
+	if( snst->events_count &&
+	    snst->events[snst->events_wp] &&
+	    time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
+		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
+		stopped = true;
+	}
 
 	// Allocate initial display parameters.  Will persist across each new
 	// snapshot after this.
@@ -574,18 +598,6 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 		ssd = op->snst->d = calloc(1, sizeof(*snst->d));
 		ssd->beat_scale = get_beatscale(GTK_SCALE_BUTTON(op->zoom_button));
 	}
-
-	zoom_factor = 1/ssd->beat_scale;
-	if(snst->calibrate) {
-		sweep = snst->nominal_sr;
-		slope = (double) snst->cal * zoom_factor / (10 * 3600 * 24);
-	} else {
-		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
-		if(snst->events_count && snst->events[snst->events_wp])
-			slope = - snst->rate * zoom_factor / (3600. * 24.);
-	}
-	// Width of chart's displayed portion of the beat, in samples
-	const double chart_width = sweep * ssd->beat_scale;
 
 	cairo_init(c);
 
@@ -605,107 +617,143 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 		cairo_rotate(c, M_PI/2);
 	}
 
-	int stopped = 0;
-	if( snst->events_count &&
-	    snst->events[snst->events_wp] &&
-	    time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
-		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
-		stopped = 1;
-	}
+	// Beat time in samples, which is the height of a row (measured in samples)
+	const double beat_length = spb(snst);
+	// Width of chart's displayed portion of the beat, in samples
+	const double chart_width = beat_length * ssd->beat_scale;
+	// Width in pixels of main chart area, which corresponds to chart_width in samples
+	const int strip_width = round(width / (1 + PAPERSTRIP_MARGIN));
+	// Width in samples of one pixel
+	const double pixel_width = (double)chart_width / strip_width;
 
-	int strip_width = round(width / (1 + PAPERSTRIP_MARGIN));
+	/* Round time to multiple of beat rate, to avoid "jumping" of a point
+	 * compared to others or grid lines while scrolling.  E.g., points at
+	 * 1.0 and 1.2, both are rounded to row 1.  Advance time by 0.4, points
+	 * now at 1.4 and 1.6, the first remains row 1, but the second is
+	 * rounded to row 2, causing it to appear to jump.  This is avoided by
+	 * only advancing time by a multiple of a row.  */
+	time -= time % (int)(beat_length + 0.5);
 
 	// Beat error slope lines or calibration slope lines
-	cairo_set_line_width(c,1.3);
-
-	slope *= strip_width;
-	if(slope <= 2 && slope >= -2) {
-		for(i=0; i<4; i++) {
-			double y = 0;
-			cairo_move_to(c, (double)width * (i+.5) / 4, 0);
-			for(;;) {
-				double x = y * slope + (double)width * (i+.5) / 4;
-				x = fmod(x, width);
-				if(x < 0) x += width;
-				double nx = x + slope * (height - y);
-				if(nx >= 0 && nx <= width) {
-					cairo_line_to(c, nx, height);
-					break;
-				} else {
-					double d = slope > 0 ? width - x : x;
-					y += d / fabs(slope);
-					cairo_line_to(c, slope > 0 ? width : 0, y);
-					y += 1;
-					if(y > height) break;
-					cairo_move_to(c, slope > 0 ? 0 : width, y);
-				}
-			}
-		}
+	// Slope of rate lines, in pixels per beat
+	const double slope = (snst->calibrate ? -snst->cal/10.0 : snst->rate) *
+				strip_width / (24 * 3600) / ssd->beat_scale;
+	if (slope > -2 && slope < 2) {
+		cairo_set_line_width(c, 1.3);
 		cairo_set_source(c, blue);
+		/* X intercept of line starting at lower left corner, in quarter widths left+4
+		 * is intercept from lower right corner.  Intercepts at top left/right corners
+		 * are always 0 and 4.  We need to draw lines from the lesser of the left corner
+		 * intercepts to the greater of the right corner intercepts to cover the width
+		 * of the chart at the top and botom.  */
+		const int left = ceil(-slope * height / width * 4 - 0.5);
+		for (i = MIN(left, 0); i < MAX(4, left+4); i++) {
+			// i is x position in quarter chart widths
+			const double x0 = (i + 0.5) / 4 * width;
+			cairo_move_to(c, x0, 0);
+			cairo_line_to(c, x0 + slope * height, height);
+		}
 		cairo_stroke(c);
 	}
 
-	cairo_set_line_width(c,1);
-
 	// Margin lines
-	int left_margin = (width - strip_width) / 2;
-	int right_margin = (width + strip_width) / 2;
+	const int left_margin = (width - strip_width) / 2;
+	const int right_margin = (width + strip_width) / 2;
+
+	cairo_set_line_width(c, 1);
+	cairo_set_source(c, green);
 	cairo_move_to(c, left_margin + .5, .5);
 	cairo_line_to(c, left_margin + .5, height - .5);
 	cairo_move_to(c, right_margin + .5, .5);
 	cairo_line_to(c, right_margin + .5, height - .5);
-	cairo_set_source(c, green);
 	cairo_stroke(c);
 
 	// Time grid lines
-	double now = sweep*ceil(time/sweep);
-	double ten_s = snst->sample_rate * 10 / sweep;
-	double last_line = fmod(now/sweep, ten_s);
-	int last_tenth = floor(now/(sweep*ten_s));
-	for(i=0;;i++) {
-		double y = 0.5 + round(last_line + i*ten_s);
-		if(y > height) break;
-		cairo_move_to(c, .5, y);
-		cairo_line_to(c, width-.5, y);
-		cairo_set_source(c, (last_tenth-i)%6 ? green : red);
+	cairo_set_line_width(c, 1);
+	// Space between lines in samples = 10 sec
+	const double line_spacing = 10 * snst->sample_rate;
+	// The topmost line is this many samples from start
+	const double top_line = fmod(time, line_spacing);
+	const int minute_offset = (int)(time / line_spacing) % 6;
+	for(i = 0; ; i++) {
+		const double position = top_line + i * line_spacing; // position in samples
+		const double row = round(position / beat_length); // …in pixels
+		if (row > height)
+			break;
+		cairo_move_to(c, 0, row);
+		cairo_line_to(c, width, row);
+		cairo_set_source(c, (i - minute_offset) % 6 ? green : red);
 		cairo_stroke(c);
 	}
 
-	// Ticks and tocks dots
-	cairo_set_source(c,stopped?yellow:white);
-	for(i = snst->events_wp;;) {
-		if(!snst->events_count || !snst->events[i]) break;
-		double event = now - snst->events[i] + snst->d->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
-		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
-		int row = floor(event / sweep);
-		if(row >= height) break;
-		cairo_move_to(c,column,row);
-		cairo_line_to(c,column+1,row);
-		cairo_line_to(c,column+1,row+1);
-		cairo_line_to(c,column,row+1);
-		cairo_line_to(c,column,row);
-		cairo_fill(c);
-		if(column < width - strip_width && row > 0) {
-			column += strip_width;
-			row -= 1;
-			cairo_move_to(c,column,row);
-			cairo_line_to(c,column+1,row);
-			cairo_line_to(c,column+1,row+1);
-			cairo_line_to(c,column,row+1);
-			cairo_line_to(c,column,row);
-			cairo_fill(c);
+	// Ticks and tocks
+	cairo_set_line_width(c, 0);
+	cairo_set_source(c, stopped ? yellow : white);
+	/* Compute lag 1 difference between events, find residuals modulo beat
+	 * length (BL) of those differences, convert to range (-BL/2, BL/2], and
+	 * accumulate.
+	 * While doing this, look for the previous anchor point, for which we
+	 * have saved the value of its accumulated residuals, and find the
+	 * offset needed to produce the same value.  */
+
+	double display_offset = chart_width/2; // Value used if no anchor found
+	double offsets[snst->events_count];
+	if (snst->events_count) {
+		double accumulated_offset = 0.0;
+		uint64_t prev_event = snst->events[snst->events_wp]; // Start with first event
+		for (i = snst->events_count; i > 0; i--) { // Scan order is newest to oldest
+			const int idx = (snst->events_wp + i) % snst->events_count;
+			const uint64_t event = snst->events[idx];
+			if (!event) break;
+
+			double residual = fmod(prev_event - event, beat_length);
+			if (residual > beat_length/2) residual -= beat_length;
+			accumulated_offset -= residual;
+			offsets[idx] = accumulated_offset;
+
+			// Is this the anchor?
+			if (event == snst->d->anchor_time)
+				display_offset = ssd->anchor_offset - accumulated_offset;
+
+			prev_event = event;
 		}
-		if(--i < 0) i = snst->events_count - 1;
-		if(i == snst->events_wp) break;
+		// Save offset of newest point as new anchor
+		ssd->anchor_time = snst->events[snst->events_wp];
+		ssd->anchor_offset = offsets[snst->events_wp] + display_offset;
 	}
 
+	display_offset += left_margin * pixel_width; // Adjust for margin
+	for (i = snst->events_count; i > 0; i--) {
+		const int idx = (snst->events_wp + i) % snst->events_count;
+		const uint64_t event = snst->events[idx];
+		if (!event) break;
+
+		// Row 0 is at "time", each row is one beat earlier than that.
+		const double row = round((time - event) / beat_length);
+		if(row > height) break;
+
+		double chart_phase = fmod(offsets[idx] + display_offset, chart_width);
+		if (chart_phase < 0) chart_phase += chart_width;
+		const double column = round(chart_phase / pixel_width);
+
+		box(c, column, row);
+		if (column < width - strip_width)
+			box(c, column + strip_width, row);
+#if DEBUG
+		const double cycles = (time - event) / beat_length;
+		debug("point %2d: %7lu, cycle %.1f, offset %.1f ms, chart phase = %.1f ms, column %.0f\n",  idx, event, cycles,
+		      s2ms(snst, offsets[idx] + display_offset), s2ms(snst, chart_phase), column);
+#endif
+	}
+	cairo_stroke(c);
+
 	// Legend line
-	cairo_set_source(c,white);
-	cairo_set_line_width(c,2);
+	cairo_set_source(c, white);
+	cairo_set_line_width(c, 2);
 	cairo_move_to(c, left_margin + 3, height - 20.5);
 	cairo_line_to(c, right_margin - 3, height - 20.5);
 	cairo_stroke(c);
-	cairo_set_line_width(c,1);
+	cairo_set_line_width(c, 1);
 	cairo_move_to(c, left_margin + .5, height - 20.5);
 	cairo_line_to(c, left_margin + 5.5, height - 15.5);
 	cairo_line_to(c, left_margin + 5.5, height - 25.5);
@@ -780,30 +828,22 @@ static void handle_center_trace(GtkButton *b, struct output_panel *op)
 	struct snapshot *snst = op->snst;
 	if(!snst || !snst->events)
 		return;
-	uint64_t last_ev = snst->events[snst->events_wp];
-	double new_centering;
-	if(last_ev) {
-		double sweep;
-		if(snst->calibrate)
-			sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
-		else
-			sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-		new_centering = fmod(last_ev + .5*sweep , sweep);
-	} else 
-		new_centering = 0;
-	snst->d->trace_centering = new_centering;
+
+	const double chart_width = snst->d->beat_scale * spb(snst);
+	// Anchor point should be most recent point, or close enough to it
+	snst->d->anchor_offset = chart_width / 2;
+
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
 static void shift_trace(struct output_panel *op, double direction)
 {
 	struct snapshot *snst = op->snst;
-	double sweep;
-	if(snst->calibrate)
-		sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
-	else
-		sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-	snst->d->trace_centering = fmod(snst->d->trace_centering + sweep * (1.+.1*direction), sweep);
+
+	// Chart with in samples
+	const double chart_width = snst->d->beat_scale * spb(snst);
+	snst->d->anchor_offset += chart_width * 0.10 * direction;
+
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
@@ -832,6 +872,10 @@ static void handle_zoom(GtkScaleButton *b, struct output_panel *op)
 	if (!ssd) return;  // Maybe chart hasn't been displayed even once yet?
 
 	const double scale = get_beatscale(b);
+
+	/* Attempt to position archor_offset at same point in chart in new scale */
+	if (ssd->beat_scale)
+		ssd->anchor_offset *= scale / ssd->beat_scale;
 
 	ssd->beat_scale = scale;
 

@@ -201,10 +201,15 @@ void compute_results(struct snapshot *s);
 /* output_panel.c */
 /* Snapshot display parameters, e.g. scale, centering. */
 struct display {
-	double trace_centering;
 	// Scaling factor for each beat.  1 means the chart is 1 beat wide, 0.5
 	// means half a beat, etc.
 	double beat_scale;
+	/* Time of point used to anchor the paperstrip.  Each paperstrip point's position is
+	 * relative to the previous point.  This point is the one with an absolute position that
+	 * is kept the same, so that all the dots do not shift side to side as the scroll.  */
+	uint64_t anchor_time;
+	// Phase offset of point at anchor_time
+	double anchor_offset;
 };
 
 struct output_panel {

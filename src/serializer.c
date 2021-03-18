@@ -347,8 +347,9 @@ static int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 	SERIALIZE(double,rate);
 	SERIALIZE(double,be);
 	SERIALIZE(double,amp);
-	SERIALIZE(double,d->trace_centering);
 	SERIALIZE(double,d->beat_scale);
+	SERIALIZE(uint64_t,d->anchor_time);
+	SERIALIZE(double,d->anchor_offset);
 	SERIALIZE(int,is_light);
 	return serialize_struct_end(f);
 }
@@ -423,8 +424,9 @@ static int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 		SCAN(double,rate);
 		SCAN(double,be);
 		SCAN(double,amp);
-		SCAN(double,d->trace_centering);
 		SCAN(double,d->beat_scale);
+		SCAN(uint64_t,d->anchor_time);
+		SCAN(double,d->anchor_offset);
 		SCAN(int,is_light);
 
 		if(eat_object(f)) goto error;
