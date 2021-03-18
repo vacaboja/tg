@@ -348,6 +348,7 @@ static int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 	SERIALIZE(double,be);
 	SERIALIZE(double,amp);
 	SERIALIZE(double,d->trace_centering);
+	SERIALIZE(double,d->beat_scale);
 	SERIALIZE(int,is_light);
 	return serialize_struct_end(f);
 }
@@ -423,6 +424,7 @@ static int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 		SCAN(double,be);
 		SCAN(double,amp);
 		SCAN(double,d->trace_centering);
+		SCAN(double,d->beat_scale);
 		SCAN(int,is_light);
 
 		if(eat_object(f)) goto error;
@@ -452,6 +454,9 @@ static int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 	if((*s)->be < 0 || (*s)->be > 99.9) goto error;
 	debug("serializer: checking amplitude\n");
 	if((*s)->amp < 0 || (*s)->amp > 360) goto error;
+	debug("serializer: checking scale\n");
+	if((*s)->d->beat_scale == 0) (*s)->d->beat_scale = 1.0/PAPERSTRIP_ZOOM;
+	if((*s)->d->beat_scale < 0 || (*s)->d->beat_scale > 1) goto error;
 	(*s)->pb->events = NULL;
 #ifdef DEBUG
 	(*s)->pb->debug = NULL;

@@ -202,6 +202,9 @@ void compute_results(struct snapshot *s);
 /* Snapshot display parameters, e.g. scale, centering. */
 struct display {
 	double trace_centering;
+	// Scaling factor for each beat.  1 means the chart is 1 beat wide, 0.5
+	// means half a beat, etc.
+	double beat_scale;
 };
 
 struct output_panel {

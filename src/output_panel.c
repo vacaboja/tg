@@ -18,6 +18,13 @@
 
 #include "tg.h"
 
+// Zoom slider ranges from 1 to 100
+static const double zoom_min = 1, zoom_max = 100, zoom_mid = (zoom_min + zoom_max)/2;
+// Scale ranges from 1x beat length to zoomed in by 100x
+static const double scale_min = 1, scale_max = 100;
+
+static inline double spb(const struct snapshot *snst);
+
 cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
 
 static void define_color(cairo_pattern_t **gc,double r,double g,double b)
@@ -530,6 +537,27 @@ static gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 	return FALSE;
 }
 
+/* Return scale value from button.  A scale of 1.0 means the beat length, while
+ * a scale of 0.10 would be one tenth of a beat length.  */
+static double get_beatscale(GtkScaleButton *b)
+{
+	const double σ = log(scale_max/scale_min) / (zoom_max - zoom_min);
+	const double ω = pow(scale_max/scale_min, -1.0/(zoom_max - zoom_min)) / scale_max;
+
+	const double zoom = gtk_scale_button_get_value(b);
+	const double scale = ω * exp(σ*zoom);
+	debug("Zoom slider %.0f to scale %.03f = %.0fx\n", zoom, scale, 1/scale);
+
+	// Zoom must be integral fraction for display to work
+	return 1.0 / round(1.0 / scale);
+}
+
+// Convert value in samples to milliseconds.
+static inline double s2ms(const struct snapshot *snst, double samples)
+{
+	return samples * 1000.0 / snst->sample_rate;
+}
+
 static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	int i;
@@ -537,25 +565,27 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	struct display *ssd = snst->d;
 	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp(snst->is_light);
 	double sweep;
-	int zoom_factor;
+	double zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display
 
 	// Allocate initial display parameters.  Will persist across each new
 	// snapshot after this.
 	if (!ssd) {
 		ssd = op->snst->d = calloc(1, sizeof(*snst->d));
+		ssd->beat_scale = get_beatscale(GTK_SCALE_BUTTON(op->zoom_button));
 	}
 
+	zoom_factor = 1/ssd->beat_scale;
 	if(snst->calibrate) {
 		sweep = snst->nominal_sr;
-		zoom_factor = PAPERSTRIP_ZOOM_CAL;
 		slope = (double) snst->cal * zoom_factor / (10 * 3600 * 24);
 	} else {
 		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
-		zoom_factor = PAPERSTRIP_ZOOM;
 		if(snst->events_count && snst->events[snst->events_wp])
 			slope = - snst->rate * zoom_factor / (3600. * 24.);
 	}
+	// Width of chart's displayed portion of the beat, in samples
+	const double chart_width = sweep * ssd->beat_scale;
 
 	cairo_init(c);
 
@@ -585,6 +615,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	int strip_width = round(width / (1 + PAPERSTRIP_MARGIN));
 
+	// Beat error slope lines or calibration slope lines
 	cairo_set_line_width(c,1.3);
 
 	slope *= strip_width;
@@ -616,6 +647,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	cairo_set_line_width(c,1);
 
+	// Margin lines
 	int left_margin = (width - strip_width) / 2;
 	int right_margin = (width + strip_width) / 2;
 	cairo_move_to(c, left_margin + .5, .5);
@@ -625,6 +657,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_set_source(c, green);
 	cairo_stroke(c);
 
+	// Time grid lines
 	double now = sweep*ceil(time/sweep);
 	double ten_s = snst->sample_rate * 10 / sweep;
 	double last_line = fmod(now/sweep, ten_s);
@@ -638,6 +671,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 		cairo_stroke(c);
 	}
 
+	// Ticks and tocks dots
 	cairo_set_source(c,stopped?yellow:white);
 	for(i = snst->events_wp;;) {
 		if(!snst->events_count || !snst->events[i]) break;
@@ -665,6 +699,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 		if(i == snst->events_wp) break;
 	}
 
+	// Legend line
 	cairo_set_source(c,white);
 	cairo_set_line_width(c,2);
 	cairo_move_to(c, left_margin + 3, height - 20.5);
@@ -686,9 +721,8 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_set_font_size(c, font < 12 ? 12 : font > 24 ? 24 : font);
 
 	char s[32];
-	snprintf(s, sizeof(s), "%.1f ms", snst->calibrate ?
-				1000. / zoom_factor :
-				3600000. / (snst->guessed_bph * zoom_factor));
+	snprintf(s, sizeof(s), "%.1f ms", s2ms(snst, chart_width));
+
 	cairo_text_extents_t extents;
 	cairo_font_extents_t fextents;
 	cairo_text_extents(c, s, &extents);
@@ -785,6 +819,25 @@ static void handle_right(GtkButton *b, struct output_panel *op)
 	shift_trace(op,1);
 }
 
+static void handle_zoom_original(GtkScaleButton *b, struct output_panel *op)
+{
+	UNUSED(b);
+	gtk_scale_button_set_value(GTK_SCALE_BUTTON(op->zoom_button), zoom_mid);
+	gtk_widget_queue_draw(op->paperstrip_drawing_area);
+}
+
+static void handle_zoom(GtkScaleButton *b, struct output_panel *op)
+{
+	struct display *ssd = op->snst->d;
+	if (!ssd) return;  // Maybe chart hasn't been displayed even once yet?
+
+	const double scale = get_beatscale(b);
+
+	ssd->beat_scale = scale;
+
+	gtk_widget_queue_draw(op->paperstrip_drawing_area);
+}
+
 void op_set_snapshot(struct output_panel *op, struct snapshot *snst)
 {
 	op->snst = snst;
@@ -808,12 +861,34 @@ static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
 {
 	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 
+	GtkWidget *overlay = gtk_overlay_new();
+	gtk_box_pack_start(GTK_BOX(vbox), overlay, TRUE, TRUE, 0);
+
 	// Paperstrip
 	op->paperstrip_drawing_area = gtk_drawing_area_new();
 	gtk_widget_set_size_request(op->paperstrip_drawing_area, 150, 150);
-	gtk_box_pack_start(GTK_BOX(vbox), op->paperstrip_drawing_area, TRUE, TRUE, 0);
+	gtk_container_add(GTK_CONTAINER(overlay), op->paperstrip_drawing_area);
 	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
 	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
+
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_container_set_border_width(GTK_CONTAINER(box), 15);
+	gtk_widget_set_margin_bottom(box, 5);
+	gtk_widget_set_halign(box, GTK_ALIGN_START);
+	gtk_widget_set_valign(box, GTK_ALIGN_END);
+	gtk_widget_set_opacity(box, 0.8);
+	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
+
+	GtkWidget *zoom_orig = gtk_button_new_from_icon_name("zoom-original-symbolic", GTK_ICON_SIZE_BUTTON);
+	gtk_button_set_relief(GTK_BUTTON(zoom_orig), GTK_RELIEF_NONE);
+	g_signal_connect(zoom_orig, "clicked", G_CALLBACK(handle_zoom_original), op);
+	gtk_box_pack_start(GTK_BOX(box), zoom_orig, FALSE, FALSE, 0);
+
+	op->zoom_button = gtk_scale_button_new(GTK_ICON_SIZE_BUTTON, zoom_min, zoom_max, 1,
+					       (const char *[]){"zoom-in-symbolic", NULL});
+	gtk_scale_button_set_value(GTK_SCALE_BUTTON(op->zoom_button), zoom_mid);
+	g_signal_connect(op->zoom_button, "value-changed", G_CALLBACK(handle_zoom), op);
+	gtk_box_pack_start(GTK_BOX(box), op->zoom_button, FALSE, FALSE, 0);
 
 	// Buttons
 	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
