@@ -276,6 +276,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int
 	s->la = la;
 	s->cal = cal;
 	s->is_light = light;
+	s->d = NULL;
 
 	struct computer *c = malloc(sizeof(struct computer));
 	c->cdata = cd;
