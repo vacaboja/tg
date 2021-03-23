@@ -20,7 +20,8 @@
 #include <portaudio.h>
 
 /* Huge buffer of audio */
-float pa_buffers[PA_BUFF_SIZE];
+float *pa_buffers;
+unsigned int pa_buffer_size;
 unsigned int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
@@ -91,19 +92,19 @@ static int paudio_callback(const void *input_buffer,
 		if(info->channels == 1) {
 			for(i = even ? 0 : 1; i < frame_count; i += 2) {
 				pa_buffers[wp++] = input_samples[i];
-				if (wp >= PA_BUFF_SIZE) wp -= PA_BUFF_SIZE;
+				if (wp >= pa_buffer_size) wp -= pa_buffer_size;
 			}
 		} else {
 			for(i = even ? 0 : 2; i < frame_count*2; i += 4) {
 				pa_buffers[wp++] = input_samples[i] + input_samples[i+1];
-				if (wp >= PA_BUFF_SIZE) wp -= PA_BUFF_SIZE;
+				if (wp >= pa_buffer_size) wp -= pa_buffer_size;
 			}
 		}
 		/* Keep track if we have processed an even number of frames, so
 		 * we know if we should drop the 1st or 2nd frame next callback. */
 		if(frame_count % 2) even = !even;
 	} else {
-		const unsigned len = MIN(frame_count, PA_BUFF_SIZE - wp);
+		const unsigned len = MIN(frame_count, pa_buffer_size - wp);
 		if(info->channels == 1) {
 			memcpy(pa_buffers + wp, input_samples, len * sizeof(*pa_buffers));
 			if(len < frame_count)
@@ -115,14 +116,14 @@ static int paudio_callback(const void *input_buffer,
 				for(i = len; i < frame_count; i++)
 					pa_buffers[i - len] = input_samples[2u*i] + input_samples[2u*i + 1u];
 		}
-		wp = (wp + frame_count) % PA_BUFF_SIZE;
+		wp = (wp + frame_count) % pa_buffer_size;
 	}
 
 	/* Apply HPF to new data */
 	if(write_pointer < wp) {
 		apply_biquad(&audio_hpf, pa_buffers + write_pointer, wp - write_pointer);
 	} else {
-		apply_biquad(&audio_hpf, pa_buffers + write_pointer, PA_BUFF_SIZE - write_pointer);
+		apply_biquad(&audio_hpf, pa_buffers + write_pointer, pa_buffer_size - write_pointer);
 		apply_biquad(&audio_hpf, pa_buffers, wp);
 	}
 
@@ -175,6 +176,18 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool lig
 
 	init_audio_hpf(&audio_hpf, FILTER_CUTOFF, PA_SAMPLE_RATE / (light ? 2 : 1));
 
+	/* Allocate larger buffer if needed */
+	const size_t buffer_size = *nominal_sample_rate << (NSTEPS + FIRST_STEP);
+	if(pa_buffer_size < buffer_size) {
+		if(pa_buffers) free(pa_buffers);
+		pa_buffers = calloc(buffer_size, sizeof(*pa_buffers));
+		if(!pa_buffers) {
+		       err = paInsufficientMemory;
+		       goto error;
+	       }
+	       pa_buffer_size = buffer_size;
+	}
+
 	err = Pa_StartStream(stream);
 	if(err!=paNoError)
 		goto error;
@@ -224,8 +237,8 @@ void fill_buffers(struct processing_buffers *ps, int light)
 		ps[i].timestamp = ts;
 
 		int start = wp - ps[i].sample_count;
-		if (start < 0) start += PA_BUFF_SIZE;
-		int len = MIN((unsigned)ps[i].sample_count, PA_BUFF_SIZE - start);
+		if (start < 0) start += pa_buffer_size;
+		int len = MIN((unsigned)ps[i].sample_count, pa_buffer_size - start);
 		memcpy(ps[i].samples, pa_buffers + start, len * sizeof(*pa_buffers));
 		if (len < ps[i].sample_count)
 			memcpy(ps[i].samples + len, pa_buffers, (ps[i].sample_count - len) * sizeof(*pa_buffers));
@@ -277,7 +290,7 @@ void set_audio_light(bool light, int sample_rate)
 		pthread_mutex_lock(&audio_mutex);
 
 		info.light = light;
-		memset(pa_buffers, 0, sizeof(pa_buffers));
+		memset(pa_buffers, 0, sizeof(*pa_buffers) * pa_buffer_size);
 		write_pointer = 0;
 		timestamp = 0;
 
