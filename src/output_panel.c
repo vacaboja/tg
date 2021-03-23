@@ -635,25 +635,27 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	time -= time % (int)(beat_length + 0.5);
 
 	// Beat error slope lines or calibration slope lines
-	// Slope of rate lines, in pixels per beat
-	const double slope = (snst->calibrate ? -snst->cal/10.0 : snst->rate) *
-				strip_width / (24 * 3600) / ssd->beat_scale;
-	if (slope > -2 && slope < 2) {
-		cairo_set_line_width(c, 1.3);
-		cairo_set_source(c, blue);
-		/* X intercept of line starting at lower left corner, in quarter widths left+4
-		 * is intercept from lower right corner.  Intercepts at top left/right corners
-		 * are always 0 and 4.  We need to draw lines from the lesser of the left corner
-		 * intercepts to the greater of the right corner intercepts to cover the width
-		 * of the chart at the top and botom.  */
-		const int left = ceil(-slope * height / width * 4 - 0.5);
-		for (i = MIN(left, 0); i < MAX(4, left+4); i++) {
-			// i is x position in quarter chart widths
-			const double x0 = (i + 0.5) / 4 * width;
-			cairo_move_to(c, x0, 0);
-			cairo_line_to(c, x0 + slope * height, height);
+	if (snst->pb) { // pb == NULL means no rate, beat error, etc.
+		// Slope of rate lines, in pixels per beat
+		const double slope = (snst->calibrate ? -snst->cal/10.0 : snst->rate) *
+					strip_width / (24 * 3600) / ssd->beat_scale;
+		if (slope > -2 && slope < 2) {
+			cairo_set_line_width(c, 1.3);
+			cairo_set_source(c, blue);
+			/* X intercept of line starting at lower left corner, in quarter widths left+4
+			 * is intercept from lower right corner.  Intercepts at top left/right corners
+			 * are always 0 and 4.  We need to draw lines from the lesser of the left corner
+			 * intercepts to the greater of the right corner intercepts to cover the width
+			 * of the chart at the top and botom.  */
+			const int left = ceil(-slope * height / width * 4 - 0.5);
+			for (i = MIN(left, 0); i < MAX(4, left+4); i++) {
+				// i is x position in quarter chart widths
+				const double x0 = (i + 0.5) / 4 * width;
+				cairo_move_to(c, x0, 0);
+				cairo_line_to(c, x0 + slope * height, height);
+			}
+			cairo_stroke(c);
 		}
-		cairo_stroke(c);
 	}
 
 	// Margin lines
