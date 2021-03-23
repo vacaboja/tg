@@ -532,6 +532,7 @@ int read_file(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt)
 	if(0 != fscanf(f, " T;%n", &n) || !n) return 1;
 	*s = NULL;
 	*names = NULL;
+	*cnt = 0;
 	for(;;) {
 		if(scan_label(f,l)) goto error;
 		if(!strcmp("__end__",l)) break;
