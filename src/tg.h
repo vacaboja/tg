@@ -77,6 +77,7 @@
 #define UNUSED(X) (void)(X)
 #define BIT(n) (1u << (n))
 #define BITMASK(n) ((1u << (n)) - 1u)
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 /* algo.c */
 struct processing_buffers {
