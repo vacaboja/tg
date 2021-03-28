@@ -698,6 +698,10 @@ static void audio_setup(GtkMenuItem *m, struct main_window *w)
 	i = set_audio_device(selected, &new_rate, NULL, w->is_light);
 	if (i == 0) {
 		w->nominal_sr = new_rate;
+		// Only save settings to config if it worked
+		w->audio_rate = new_rate;
+		// If selected dev is the default, save -1 "default" to config
+		w->audio_device = devices[selected].isdefault ? -1 : selected;
 		recompute(w);
 	} else if (i < 0) {
 		/* Try to restore old settings */
@@ -1137,10 +1141,13 @@ static void start_interface(GApplication* app, void *p)
 	w->is_light = 0;
 	w->vertical_layout = true;
 	w->nominal_sr = 0; // Use default rate, e.g. PA_SAMPLE_RATE
+	w->audio_device = -1;
+	w->audio_rate = 0;
 
 	load_config(w);
 
-	if(start_portaudio(&w->nominal_sr, &real_sr, w->is_light)) {
+	w->nominal_sr = w->audio_rate;
+	if(start_portaudio(w->audio_device, &w->nominal_sr, &real_sr, w->is_light)) {
 		g_application_quit(app);
 		return;
 	}

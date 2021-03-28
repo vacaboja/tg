@@ -357,6 +357,9 @@ static int scan_audio_devices(void)
  * This will start the recording stream.  Call this first before any other audio
  * functions, as it initialize PortAudio and fills in the device list.
  *
+ * If the selected device is not suitable, perhaps because the audio hardware has
+ * changed since the device number was saved, it will fallback to the default device.
+ *
  * A sample rate of 0 will select the default sample rate.
  *
  * On error, audio is NOT running.
@@ -364,6 +367,7 @@ static int scan_audio_devices(void)
  * The distinction between the nominal and real sample rate is somewhat ill-defined.
  * Nothing uses real sample rate yet.
  *
+ * @param device The device to use, or -1 for default.
  * @param[in,out] normal_sample_rate The rate in Hz to use, or 0 for default.  Returns
  * actual rate selected.
  * @param[out] real_sample_rate The exact rate used.
@@ -371,7 +375,7 @@ static int scan_audio_devices(void)
  * @returns 0 on success, 1 on error.
  *
  */
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light)
+int start_portaudio(int device, int *nominal_sample_rate, double *real_sample_rate, bool light)
 {
 	if(pthread_mutex_init(&audio_mutex,NULL)) {
 		error("Failed to setup audio mutex");
@@ -397,13 +401,18 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool lig
 		// Maybe default audio device will work anyway?
 	}
 
-	PaDeviceIndex default_input = Pa_GetDefaultInputDevice();
-	if(default_input == paNoDevice) {
-		error("No default audio input device found");
-		goto error;
-	}
+	PaDeviceIndex input;
+	// Use default input if no device selected or selected device is no longer available.
+	if(device < 0 || device >= (int)actx.num_devices || !actx.devices[device].good) {
+		input = Pa_GetDefaultInputDevice();
+		if(input == paNoDevice) {
+			error("No default audio input device found");
+			goto error;
+		}
+	} else
+		input = device;
 
-	err = set_audio_device(default_input, nominal_sample_rate, real_sample_rate, light);
+	err = set_audio_device(input, nominal_sample_rate, real_sample_rate, light);
 	if(err!=paNoError && err!=1)
 		goto error;
 

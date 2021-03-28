@@ -139,7 +139,7 @@ struct processing_data {
 #define AUDIO_RATE_LABELS {"22.05 kHz", "44.1 kHz", "48 kHz", "96 kHz", "192 kHz" }
 #define NUM_AUDIO_RATES ARRAY_SIZE((int[])AUDIO_RATES)
 
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light);
+int start_portaudio(int device, int *nominal_sample_rate, double *real_sample_rate, bool light);
 int terminate_portaudio();
 uint64_t get_timestamp();
 void fill_buffers(struct processing_buffers *ps);
@@ -306,6 +306,8 @@ struct main_window {
 	double la; // deg
 	int cal; // 0.1 s/d
 	int nominal_sr;	// requested audio device rate
+	int audio_device;// Selected device
+	int audio_rate;  // Selected rate
 
 	bool vertical_layout;
 
@@ -332,7 +334,9 @@ void error(char *format,...);
 	OP(lift_angle, la, double) \
 	OP(calibration, cal, int) \
 	OP(light_algorithm, is_light, int) \
-	OP(vertical_paperstrip, vertical_layout, bool)
+	OP(vertical_paperstrip, vertical_layout, bool) \
+	OP(audio_device, audio_device, int) \
+	OP(audio_rate, audio_rate, int)
 
 struct conf_data {
 #define DEF(NAME,PLACE,TYPE) TYPE PLACE;
