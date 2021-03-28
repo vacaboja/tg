@@ -166,7 +166,7 @@ struct snapshot {
 	uint64_t timestamp;
 	int is_light;
 
-	int nominal_sr;
+	int nominal_sr; // W/O calibration, but does include light mode decimation
 	int calibrate;
 	int bph;
 	double la; // deg
@@ -184,7 +184,7 @@ struct snapshot {
 	int cal_result; // 0.1 s/d
 
 	// data dependent on bph, la, cal
-	double sample_rate;
+	double sample_rate; // Includes calibration
 	int guessed_bph;
 	double rate;
 	double be;
@@ -286,6 +286,12 @@ struct main_window {
 	GtkWidget *save_item;
 	GtkWidget *save_all_item;
 	GtkWidget *close_all_item;
+
+	/* Audio Setup dialog */
+	GtkWidget *audio_setup;
+	GtkComboBox *device_list;
+	GtkComboBox *rate_list;
+
 	struct output_panel *active_panel;
 
 	struct computer *computer;
@@ -299,7 +305,7 @@ struct main_window {
 	int bph;
 	double la; // deg
 	int cal; // 0.1 s/d
-	int nominal_sr;
+	int nominal_sr;	// requested audio device rate
 
 	bool vertical_layout;
 
