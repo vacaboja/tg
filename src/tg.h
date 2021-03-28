@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <complex.h>
@@ -134,6 +135,10 @@ struct processing_data {
 	int is_light;
 };
 
+#define AUDIO_RATES       {22050,       44100,      48000,    96000,     192000 }
+#define AUDIO_RATE_LABELS {"22.05 kHz", "44.1 kHz", "48 kHz", "96 kHz", "192 kHz" }
+#define NUM_AUDIO_RATES ARRAY_SIZE((int[])AUDIO_RATES)
+
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light);
 int terminate_portaudio();
 uint64_t get_timestamp();
@@ -141,6 +146,16 @@ void fill_buffers(struct processing_buffers *ps);
 bool analyze_pa_data(struct processing_data *pd, int step, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 void set_audio_light(bool light);
+struct audio_device {
+	const char* name;      //!< Name of device from port audio
+	bool        good;      //!< Is this suitable or not?  E.g., playback only.
+	bool	    isdefault; //!< This is the default device;
+	unsigned    rates;     //!< Bitmask of allowed rates from AUDIO_RATES
+
+};
+int get_audio_devices(const struct audio_device **devices);
+int get_audio_device(void);
+int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light);
 
 /* computer.c */
 struct display;

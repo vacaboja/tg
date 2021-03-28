@@ -18,6 +18,7 @@
 
 #include "tg.h"
 #include <portaudio.h>
+#include <errno.h>
 
 /* Huge buffer of audio */
 float *pa_buffers;
@@ -52,6 +53,8 @@ static struct audio_context {
 	int device;  		//!< PortAudio device ID number
 	int sample_rate;	//!< Requested sample rate (actual may differ)
 	double real_sample_rate;//!< Real rate as returned by PA
+	unsigned num_devices;	//!< Number of audio devices for current driver
+	struct audio_device *devices;  //!< Cached audio device info
 	//! Data callback will read, need to take care when modifying so as not to race.
 	struct callback_info info;
 } actx = {
@@ -284,6 +287,71 @@ error:
 	return err;
 }
 
+/** Return current audio device.
+ *
+ * @return Index of current audio device, or -1 if none is active.
+ */
+int get_audio_device(void)
+{
+	return actx.device;
+}
+
+/** Get list of devices.
+ *
+ * @param[out] devices Static list of devices.
+ * @return Number of devices or negative on error.
+ */
+int get_audio_devices(const struct audio_device **devices)
+{
+	const struct audio_device* devs = actx.devices;
+	*devices = devs;
+	return actx.num_devices;
+}
+
+static bool check_audio_rate(int device, int rate)
+{
+	const long channels = Pa_GetDeviceInfo(device)->maxInputChannels;
+	const PaStreamParameters params = {
+		.device = device,
+		.channelCount = channels > 2 ? 2 : channels,
+		.sampleFormat = paFloat32,
+	};
+
+	return paFormatIsSupported == Pa_IsFormatSupported(&params, NULL, rate);
+}
+
+
+static int scan_audio_devices(void)
+{
+	const PaDeviceIndex default_input = Pa_GetDefaultInputDevice();
+	const int n = Pa_GetDeviceCount();
+	static const int rate_list[] = AUDIO_RATES;
+
+	if (actx.devices) free(actx.devices);
+	actx.devices = calloc(n, sizeof(*actx.devices));
+	if (!actx.devices)
+		return -ENOMEM;
+
+	int i;
+	for (i = 0; i < n; i++) {
+		const struct PaDeviceInfo* devinfo = Pa_GetDeviceInfo(i);
+		debug("Device %2d: %2d %s%s\n", i, devinfo->maxInputChannels, devinfo->name, i == default_input ? " (default)" : "");
+		actx.devices[i].name = devinfo->name;
+		actx.devices[i].good = devinfo->maxInputChannels > 0;
+		actx.devices[i].isdefault = i == default_input;
+		actx.devices[i].rates = 0;
+		if (actx.devices[i].good) {
+			unsigned r;
+			for (r = 0; r < ARRAY_SIZE(rate_list); r++)
+				if (check_audio_rate(i, rate_list[r]))
+					actx.devices[i].rates |= 1 << r;
+		}
+	}
+	actx.num_devices = n;
+
+	return n;
+}
+
 /** Start audio system.
  *
  * This will start the recording stream.  Call this first before any other audio
@@ -323,6 +391,11 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool lig
 		goto end;
 	}
 #endif
+
+	if(scan_audio_devices() < 0) {
+		error("Unable to query audio devices");
+		// Maybe default audio device will work anyway?
+	}
 
 	PaDeviceIndex default_input = Pa_GetDefaultInputDevice();
 	if(default_input == paNoDevice) {
