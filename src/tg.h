@@ -227,6 +227,7 @@ struct output_panel {
 	GtkWidget *left_button;
 	GtkWidget *right_button;
 	GtkWidget *zoom_button;
+	GtkWidget *zoom_orig_button;
 #ifdef DEBUG
 	GtkWidget *debug_drawing_area;
 #endif

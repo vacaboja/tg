@@ -881,6 +881,7 @@ static void handle_zoom(GtkScaleButton *b, struct output_panel *op)
 
 	ssd->beat_scale = scale;
 
+	gtk_widget_set_visible(op->zoom_orig_button, gtk_scale_button_get_value(b) != zoom_mid);
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
@@ -925,16 +926,17 @@ static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
 	gtk_widget_set_opacity(box, 0.8);
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
 
-	GtkWidget *zoom_orig = gtk_button_new_from_icon_name("zoom-original-symbolic", GTK_ICON_SIZE_BUTTON);
-	gtk_button_set_relief(GTK_BUTTON(zoom_orig), GTK_RELIEF_NONE);
-	g_signal_connect(zoom_orig, "clicked", G_CALLBACK(handle_zoom_original), op);
-	gtk_box_pack_start(GTK_BOX(box), zoom_orig, FALSE, FALSE, 0);
-
 	op->zoom_button = gtk_scale_button_new(GTK_ICON_SIZE_BUTTON, zoom_min, zoom_max, 1,
 					       (const char *[]){"zoom-in-symbolic", NULL});
 	gtk_scale_button_set_value(GTK_SCALE_BUTTON(op->zoom_button), zoom_mid);
 	g_signal_connect(op->zoom_button, "value-changed", G_CALLBACK(handle_zoom), op);
 	gtk_box_pack_start(GTK_BOX(box), op->zoom_button, FALSE, FALSE, 0);
+
+	op->zoom_orig_button = gtk_button_new_from_icon_name("zoom-original-symbolic", GTK_ICON_SIZE_BUTTON);
+	gtk_button_set_relief(GTK_BUTTON(op->zoom_orig_button), GTK_RELIEF_NONE);
+	g_signal_connect(op->zoom_orig_button, "clicked", G_CALLBACK(handle_zoom_original), op);
+	gtk_box_pack_start(GTK_BOX(box), op->zoom_orig_button, FALSE, FALSE, 0);
+	gtk_widget_set_no_show_all(op->zoom_orig_button, true);
 
 	// Buttons
 	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
