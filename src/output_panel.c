@@ -903,6 +903,17 @@ void op_destroy(struct output_panel *op)
 	free(op);
 }
 
+/* Wrappers around gtk_orientable_set_orientation() */
+static GtkOrientation vert_to_orient(bool vertical)
+{
+	return vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
+}
+
+static void set_orientation(GtkWidget *widget, bool vertical)
+{
+	gtk_orientable_set_orientation(GTK_ORIENTABLE(widget), vert_to_orient(vertical));
+}
+
 /* Creates the paperstrip, with buttons.  Returns top level Widget that contains
  * them.  Vertical controls orientation of paper strip.  */
 static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
@@ -975,7 +986,7 @@ static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
  * them.  Vertical controls how the waves are stacked.  */
 static GtkWidget* create_waveforms(struct output_panel *op, bool vertical)
 {
-	GtkWidget *box = gtk_box_new(vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, 10);
+	GtkWidget *box = gtk_box_new(vert_to_orient(vertical), 10);
 
 	// Tic waveform area
 	op->tic_drawing_area = gtk_drawing_area_new();
@@ -1014,12 +1025,12 @@ static void place_displays(struct output_panel *op, GtkWidget *paperstrip, GtkWi
 {
 	op->vertical_layout = vertical;
 
-	op->displays = gtk_paned_new(vertical ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
+	op->displays = gtk_paned_new(vert_to_orient(!vertical));
 	gtk_paned_set_wide_handle(GTK_PANED(op->displays), TRUE);
 
 	gtk_paned_pack1(GTK_PANED(op->displays), paperstrip, vertical ? FALSE : TRUE, FALSE);
 
-	gtk_orientable_set_orientation(GTK_ORIENTABLE(waveforms), vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+	set_orientation(waveforms, vert_to_orient(vertical));
 	gtk_paned_pack2(GTK_PANED(op->displays), waveforms, TRUE, FALSE);
 
 	/* Make paperstrip arrows buttons point correct way */
