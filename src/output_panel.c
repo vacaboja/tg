@@ -632,6 +632,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	 * now at 1.4 and 1.6, the first remains row 1, but the second is
 	 * rounded to row 2, causing it to appear to jump.  This is avoided by
 	 * only advancing time by a multiple of a row.  */
+	time += (int)(beat_length + 0.5) - 1;
 	time -= time % (int)(beat_length + 0.5);
 
 	// Beat error slope lines or calibration slope lines
