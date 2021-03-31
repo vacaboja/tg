@@ -930,17 +930,18 @@ static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
 	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
 	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
 
-	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+	GtkWidget *box = gtk_box_new(vert_to_orient(!vertical), 0);
 	gtk_container_set_border_width(GTK_CONTAINER(box), 15);
 	gtk_widget_set_margin_bottom(box, 5);
 	gtk_widget_set_halign(box, GTK_ALIGN_START);
-	gtk_widget_set_valign(box, GTK_ALIGN_END);
+	gtk_widget_set_valign(box, vertical ? GTK_ALIGN_END : GTK_ALIGN_START);
 	gtk_widget_set_opacity(box, 0.8);
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
 
 	op->zoom_button = gtk_scale_button_new(GTK_ICON_SIZE_BUTTON, zoom_min, zoom_max, 1,
 					       (const char *[]){"zoom-in-symbolic", NULL});
 	gtk_scale_button_set_value(GTK_SCALE_BUTTON(op->zoom_button), zoom_mid);
+	set_orientation(op->zoom_button, vertical);
 	g_signal_connect(op->zoom_button, "value-changed", G_CALLBACK(handle_zoom), op);
 	gtk_box_pack_start(GTK_BOX(box), op->zoom_button, FALSE, FALSE, 0);
 
@@ -1040,6 +1041,11 @@ static void place_displays(struct output_panel *op, GtkWidget *paperstrip, GtkWi
 	GtkWidget *right_arrow = gtk_button_get_image(GTK_BUTTON(op->right_button));
 	gtk_image_set_from_icon_name(GTK_IMAGE(right_arrow),
 		vertical ? "pan-end-symbolic" : "pan-down-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	/* Orientation of zoom buttons in papestrip */
+	GtkWidget *button_box = gtk_widget_get_parent(op->zoom_button);
+	gtk_widget_set_valign(button_box, vertical ? GTK_ALIGN_END : GTK_ALIGN_START);
+	set_orientation(button_box, !vertical);
+	set_orientation(op->zoom_button, vertical);
 
 	gtk_box_pack_end(GTK_BOX(op->panel), op->displays, TRUE, TRUE, 0);
 	gtk_widget_show(op->displays);
