@@ -164,7 +164,7 @@ uint64_t get_timestamp(int light)
 	return ts;
 }
 
-static void fill_buffers(struct processing_buffers *ps, int light)
+void fill_buffers(struct processing_buffers *ps, int light)
 {
 	pthread_mutex_lock(&audio_mutex);
 	uint64_t ts = timestamp;
@@ -187,26 +187,17 @@ static void fill_buffers(struct processing_buffers *ps, int light)
 	}
 }
 
-int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from)
+/* Returns if buffer was processed ok */
+bool analyze_pa_data(struct processing_data *pd, int step, int bph, double la, uint64_t events_from)
 {
-	struct processing_buffers *p = pd->buffers;
-	fill_buffers(p, pd->is_light);
+	struct processing_buffers *p = &pd->buffers[step];
 
-	int i;
-	debug("\nSTART OF COMPUTATION CYCLE\n\n");
-	for(i=0; i<NSTEPS; i++) {
-		p[i].last_tic = pd->last_tic;
-		p[i].events_from = events_from;
-		process(&p[i], bph, la, pd->is_light);
-		if( !p[i].ready ) break;
-		debug("step %d : %f +- %f\n",i,p[i].period/p[i].sample_rate,p[i].sigma/p[i].sample_rate);
-	}
-	if(i) {
-		pd->last_tic = p[i-1].last_tic;
-		debug("%f +- %f\n",p[i-1].period/p[i-1].sample_rate,p[i-1].sigma/p[i-1].sample_rate);
-	} else
-		debug("---\n");
-	return i;
+	p->last_tic = pd->last_tic;
+	p->events_from = events_from;
+	process(p, bph, la, pd->is_light);
+	debug("step %d : %f +- %f\n", step, p->period/p->sample_rate, p->sigma/p->sample_rate);
+
+	return p->ready;
 }
 
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
