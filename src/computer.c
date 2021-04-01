@@ -125,7 +125,7 @@ static void compute_update(struct computer *c)
 		c->actv->pb = pb_clone(&ps[step]);
 		c->actv->is_old = 0;
 		/* Signal's range is 0 to NSTEPS, while step is -1 to NSTEPS-1, i.e. signal = step+1 */
-		c->actv->signal = step == NSTEPS-1 && ps[step].amp < 0 ? step : step+1;
+		c->actv->signal = step+1;
 	} else {
 		debug("---\n");
 		c->actv->is_old = 1;
