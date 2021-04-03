@@ -20,7 +20,9 @@ AM_COND_IF([BE_WINDOWS], [AC_CONFIG_LINKS([icons/tg-timer.ico:icons/tg-timer.ico
 CC_CHECK_LDFLAGS([-Wl,--as-needed], [AC_SUBST([AM_LDFLAGS], [-Wl,--as-needed])], [])
 CC_CHECK_CFLAGS_APPEND([-Wall -Wextra], [], [])
 
-AC_OUTPUT([Makefile icons/Makefile])
+AC_CONFIG_FILES([Makefile icons/Makefile])
+AC_CONFIG_FILES([packaging/tg-timer.spec:packaging/tg-timer.inc.in:packaging/tg-timer.in.spec])
+AC_OUTPUT
 
 AC_MSG_RESULT([
         $PACKAGE_NAME $VERSION
