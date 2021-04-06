@@ -293,6 +293,7 @@ struct main_window {
 	GtkWidget *audio_setup;
 	GtkComboBox *device_list;
 	GtkComboBox *rate_list;
+	GtkRange *hpf_range;
 
 	struct output_panel *active_panel;
 
@@ -310,6 +311,7 @@ struct main_window {
 	int nominal_sr;	// requested audio device rate
 	int audio_device;// Selected device
 	int audio_rate;  // Selected rate
+	int hpf_freq;    // Low-pass filter cutoff frequency
 
 	bool vertical_layout;
 
@@ -338,7 +340,8 @@ void error(char *format,...);
 	OP(light_algorithm, is_light, int) \
 	OP(vertical_paperstrip, vertical_layout, bool) \
 	OP(audio_device, audio_device, int) \
-	OP(audio_rate, audio_rate, int)
+	OP(audio_rate, audio_rate, int) \
+	OP(highpass_cutoff_freq, hpf_freq, int)
 
 struct conf_data {
 #define DEF(NAME,PLACE,TYPE) TYPE PLACE;
