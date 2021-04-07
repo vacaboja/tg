@@ -695,7 +695,7 @@ static void audio_setup(GtkMenuItem *m, struct main_window *w)
 	if (new_rate == -1)
 		new_rate = w->nominal_sr; /* clear entry too? */
 
-	i = set_audio_device(selected, &new_rate, NULL, w->is_light);
+	i = set_audio_device(selected, &new_rate, NULL, FILTER_CUTOFF, w->is_light);
 	if (i == 0) {
 		w->nominal_sr = new_rate;
 		// Only save settings to config if it worked
@@ -706,7 +706,7 @@ static void audio_setup(GtkMenuItem *m, struct main_window *w)
 	} else if (i < 0) {
 		/* Try to restore old settings */
 		new_rate = w->nominal_sr;
-		i = set_audio_device(current_dev, &new_rate, NULL, w->is_light);
+		i = set_audio_device(current_dev, &new_rate, NULL, FILTER_CUTOFF, w->is_light);
 		if (i < 0)
 			error("Unable to restore previous audio settings.  Audio not working.");
 	}
@@ -1147,7 +1147,7 @@ static void start_interface(GApplication* app, void *p)
 	load_config(w);
 
 	w->nominal_sr = w->audio_rate;
-	if(start_portaudio(w->audio_device, &w->nominal_sr, &real_sr, w->is_light)) {
+	if(start_portaudio(w->audio_device, &w->nominal_sr, &real_sr, FILTER_CUTOFF, w->is_light)) {
 		g_application_quit(app);
 		return;
 	}

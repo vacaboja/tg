@@ -139,7 +139,7 @@ struct processing_data {
 #define AUDIO_RATE_LABELS {"22.05 kHz", "44.1 kHz", "48 kHz", "96 kHz", "192 kHz" }
 #define NUM_AUDIO_RATES ARRAY_SIZE((int[])AUDIO_RATES)
 
-int start_portaudio(int device, int *nominal_sample_rate, double *real_sample_rate, bool light);
+int start_portaudio(int device, int *nominal_sample_rate, double *real_sample_rate, int hpf_freq, bool light);
 int terminate_portaudio();
 uint64_t get_timestamp();
 void fill_buffers(struct processing_buffers *ps);
@@ -155,7 +155,9 @@ struct audio_device {
 };
 int get_audio_devices(const struct audio_device **devices);
 int get_audio_device(void);
-int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light);
+int set_audio_device(int device, int *nominal_sr, double *real_sr, int hpf_freq, bool light);
+void set_audio_hpf(int cutoff);
+const struct filter* get_audio_hpf(void);
 
 /* computer.c */
 struct display;

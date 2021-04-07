@@ -32,6 +32,7 @@ pthread_mutex_t audio_mutex;
 struct biquad_filter {
 	struct filter f;	//!< Filter coefficients, F(z) = a(z) / b(z)
 	double        z1, z2;	//!< Delay taps
+	int	      frequency;//!< Cut-off frequency
 };
 
 /** Data for PA callback to use */
@@ -69,11 +70,30 @@ static inline double effective_sr(void)
 }
 
 /* Initialize audio filter */
-static void init_audio_hpf(struct biquad_filter *filter, double cutoff, double sample_rate)
+static void init_audio_hpf(struct biquad_filter *filter, int cutoff, double sample_rate)
 {
 	make_hp(&filter->f, cutoff/sample_rate);
 	filter->z1 = 0.0;
 	filter->z2 = 0.0;
+	filter->frequency = cutoff;
+}
+
+/** Set High pass filter cutoff frequency.
+ *
+ * Setting value to zero turns it off.  Has no effect if frequency is not
+ * changed.
+ */
+void set_audio_hpf(int cutoff)
+{
+	if (actx.info.hpf.frequency != cutoff) {
+		make_hp(&actx.info.hpf.f, (double)cutoff / effective_sr());
+		actx.info.hpf.frequency = cutoff;
+	}
+}
+
+const struct filter* get_audio_hpf(void)
+{
+	return &actx.info.hpf.f;
 }
 
 /* Apply a biquadratic filter to data.  The delay values are updated in f, so
@@ -146,12 +166,14 @@ static int paudio_callback(const void *input_buffer,
 	}
 
 	/* Apply HPF to new data */
-	struct biquad_filter *f = (struct biquad_filter *)&info->hpf;
-	if(write_pointer < wp) {
-		apply_biquad(f, pa_buffers + write_pointer, wp - write_pointer);
-	} else {
-		apply_biquad(f, pa_buffers + write_pointer, pa_buffer_size - write_pointer);
-		apply_biquad(f, pa_buffers, wp);
+	if(info->hpf.frequency) {
+		struct biquad_filter *f = (struct biquad_filter *)&info->hpf;
+		if(write_pointer < wp) {
+			apply_biquad(f, pa_buffers + write_pointer, wp - write_pointer);
+		} else {
+			apply_biquad(f, pa_buffers + write_pointer, pa_buffer_size - write_pointer);
+			apply_biquad(f, pa_buffers, wp);
+		}
 	}
 
 	pthread_mutex_lock(&audio_mutex);
@@ -205,11 +227,12 @@ static PaError open_stream(PaDeviceIndex index, unsigned int rate, bool light, P
  * @param device Device number, index of device from get_audio_devices() list
  * @param[in,out] normal_sr Desired rate, or zero for default.  Rate used on return.
  * @param[out] real_sr Actual exact rate received, might be different than nominal_sr.
- * @param[light] light Use light mode (halve normal_sr)
+ * @param hpf_freq The cutoff frequency of the high pass filter.  0 disables.
+ * @param light Use light mode (halve normal_sr)
  * @returns zero or one on success or negative error code.  1 indicates no
  * change in device or rate was needed.
  */
-int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light)
+int set_audio_device(int device, int *nominal_sr, double *real_sr, int hpf_freq, bool light)
 {
 	PaError err;
 
@@ -218,6 +241,7 @@ int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light)
 		*nominal_sr = PA_SAMPLE_RATE;
 
 	if(actx.device == device && actx.sample_rate == *nominal_sr) {
+		set_audio_hpf(hpf_freq);
 		if(real_sr) *real_sr = actx.real_sample_rate;
 		return 1; // Already using this device at this rate
 	}
@@ -247,7 +271,7 @@ int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light)
 		goto error;
 	actx.real_sample_rate = Pa_GetStreamInfo(actx.stream)->sampleRate;
 
-	init_audio_hpf(&actx.info.hpf, FILTER_CUTOFF, effective_sr());
+	init_audio_hpf(&actx.info.hpf, hpf_freq, effective_sr());
 
 	/* Allocate larger buffer if needed */
 	const size_t buffer_size = actx.sample_rate << (NSTEPS + FIRST_STEP);
@@ -371,11 +395,12 @@ static int scan_audio_devices(void)
  * @param[in,out] normal_sample_rate The rate in Hz to use, or 0 for default.  Returns
  * actual rate selected.
  * @param[out] real_sample_rate The exact rate used.
+ * @param hpf_freq The cutoff frequency of the high pass filter.  0 disables.
  * @param light Use light mode (decimate to half supplied rate).
  * @returns 0 on success, 1 on error.
  *
  */
-int start_portaudio(int device, int *nominal_sample_rate, double *real_sample_rate, bool light)
+int start_portaudio(int device, int *nominal_sample_rate, double *real_sample_rate, int hpf_freq, bool light)
 {
 	if(pthread_mutex_init(&audio_mutex,NULL)) {
 		error("Failed to setup audio mutex");
@@ -412,7 +437,7 @@ int start_portaudio(int device, int *nominal_sample_rate, double *real_sample_ra
 	} else
 		input = device;
 
-	err = set_audio_device(input, nominal_sample_rate, real_sample_rate, light);
+	err = set_audio_device(input, nominal_sample_rate, real_sample_rate, hpf_freq, light);
 	if(err!=paNoError && err!=1)
 		goto error;
 
