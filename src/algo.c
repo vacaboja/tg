@@ -901,7 +901,7 @@ void process(struct processing_buffers *p, int bph, double la, int light)
 
 	p->ready = !compute_period(p,bph);
 	/* Limit to 20% greater when period is known, or 500 ms when guessing period */
-	const int min_bph = bph ? bph : MIN_BPH;
+	const int min_bph = bph ? bph : TYP_BPH;
 	const int max_period = (int)(1.2 * 3600 * 2) * p->sample_rate / min_bph;
 	if(p->ready && p->period >= max_period) {
 		debug("Detected period too long\n");

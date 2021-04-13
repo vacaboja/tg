@@ -57,7 +57,8 @@
 #define PAPERSTRIP_ZOOM_CAL 100
 #define PAPERSTRIP_MARGIN .2
 
-#define MIN_BPH 12000
+#define MIN_BPH 8100
+#define TYP_BPH 12000
 #define MAX_BPH 72000
 #define DEFAULT_BPH 21600
 #define MIN_LA 10 // deg
