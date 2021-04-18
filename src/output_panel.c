@@ -112,11 +112,20 @@ static double amplitude_to_time(double lift_angle, double amp)
 	return asin(lift_angle / (2 * amp)) / M_PI;
 }
 
-static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
+/** Draw the watch graphic that has status info.
+ *
+ * @param[in,out] c Cairo context to use.
+ * @param signal Signal level, i.e. dots, 0 to NSTEPS inclusive.
+ * @param partial Specified signal level is only partially achieved.
+ * @param happy Green happy face or red frowny face.
+ * @param light Indicate light sampling mode.
+ * @return Y coodinate of top margin.
+ */
+
+static double draw_watch_icon(cairo_t *c, int signal, bool partial, bool happy, bool light)
 {
-	happy = !!happy;
-	cairo_set_line_width(c,3);
-	cairo_set_source(c,happy?green:red);
+	cairo_set_line_width(c, 3);
+	cairo_set_source(c, happy ? green : red);
 	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
 	cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.75, OUTPUT_WINDOW_HEIGHT * (0.75 - 0.5*happy));
 	cairo_move_to(c, OUTPUT_WINDOW_HEIGHT * 0.5, OUTPUT_WINDOW_HEIGHT * 0.5);
@@ -126,7 +135,7 @@ static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
 	cairo_stroke(c);
 	int l = OUTPUT_WINDOW_HEIGHT * 0.8 / (2*NSTEPS - 1);
 	int i;
-	cairo_set_line_width(c,1);
+	cairo_set_line_width(c, 1);
 	for(i = 0; i < signal; i++) {
 		cairo_move_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
 		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 1.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
@@ -134,7 +143,7 @@ static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
 		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - (2*i+1)*l);
 		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT + 0.5*l, OUTPUT_WINDOW_HEIGHT * 0.9 - 2*i*l);
 		cairo_stroke_preserve(c);
-		cairo_fill(c);
+		if (i < signal-1 || !partial) cairo_fill(c);
 	}
 	if(light) {
 		int l = OUTPUT_WINDOW_HEIGHT * 0.15;
@@ -194,7 +203,8 @@ static gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 	struct processing_buffers *p = snst->pb;
 	int old = snst->is_old;
 
-	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal, snst->is_light);
+	double x = draw_watch_icon(c, snst->signal, snst->amp <= 0,
+				   snst->signal >= (snst->calibrate ? NSTEPS : 1), snst->is_light);
 
 	cairo_text_extents_t extents;
 
