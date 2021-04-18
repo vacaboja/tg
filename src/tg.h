@@ -125,7 +125,7 @@ struct processing_data {
 	int is_light;
 };
 
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate);
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light);
 int terminate_portaudio();
 uint64_t get_timestamp(int light);
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);

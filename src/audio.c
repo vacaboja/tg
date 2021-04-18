@@ -25,6 +25,9 @@ int write_pointer = 0;
 uint64_t timestamp = 0;
 pthread_mutex_t audio_mutex;
 
+/* Audio input stream object */
+static PaStream *stream;
+
 /* Data for PA callback to use */
 static struct callback_info {
 	int 	channels;	//!< Number of channels
@@ -88,10 +91,8 @@ static int paudio_callback(const void *input_buffer,
 	return 0;
 }
 
-int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
+int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light)
 {
-	PaStream *stream;
-
 	if(pthread_mutex_init(&audio_mutex,NULL)) {
 		error("Failed to setup audio mutex");
 		return 1;
@@ -121,7 +122,7 @@ int start_portaudio(int *nominal_sample_rate, double *real_sample_rate)
 	}
 	if(channels > 2) channels = 2;
 	info.channels = channels;
-	info.light = false;
+	info.light = light;
 	err = Pa_OpenDefaultStream(&stream,channels,0,paFloat32,PA_SAMPLE_RATE,paFramesPerBufferUnspecified,paudio_callback,&info);
 	if(err!=paNoError)
 		goto error;
@@ -235,11 +236,18 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 void set_audio_light(bool light)
 {
 	if(info.light != light) {
+		Pa_StopStream(stream);
 		pthread_mutex_lock(&audio_mutex);
+
 		info.light = light;
 		memset(pa_buffers, 0, sizeof(pa_buffers));
 		write_pointer = 0;
 		timestamp = 0;
+
 		pthread_mutex_unlock(&audio_mutex);
+
+		PaError err = Pa_StartStream(stream);
+		if(err != paNoError)
+			error("Error re-starting audio input: %s", Pa_GetErrorText(err));
 	}
 }
