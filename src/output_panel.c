@@ -322,10 +322,9 @@ static void expose_waveform(
 	int width = temp.width;
 	int height = temp.height;
 
-	gtk_widget_get_allocation(gtk_widget_get_toplevel(da), &temp);
-	int font = temp.width / 90;
-	if(font < 12)
-		font = 12;
+	int font = width / 25;
+	font = font < 12 ? 12 : font > 24 ? 24 : font;
+
 	int i;
 
 	cairo_set_font_size(c,font);
@@ -549,9 +548,19 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	GtkAllocation temp;
 	gtk_widget_get_allocation (op->paperstrip_drawing_area, &temp);
+	int width, height;
 
-	int width = temp.width;
-	int height = temp.height;
+	/* The paperstrip is coded to be vertical; horizontal uses cairo to rotate it. */
+	if(op->vertical_layout) {
+		width = temp.width;
+		height = temp.height;
+	} else {
+		width = temp.height;
+		height = temp.width;
+
+		cairo_translate(c, height, 0);
+		cairo_rotate(c, M_PI/2);
+	}
 
 	int stopped = 0;
 	if( snst->events_count &&
@@ -660,18 +669,14 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_line_to(c, right_margin + .5, height - 20.5);
 	cairo_fill(c);
 
-	char s[100];
-	cairo_text_extents_t extents;
+	int font = width / 25;
+	cairo_set_font_size(c, font < 12 ? 12 : font > 24 ? 24 : font);
 
-	gtk_widget_get_allocation(gtk_widget_get_toplevel(widget), &temp);
-	int font = temp.width / 90;
-	if(font < 12)
-		font = 12;
-	cairo_set_font_size(c,font);
-
-	sprintf(s, "%.1f ms", snst->calibrate ?
+	char s[32];
+	snprintf(s, sizeof(s), "%.1f ms", snst->calibrate ?
 				1000. / zoom_factor :
 				3600000. / (snst->guessed_bph * zoom_factor));
+	cairo_text_extents_t extents;
 	cairo_text_extents(c,s,&extents);
 	cairo_move_to(c, (width - extents.x_advance)/2, height - 30);
 	cairo_show_text(c,s);
@@ -782,7 +787,155 @@ void op_destroy(struct output_panel *op)
 	free(op);
 }
 
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border)
+/* Creates the paperstrip, with buttons.  Returns top level Widget that contains
+ * them.  Vertical controls orientation of paper strip.  */
+static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
+{
+	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+
+	// Paperstrip
+	op->paperstrip_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->paperstrip_drawing_area, 150, 150);
+	gtk_box_pack_start(GTK_BOX(vbox), op->paperstrip_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
+	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
+
+	// Buttons
+	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, TRUE, 0);
+
+	// < button
+	op->left_button = gtk_button_new_from_icon_name(
+		vertical ? "pan-start-symbolic" : "pan-up-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	gtk_box_pack_start(GTK_BOX(hbox), op->left_button, TRUE, TRUE, 0);
+	g_signal_connect (op->left_button, "clicked", G_CALLBACK(handle_left), op);
+
+	// CLEAR button
+	if(op->computer) {
+		op->clear_button = gtk_button_new_with_label("Clear");
+		gtk_box_pack_start(GTK_BOX(hbox), op->clear_button, TRUE, TRUE, 0);
+		g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
+		gtk_widget_set_sensitive(op->clear_button, !op->snst->calibrate);
+	}
+
+	// CENTER button
+	GtkWidget *center_button = gtk_button_new_with_label("Center");
+	gtk_box_pack_start(GTK_BOX(hbox), center_button, TRUE, TRUE, 0);
+	g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), op);
+
+	// > button
+	op->right_button = gtk_button_new_from_icon_name(
+		vertical ? "pan-end-symbolic" : "pan-down-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	gtk_box_pack_start(GTK_BOX(hbox), op->right_button, TRUE, TRUE, 0);
+	g_signal_connect (op->right_button, "clicked", G_CALLBACK(handle_right), op);
+
+	return vbox;
+}
+
+/* Create the tic, toc, and period waveforms.  Returns the GtkBox that contains
+ * them.  Vertical controls how the waves are stacked.  */
+static GtkWidget* create_waveforms(struct output_panel *op, bool vertical)
+{
+	GtkWidget *box = gtk_box_new(vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, 10);
+
+	// Tic waveform area
+	op->tic_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->tic_drawing_area, 300, 150);
+	gtk_box_pack_start(GTK_BOX(box), op->tic_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), op);
+	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
+
+	// Toc waveform area
+	op->toc_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->toc_drawing_area, 300, 150);
+	gtk_box_pack_start(GTK_BOX(box), op->toc_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), op);
+	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
+
+	// Period waveform area
+	op->period_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->period_drawing_area, 300, 150);
+	gtk_box_pack_start(GTK_BOX(box), op->period_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->period_drawing_area, "draw", G_CALLBACK(period_draw_event), op);
+	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
+
+#ifdef DEBUG
+	op->debug_drawing_area = gtk_drawing_area_new();
+	gtk_box_pack_start(GTK_BOX(box), op->debug_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), op);
+	gtk_widget_set_events(op->debug_drawing_area, GDK_EXPOSURE_MASK);
+#endif
+
+	return box;
+}
+
+/* Create container and place paperstrip and waveforms in either vertical or
+ * horizontal paperstrip orientation.  Puts container in the panel and shows it. */
+static void place_displays(struct output_panel *op, GtkWidget *paperstrip, GtkWidget *waveforms, bool vertical)
+{
+	op->vertical_layout = vertical;
+
+	op->displays = gtk_paned_new(vertical ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
+	gtk_paned_set_wide_handle(GTK_PANED(op->displays), TRUE);
+
+	gtk_paned_pack1(GTK_PANED(op->displays), paperstrip, vertical ? FALSE : TRUE, FALSE);
+
+	gtk_orientable_set_orientation(GTK_ORIENTABLE(waveforms), vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+	gtk_paned_pack2(GTK_PANED(op->displays), waveforms, TRUE, FALSE);
+
+	/* Make paperstrip arrows buttons point correct way */
+	GtkWidget *left_arrow = gtk_button_get_image(GTK_BUTTON(op->left_button));
+	gtk_image_set_from_icon_name(GTK_IMAGE(left_arrow),
+		vertical ? "pan-start-symbolic" : "pan-up-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	GtkWidget *right_arrow = gtk_button_get_image(GTK_BUTTON(op->right_button));
+	gtk_image_set_from_icon_name(GTK_IMAGE(right_arrow),
+		vertical ? "pan-end-symbolic" : "pan-down-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+
+	gtk_box_pack_end(GTK_BOX(op->panel), op->displays, TRUE, TRUE, 0);
+	gtk_widget_show(op->displays);
+}
+
+/* Create the paperstrip and waveforms, a container for them, and place it into
+ * the panel.  Returns containing Widget.  Vertical controls paperstrip
+ * orientation.  */
+static GtkWidget *create_displays(struct output_panel *op, bool vertical)
+{
+	// The paperstrip and buttons
+	op->paperstrip_box = create_paperstrip(op, vertical);
+	// Tic/toc/period waveform area
+	op->waveforms_box = create_waveforms(op, vertical);
+
+	place_displays(op, op->paperstrip_box, op->waveforms_box, vertical);
+
+	return op->displays;
+}
+
+/* Change orientation of existing output panel.  Is a no-op if orientation is
+ * not changed.  */
+void set_panel_layout(struct output_panel *op, bool vertical)
+{
+	if (op->vertical_layout == vertical)
+		return;
+
+	/* Remove waveforms and paperstrip containers from displays container,
+	 * then use place_displays() to put them into a new displays container. 
+	 * The need to be refed so they are not deleted when removed from the
+	 * container.  */
+	g_object_ref(op->waveforms_box);
+	gtk_container_remove(GTK_CONTAINER(op->displays), op->waveforms_box);
+
+	g_object_ref(op->paperstrip_box);
+	gtk_container_remove(GTK_CONTAINER(op->displays), op->paperstrip_box);
+
+	gtk_widget_destroy(op->displays); op->displays = NULL;
+	place_displays(op, op->paperstrip_box, op->waveforms_box, vertical);
+
+	/* They are now refed by op->displays so we don't need our refs anymore */
+	g_object_unref(op->paperstrip_box);
+	g_object_unref(op->waveforms_box);
+}
+
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border, bool vertical)
 {
 	struct output_panel *op = malloc(sizeof(struct output_panel));
 
@@ -799,72 +952,7 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	g_signal_connect (op->output_drawing_area, "draw", G_CALLBACK(output_draw_event), op);
 	gtk_widget_set_events(op->output_drawing_area, GDK_EXPOSURE_MASK);
 
-	GtkWidget *hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-	gtk_box_pack_start(GTK_BOX(op->panel), hbox2, TRUE, TRUE, 0);
-
-	GtkWidget *vbox2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-	gtk_box_pack_start(GTK_BOX(hbox2), vbox2, FALSE, TRUE, 0);
-
-	// Paperstrip
-	op->paperstrip_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->paperstrip_drawing_area, 300, 0);
-	gtk_box_pack_start(GTK_BOX(vbox2), op->paperstrip_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
-	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
-
-	GtkWidget *hbox3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
-
-	// < button
-	GtkWidget *left_button = gtk_button_new_with_label("<");
-	gtk_box_pack_start(GTK_BOX(hbox3), left_button, TRUE, TRUE, 0);
-	g_signal_connect (left_button, "clicked", G_CALLBACK(handle_left), op);
-
-	// CLEAR button
-	if(comp) {
-		op->clear_button = gtk_button_new_with_label("Clear");
-		gtk_box_pack_start(GTK_BOX(hbox3), op->clear_button, TRUE, TRUE, 0);
-		g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
-		gtk_widget_set_sensitive(op->clear_button, !snst->calibrate);
-	}
-
-	// CENTER button
-	GtkWidget *center_button = gtk_button_new_with_label("Center");
-	gtk_box_pack_start(GTK_BOX(hbox3), center_button, TRUE, TRUE, 0);
-	g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), op);
-
-	// > button
-	GtkWidget *right_button = gtk_button_new_with_label(">");
-	gtk_box_pack_start(GTK_BOX(hbox3), right_button, TRUE, TRUE, 0);
-	g_signal_connect (right_button, "clicked", G_CALLBACK(handle_right), op);
-
-	GtkWidget *vbox3 = gtk_box_new(GTK_ORIENTATION_VERTICAL,10);
-	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);
-
-	// Tic waveform area
-	op->tic_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->tic_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), op);
-	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
-
-	// Toc waveform area
-	op->toc_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->toc_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), op);
-	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
-
-	// Period waveform area
-	op->period_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->period_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->period_drawing_area, "draw", G_CALLBACK(period_draw_event), op);
-	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
-
-#ifdef DEBUG
-	op->debug_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->debug_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), op);
-	gtk_widget_set_events(op->debug_drawing_area, GDK_EXPOSURE_MASK);
-#endif
+	create_displays(op, vertical);
 
 	return op;
 }
