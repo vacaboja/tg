@@ -28,16 +28,17 @@ pthread_mutex_t audio_mutex;
 
 /** A biquadratic filter.
  * Saves the delay taps to allow the filter to continue across multiple calls. */
-static struct biquad_filter {
+struct biquad_filter {
 	struct filter f;	//!< Filter coefficients, F(z) = a(z) / b(z)
 	double        z1, z2;	//!< Delay taps
-} audio_hpf;
+};
 
-/* Data for PA callback to use */
-static struct callback_info {
+/** Data for PA callback to use */
+struct callback_info {
 	int 	channels;	//!< Number of channels
 	bool	light;		//!< Light algorithm in use, copy half data
-} info;
+	struct biquad_filter hpf; //!< High-pass filter run in callback
+};
 
 /** Static object for audio device state.
  * There are calls that need this from the audio callback thread, the GUI thread, and
@@ -51,6 +52,8 @@ static struct audio_context {
 	int device;  		//!< PortAudio device ID number
 	int sample_rate;	//!< Requested sample rate (actual may differ)
 	double real_sample_rate;//!< Real rate as returned by PA
+	//! Data callback will read, need to take care when modifying so as not to race.
+	struct callback_info info;
 } actx = {
 	.device = -1,
 };
@@ -133,11 +136,12 @@ static int paudio_callback(const void *input_buffer,
 	}
 
 	/* Apply HPF to new data */
+	struct biquad_filter *f = (struct biquad_filter *)&info->hpf;
 	if(write_pointer < wp) {
-		apply_biquad(&audio_hpf, pa_buffers + write_pointer, wp - write_pointer);
+		apply_biquad(f, pa_buffers + write_pointer, wp - write_pointer);
 	} else {
-		apply_biquad(&audio_hpf, pa_buffers + write_pointer, pa_buffer_size - write_pointer);
-		apply_biquad(&audio_hpf, pa_buffers, wp);
+		apply_biquad(f, pa_buffers + write_pointer, pa_buffer_size - write_pointer);
+		apply_biquad(f, pa_buffers, wp);
 	}
 
 	pthread_mutex_lock(&audio_mutex);
@@ -157,8 +161,8 @@ static PaError open_stream(PaDeviceIndex index, unsigned int rate, bool light, P
 		return paInvalidChannelCount;
 	}
 	if(channels > 2) channels = 2;
-	info.channels = channels;
-	info.light = light;
+	actx.info.channels = channels;
+	actx.info.light = light;
 
 	err = Pa_OpenStream(stream,
 			    &(PaStreamParameters){
@@ -172,7 +176,7 @@ static PaError open_stream(PaDeviceIndex index, unsigned int rate, bool light, P
 			    paFramesPerBufferUnspecified,
 			    paNoFlag,
 			    paudio_callback,
-			    &info);
+			    &actx.info);
 	return err;
 }
 
@@ -233,7 +237,7 @@ int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light)
 		goto error;
 	actx.real_sample_rate = Pa_GetStreamInfo(actx.stream)->sampleRate;
 
-	init_audio_hpf(&audio_hpf, FILTER_CUTOFF, actx.real_sample_rate / (light ? 2 : 1));
+	init_audio_hpf(&actx.info.hpf, FILTER_CUTOFF, actx.real_sample_rate / (light ? 2 : 1));
 
 	/* Allocate larger buffer if needed */
 	const size_t buffer_size = actx.sample_rate << (NSTEPS + FIRST_STEP);
@@ -416,18 +420,18 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
  */
 void set_audio_light(bool light, int sample_rate)
 {
-	if(info.light != light) {
+	if(actx.info.light != light) {
 		Pa_StopStream(actx.stream);
 		pthread_mutex_lock(&audio_mutex);
 
-		info.light = light;
+		actx.info.light = light;
 		memset(pa_buffers, 0, sizeof(*pa_buffers) * pa_buffer_size);
 		write_pointer = 0;
 		timestamp = 0;
 
 		pthread_mutex_unlock(&audio_mutex);
 
-		init_audio_hpf(&audio_hpf, FILTER_CUTOFF, sample_rate);
+		init_audio_hpf(&actx.info.hpf, FILTER_CUTOFF, sample_rate);
 		PaError err = Pa_StartStream(actx.stream);
 		if(err != paNoError)
 			error("Error re-starting audio input: %s", Pa_GetErrorText(err));
