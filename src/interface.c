@@ -422,7 +422,7 @@ static GtkWidget *make_tab_label(char *name, struct output_panel *panel_to_close
 
 static void add_new_tab(struct snapshot *s, char *name, struct main_window *w)
 {
-	struct output_panel *op = init_output_panel(NULL, s, 5);
+	struct output_panel *op = init_output_panel(NULL, s, 5, w->vertical_layout);
 	GtkWidget *label = make_tab_label(name, op);
 	gtk_widget_show_all(op->panel);
 
@@ -694,6 +694,45 @@ static void load(GtkMenuItem *m, struct main_window *w)
 	gtk_widget_destroy(dialog);
 }
 
+static void handle_layout(GtkCheckMenuItem *b, struct main_window *w)
+{
+	const bool vertical = gtk_check_menu_item_get_active(b) == TRUE;
+
+	w->vertical_layout = vertical;
+	set_panel_layout(w->active_panel, vertical);
+
+	int n = 0;
+	GtkWidget *panel;
+	while ((panel = gtk_notebook_get_nth_page(GTK_NOTEBOOK(w->notebook), n++))) {
+		struct output_panel *op = g_object_get_data(G_OBJECT(panel), "op-pointer");
+		if(op)
+			set_panel_layout(op, vertical);
+	}
+}
+
+/* Add a checkbox with name to the given menu, with initial state active and
+ * attach the supplied callback and parameter to the toggled signal.  Set is set
+ * before attaching the signal, so the callback is not called when created.  */
+static GtkWidget* add_checkbox(GtkWidget* menu, const char* name, bool active, GCallback callback, void* param)
+{
+	GtkWidget *checkbox = gtk_check_menu_item_new_with_label(name);
+	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(checkbox), active);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), checkbox);
+	g_signal_connect(checkbox, "toggled", callback, param);
+	return checkbox;
+}
+
+/* Add a menu item with given label to the given menu, with the supplied initial
+* sensitivity, callback, and callback parameter.  */
+static GtkWidget* add_menu_item(GtkWidget* menu, const char* label, bool sensitive, GCallback callback, void* param)
+{
+	GtkWidget *item = gtk_menu_item_new_with_label(label);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+	gtk_widget_set_sensitive(item, sensitive);
+	g_signal_connect(item, "activate", callback, param);
+	return item;
+}
+
 /* Set up the main window and populate with widgets */
 static void init_main_window(struct main_window *w)
 {
@@ -800,47 +839,32 @@ static void init_main_window(struct main_window *w)
 	gtk_box_pack_end(GTK_BOX(hbox), command_menu_button, FALSE, FALSE, 0);
 	
 	// ... Open
-	GtkWidget *open_item = gtk_menu_item_new_with_label("Open");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), open_item);
-	g_signal_connect(open_item, "activate", G_CALLBACK(load), w);
+	add_menu_item(command_menu, "Open", true, G_CALLBACK(load), w);
 
 	// ... Save
-	w->save_item = gtk_menu_item_new_with_label("Save current display");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->save_item);
-	g_signal_connect(w->save_item, "activate", G_CALLBACK(save_current), w);
-	gtk_widget_set_sensitive(w->save_item, FALSE);
+	w->save_item = add_menu_item(command_menu, "Save current display", false, G_CALLBACK(save_current), w);
 
 	// ... Save all
-	w->save_all_item = gtk_menu_item_new_with_label("Save all snapshots");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->save_all_item);
-	g_signal_connect(w->save_all_item, "activate", G_CALLBACK(save_all), w);
-	gtk_widget_set_sensitive(w->save_all_item, FALSE);
+	w->save_all_item = add_menu_item(command_menu, "Save all snapshots", false, G_CALLBACK(save_all), w);
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), gtk_separator_menu_item_new());
 
 	// ... Light checkbox
-	GtkWidget *light_checkbox = gtk_check_menu_item_new_with_label("Light algorithm");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), light_checkbox);
-	g_signal_connect(light_checkbox, "toggled", G_CALLBACK(handle_light), w);
-	gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(light_checkbox), w->is_light);
+	add_checkbox(command_menu, "Light algorithm", w->is_light, G_CALLBACK(handle_light), w);
 
 	// ... Calibrate checkbox
-	w->cal_button = gtk_check_menu_item_new_with_label("Calibrate");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->cal_button);
-	g_signal_connect(w->cal_button, "toggled", G_CALLBACK(handle_calibrate), w);
+	w->cal_button = add_checkbox(command_menu, "Calibrate", false, G_CALLBACK(handle_calibrate), w);
+
+	// Layout checkbox
+	add_checkbox(command_menu, "Vertical", w->vertical_layout, G_CALLBACK(handle_layout), w);
 
 	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), gtk_separator_menu_item_new());
 
 	// ... Close all
-	w->close_all_item = gtk_menu_item_new_with_label("Close all snapshots");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), w->close_all_item);
-	g_signal_connect(w->close_all_item, "activate", G_CALLBACK(close_all), w);
-	gtk_widget_set_sensitive(w->close_all_item, FALSE);
+	w->close_all_item = add_menu_item(command_menu, "Close all snapshots", false, G_CALLBACK(close_all), w);
 
 	// ... Quit
-	GtkWidget *quit_item = gtk_menu_item_new_with_label("Quit");
-	gtk_menu_shell_append(GTK_MENU_SHELL(command_menu), quit_item);
-	g_signal_connect(quit_item, "activate", G_CALLBACK(handle_quit), w);
+	add_menu_item(command_menu, "Quit", true, G_CALLBACK(handle_quit), w);
 
 	gtk_widget_show_all(command_menu);
 
@@ -875,11 +899,11 @@ guint refresh(struct main_window *w)
 	lock_computer(w->computer);
 	struct snapshot *s = w->computer->curr;
 	if(s) {
-		double trace_centering = w->active_snapshot->trace_centering;
+		s->d = w->active_snapshot->d;
+		w->active_snapshot->d = NULL;
 		snapshot_destroy(w->active_snapshot);
 		w->active_snapshot = s;
 		w->computer->curr = NULL;
-		s->trace_centering = trace_centering;
 		if(w->computer->clear_trace && !s->calibrate)
 			memset(s->events,0,s->events_count*sizeof(uint64_t));
 		if(s->calibrate && s->cal_state == 1 && s->cal_result != w->cal) {
@@ -926,6 +950,7 @@ static void start_interface(GApplication* app, void *p)
 	w->la = DEFAULT_LA;
 	w->calibrate = 0;
 	w->is_light = 0;
+	w->vertical_layout = true;
 
 	load_config(w);
 
@@ -954,7 +979,7 @@ static void start_interface(GApplication* app, void *p)
 	w->computer->curr = NULL;
 	compute_results(w->active_snapshot);
 
-	w->active_panel = init_output_panel(w->computer, w->active_snapshot, 0);
+	w->active_panel = init_output_panel(w->computer, w->active_snapshot, 0, w->vertical_layout);
 
 	init_main_window(w);
 

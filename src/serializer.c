@@ -347,7 +347,9 @@ static int serialize_snapshot(FILE *f, struct snapshot *s, char *name)
 	SERIALIZE(double,rate);
 	SERIALIZE(double,be);
 	SERIALIZE(double,amp);
-	SERIALIZE(double,trace_centering);
+	SERIALIZE(double,d->beat_scale);
+	SERIALIZE(uint64_t,d->anchor_time);
+	SERIALIZE(double,d->anchor_offset);
 	SERIALIZE(int,is_light);
 	return serialize_struct_end(f);
 }
@@ -370,10 +372,9 @@ static int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 	if(strcmp("realtime-snapshot", l))
 		return eat_object(f);
 
-	*s = malloc(sizeof(struct snapshot));
-	memset(*s, 0, sizeof(struct snapshot));
-	(*s)->pb = malloc(sizeof(struct processing_buffers));
-	memset((*s)->pb, 0, sizeof(struct processing_buffers));
+	*s = calloc(1, sizeof(**s));
+	(*s)->pb = calloc(1, sizeof(*(*s)->pb));
+	(*s)->d = calloc(1, sizeof(*(*s)->d));
 	*name = NULL;
 
 	n = 0;
@@ -423,7 +424,9 @@ static int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 		SCAN(double,rate);
 		SCAN(double,be);
 		SCAN(double,amp);
-		SCAN(double,trace_centering);
+		SCAN(double,d->beat_scale);
+		SCAN(uint64_t,d->anchor_time);
+		SCAN(double,d->anchor_offset);
 		SCAN(int,is_light);
 
 		if(eat_object(f)) goto error;
@@ -453,6 +456,9 @@ static int scan_snapshot(FILE *f, struct snapshot **s, char **name)
 	if((*s)->be < 0 || (*s)->be > 99.9) goto error;
 	debug("serializer: checking amplitude\n");
 	if((*s)->amp < 0 || (*s)->amp > 360) goto error;
+	debug("serializer: checking scale\n");
+	if((*s)->d->beat_scale == 0) (*s)->d->beat_scale = 1.0/PAPERSTRIP_ZOOM;
+	if((*s)->d->beat_scale < 0 || (*s)->d->beat_scale > 1) goto error;
 	(*s)->pb->events = NULL;
 #ifdef DEBUG
 	(*s)->pb->debug = NULL;

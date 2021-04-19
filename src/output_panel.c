@@ -18,6 +18,13 @@
 
 #include "tg.h"
 
+// Zoom slider ranges from 1 to 100
+static const double zoom_min = 1, zoom_max = 100, zoom_mid = (zoom_min + zoom_max)/2;
+// Scale ranges from 1x beat length to zoomed in by 100x
+static const double scale_min = 1, scale_max = 100;
+
+static inline double spb(const struct snapshot *snst);
+
 cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
 
 static void define_color(cairo_pattern_t **gc,double r,double g,double b)
@@ -329,17 +336,21 @@ static void expose_waveform(
 	GtkAllocation temp;
 	gtk_widget_get_allocation(da, &temp);
 
-	int width = temp.width;
-	int height = temp.height;
+	const int width = temp.width, height = temp.height;
 
-	gtk_widget_get_allocation(gtk_widget_get_toplevel(da), &temp);
-	int font = temp.width / 90;
-	if(font < 12)
-		font = 12;
+	int fontw = width / 40;
+	fontw = fontw < 12 ? 12 : fontw > 20 ? 20 : fontw;
+	int fonth = height / 12;
+	fonth = fonth < 12 ? 12 : fonth > 20 ? 20 : fonth;
+	const int font = MIN(fontw, fonth);
+	cairo_set_font_size(c, font);
+
+	cairo_font_extents_t fextents;
+	cairo_font_extents(c, &fextents);
+
+	const int margin = 6;
+
 	int i;
-
-	cairo_set_font_size(c,font);
-
 	for(i = 1-NEGATIVE_SPAN; i < POSITIVE_SPAN; i++) {
 		int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 		cairo_move_to(c, x + .5, height / 2 + .5);
@@ -356,7 +367,7 @@ static void expose_waveform(
 			int x = (NEGATIVE_SPAN + i) * width / (POSITIVE_SPAN + NEGATIVE_SPAN);
 			char s[10];
 			sprintf(s,"%d",i);
-			cairo_move_to(c,x+font/4,height-font/2);
+			cairo_move_to(c,x+font/4, height - margin);
 			cairo_show_text(c,s);
 		}
 	}
@@ -364,7 +375,7 @@ static void expose_waveform(
 	cairo_text_extents_t extents;
 
 	cairo_text_extents(c,"ms",&extents);
-	cairo_move_to(c,width - extents.x_advance - font/4,height-font/2);
+	cairo_move_to(c,width - extents.x_advance - font/4, height - margin);
 	cairo_show_text(c,"ms");
 
 	struct snapshot *snst = op->snst;
@@ -396,7 +407,7 @@ static void expose_waveform(
 			char s[10];
 
 			sprintf(s,"%d",abs(i));
-			cairo_move_to(c, x + font/4, font * 3 / 2);
+			cairo_move_to(c, x + font/4, margin + fextents.ascent);
 			cairo_show_text(c,s);
 			cairo_text_extents(c,s,&extents);
 			last_x = x + font/4 + extents.x_advance;
@@ -404,7 +415,7 @@ static void expose_waveform(
 	}
 
 	cairo_text_extents(c,"deg",&extents);
-	cairo_move_to(c,width - extents.x_advance - font/4,font * 3 / 2);
+	cairo_move_to(c,width - extents.x_advance - font/4, margin + fextents.ascent);
 	cairo_show_text(c,"deg");
 
 	if(p) {
@@ -536,129 +547,226 @@ static gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 	return FALSE;
 }
 
+/* Return scale value from button.  A scale of 1.0 means the beat length, while
+ * a scale of 0.10 would be one tenth of a beat length.  */
+static double get_beatscale(GtkScaleButton *b)
+{
+	const double σ = log(scale_max/scale_min) / (zoom_max - zoom_min);
+	const double ω = pow(scale_max/scale_min, -1.0/(zoom_max - zoom_min)) / scale_max;
+
+	const double zoom = gtk_scale_button_get_value(b);
+	const double scale = ω * exp(σ*zoom);
+	debug("Zoom slider %.0f to scale %.03f = %.0fx\n", zoom, scale, 1/scale);
+
+	return scale;
+}
+
+// Convert value in samples to milliseconds.
+static inline double s2ms(const struct snapshot *snst, double samples)
+{
+	return samples * 1000.0 / snst->sample_rate;
+}
+
+// Samples per beat
+static inline double spb(const struct snapshot *snst)
+{
+	if (snst->calibrate)
+		return snst->nominal_sr; // one second per beat, no calibration applied
+
+	return (snst->sample_rate * 3600) / snst->guessed_bph;
+}
+
+// 1x1 box with upper left corner at x, y
+static void box(cairo_t *c, double x, double y)
+{
+	cairo_move_to(c, x,   y);
+	cairo_line_to(c, x+1, y);
+	cairo_line_to(c, x+1, y+1);
+	cairo_line_to(c, x,   y+1);
+	cairo_close_path(c);
+	cairo_fill(c);
+}
+
 static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	int i;
-	struct snapshot *snst = op->snst;
+	const struct snapshot *snst = op->snst;
+	struct display *ssd = snst->d;
 	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp(snst->is_light);
-	double sweep;
-	int zoom_factor;
-	double slope = 1000; // detected rate: 1000 -> do not display
-	if(snst->calibrate) {
-		sweep = snst->nominal_sr;
-		zoom_factor = PAPERSTRIP_ZOOM_CAL;
-		slope = (double) snst->cal * zoom_factor / (10 * 3600 * 24);
-	} else {
-		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
-		zoom_factor = PAPERSTRIP_ZOOM;
-		if(snst->events_count && snst->events[snst->events_wp])
-			slope = - snst->rate * zoom_factor / (3600. * 24.);
+
+	bool stopped = false;
+	if( snst->events_count &&
+	    snst->events[snst->events_wp] &&
+	    time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
+		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
+		stopped = true;
+	}
+
+	// Allocate initial display parameters.  Will persist across each new
+	// snapshot after this.
+	if (!ssd) {
+		ssd = op->snst->d = calloc(1, sizeof(*snst->d));
+		ssd->beat_scale = get_beatscale(GTK_SCALE_BUTTON(op->zoom_button));
 	}
 
 	cairo_init(c);
 
 	GtkAllocation temp;
-	gtk_widget_get_allocation (op->paperstrip_drawing_area, &temp);
+	gtk_widget_get_allocation(widget, &temp);
+	int width, height;
 
-	int width = temp.width;
-	int height = temp.height;
+	/* The paperstrip is coded to be vertical; horizontal uses cairo to rotate it. */
+	if(op->vertical_layout) {
+		width = temp.width;
+		height = temp.height;
+	} else {
+		width = temp.height;
+		height = temp.width;
 
-	int stopped = 0;
-	if( snst->events_count &&
-	    snst->events[snst->events_wp] &&
-	    time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
-		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
-		stopped = 1;
+		cairo_translate(c, height, 0);
+		cairo_rotate(c, M_PI/2);
 	}
 
-	int strip_width = round(width / (1 + PAPERSTRIP_MARGIN));
+	// Beat time in samples, which is the height of a row (measured in samples)
+	const double beat_length = spb(snst);
+	// Width of chart's displayed portion of the beat, in samples
+	const double chart_width = beat_length * ssd->beat_scale;
+	// Width in pixels of main chart area, which corresponds to chart_width in samples
+	const int strip_width = round(width / (1 + PAPERSTRIP_MARGIN));
+	// Width in samples of one pixel
+	const double pixel_width = (double)chart_width / strip_width;
 
-	cairo_set_line_width(c,1.3);
+	/* Round time to multiple of beat rate, to avoid "jumping" of a point
+	 * compared to others or grid lines while scrolling.  E.g., points at
+	 * 1.0 and 1.2, both are rounded to row 1.  Advance time by 0.4, points
+	 * now at 1.4 and 1.6, the first remains row 1, but the second is
+	 * rounded to row 2, causing it to appear to jump.  This is avoided by
+	 * only advancing time by a multiple of a row.  */
+	time += (int)(beat_length + 0.5) - 1;
+	time -= time % (int)(beat_length + 0.5);
 
-	slope *= strip_width;
-	if(slope <= 2 && slope >= -2) {
-		for(i=0; i<4; i++) {
-			double y = 0;
-			cairo_move_to(c, (double)width * (i+.5) / 4, 0);
-			for(;;) {
-				double x = y * slope + (double)width * (i+.5) / 4;
-				x = fmod(x, width);
-				if(x < 0) x += width;
-				double nx = x + slope * (height - y);
-				if(nx >= 0 && nx <= width) {
-					cairo_line_to(c, nx, height);
-					break;
-				} else {
-					double d = slope > 0 ? width - x : x;
-					y += d / fabs(slope);
-					cairo_line_to(c, slope > 0 ? width : 0, y);
-					y += 1;
-					if(y > height) break;
-					cairo_move_to(c, slope > 0 ? 0 : width, y);
-				}
+	// Beat error slope lines or calibration slope lines
+	if (snst->pb) { // pb == NULL means no rate, beat error, etc.
+		// Slope of rate lines, in pixels per beat
+		const double slope = (snst->calibrate ? -snst->cal/10.0 : snst->rate) *
+					strip_width / (24 * 3600) / ssd->beat_scale;
+		if (slope > -2 && slope < 2) {
+			cairo_set_line_width(c, 1.3);
+			cairo_set_source(c, blue);
+			/* X intercept of line starting at lower left corner, in quarter widths left+4
+			 * is intercept from lower right corner.  Intercepts at top left/right corners
+			 * are always 0 and 4.  We need to draw lines from the lesser of the left corner
+			 * intercepts to the greater of the right corner intercepts to cover the width
+			 * of the chart at the top and botom.  */
+			const int left = ceil(-slope * height / width * 4 - 0.5);
+			for (i = MIN(left, 0); i < MAX(4, left+4); i++) {
+				// i is x position in quarter chart widths
+				const double x0 = (i + 0.5) / 4 * width;
+				cairo_move_to(c, x0, 0);
+				cairo_line_to(c, x0 + slope * height, height);
 			}
+			cairo_stroke(c);
 		}
-		cairo_set_source(c, blue);
-		cairo_stroke(c);
 	}
 
-	cairo_set_line_width(c,1);
+	// Margin lines
+	const int left_margin = (width - strip_width) / 2;
+	const int right_margin = (width + strip_width) / 2;
 
-	int left_margin = (width - strip_width) / 2;
-	int right_margin = (width + strip_width) / 2;
+	cairo_set_line_width(c, 1);
+	cairo_set_source(c, green);
 	cairo_move_to(c, left_margin + .5, .5);
 	cairo_line_to(c, left_margin + .5, height - .5);
 	cairo_move_to(c, right_margin + .5, .5);
 	cairo_line_to(c, right_margin + .5, height - .5);
-	cairo_set_source(c, green);
 	cairo_stroke(c);
 
-	double now = sweep*ceil(time/sweep);
-	double ten_s = snst->sample_rate * 10 / sweep;
-	double last_line = fmod(now/sweep, ten_s);
-	int last_tenth = floor(now/(sweep*ten_s));
-	for(i=0;;i++) {
-		double y = 0.5 + round(last_line + i*ten_s);
-		if(y > height) break;
-		cairo_move_to(c, .5, y);
-		cairo_line_to(c, width-.5, y);
-		cairo_set_source(c, (last_tenth-i)%6 ? green : red);
+	// Time grid lines
+	cairo_set_line_width(c, 1);
+	// Space between lines in samples = 10 sec
+	const double line_spacing = 10 * snst->sample_rate;
+	// The topmost line is this many samples from start
+	const double top_line = fmod(time, line_spacing);
+	const int minute_offset = (int)(time / line_spacing) % 6;
+	for(i = 0; ; i++) {
+		const double position = top_line + i * line_spacing; // position in samples
+		const double row = round(position / beat_length); // …in pixels
+		if (row > height)
+			break;
+		cairo_move_to(c, 0, row);
+		cairo_line_to(c, width, row);
+		cairo_set_source(c, (i - minute_offset) % 6 ? green : red);
 		cairo_stroke(c);
 	}
 
-	cairo_set_source(c,stopped?yellow:white);
-	for(i = snst->events_wp;;) {
-		if(!snst->events_count || !snst->events[i]) break;
-		double event = now - snst->events[i] + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
-		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
-		int row = floor(event / sweep);
-		if(row >= height) break;
-		cairo_move_to(c,column,row);
-		cairo_line_to(c,column+1,row);
-		cairo_line_to(c,column+1,row+1);
-		cairo_line_to(c,column,row+1);
-		cairo_line_to(c,column,row);
-		cairo_fill(c);
-		if(column < width - strip_width && row > 0) {
-			column += strip_width;
-			row -= 1;
-			cairo_move_to(c,column,row);
-			cairo_line_to(c,column+1,row);
-			cairo_line_to(c,column+1,row+1);
-			cairo_line_to(c,column,row+1);
-			cairo_line_to(c,column,row);
-			cairo_fill(c);
+	// Ticks and tocks
+	cairo_set_line_width(c, 0);
+	cairo_set_source(c, stopped ? yellow : white);
+	/* Compute lag 1 difference between events, find residuals modulo beat
+	 * length (BL) of those differences, convert to range (-BL/2, BL/2], and
+	 * accumulate.
+	 * While doing this, look for the previous anchor point, for which we
+	 * have saved the value of its accumulated residuals, and find the
+	 * offset needed to produce the same value.  */
+
+	double display_offset = chart_width/2; // Value used if no anchor found
+	double offsets[snst->events_count];
+	if (snst->events_count) {
+		double accumulated_offset = 0.0;
+		uint64_t prev_event = snst->events[snst->events_wp]; // Start with first event
+		for (i = snst->events_count; i > 0; i--) { // Scan order is newest to oldest
+			const int idx = (snst->events_wp + i) % snst->events_count;
+			const uint64_t event = snst->events[idx];
+			if (!event) break;
+
+			double residual = fmod(prev_event - event, beat_length);
+			if (residual > beat_length/2) residual -= beat_length;
+			accumulated_offset -= residual;
+			offsets[idx] = accumulated_offset;
+
+			// Is this the anchor?
+			if (event == snst->d->anchor_time)
+				display_offset = ssd->anchor_offset - accumulated_offset;
+
+			prev_event = event;
 		}
-		if(--i < 0) i = snst->events_count - 1;
-		if(i == snst->events_wp) break;
+		// Save offset of newest point as new anchor
+		ssd->anchor_time = snst->events[snst->events_wp];
+		ssd->anchor_offset = offsets[snst->events_wp] + display_offset;
 	}
 
-	cairo_set_source(c,white);
-	cairo_set_line_width(c,2);
+	display_offset += left_margin * pixel_width; // Adjust for margin
+	for (i = snst->events_count; i > 0; i--) {
+		const int idx = (snst->events_wp + i) % snst->events_count;
+		const uint64_t event = snst->events[idx];
+		if (!event) break;
+
+		// Row 0 is at "time", each row is one beat earlier than that.
+		const double row = round((time - event) / beat_length);
+		if(row > height) break;
+
+		double chart_phase = fmod(offsets[idx] + display_offset, chart_width);
+		if (chart_phase < 0) chart_phase += chart_width;
+		const double column = round(chart_phase / pixel_width);
+
+		box(c, column, row);
+		if (column < width - strip_width)
+			box(c, column + strip_width, row);
+#if DEBUG
+		const double cycles = (time - event) / beat_length;
+		debug("point %2d: %7lu, cycle %.1f, offset %.1f ms, chart phase = %.1f ms, column %.0f\n",  idx, event, cycles,
+		      s2ms(snst, offsets[idx] + display_offset), s2ms(snst, chart_phase), column);
+#endif
+	}
+	cairo_stroke(c);
+
+	// Legend line
+	cairo_set_source(c, white);
+	cairo_set_line_width(c, 2);
 	cairo_move_to(c, left_margin + 3, height - 20.5);
 	cairo_line_to(c, right_margin - 3, height - 20.5);
 	cairo_stroke(c);
-	cairo_set_line_width(c,1);
+	cairo_set_line_width(c, 1);
 	cairo_move_to(c, left_margin + .5, height - 20.5);
 	cairo_line_to(c, left_margin + 5.5, height - 15.5);
 	cairo_line_to(c, left_margin + 5.5, height - 25.5);
@@ -670,20 +778,17 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	cairo_line_to(c, right_margin + .5, height - 20.5);
 	cairo_fill(c);
 
-	char s[100];
+	int font = width / 25;
+	cairo_set_font_size(c, font < 12 ? 12 : font > 24 ? 24 : font);
+
+	char s[32];
+	snprintf(s, sizeof(s), "%.1f ms", s2ms(snst, chart_width));
+
 	cairo_text_extents_t extents;
-
-	gtk_widget_get_allocation(gtk_widget_get_toplevel(widget), &temp);
-	int font = temp.width / 90;
-	if(font < 12)
-		font = 12;
-	cairo_set_font_size(c,font);
-
-	sprintf(s, "%.1f ms", snst->calibrate ?
-				1000. / zoom_factor :
-				3600000. / (snst->guessed_bph * zoom_factor));
-	cairo_text_extents(c,s,&extents);
-	cairo_move_to(c, (width - extents.x_advance)/2, height - 30);
+	cairo_font_extents_t fextents;
+	cairo_text_extents(c, s, &extents);
+	cairo_font_extents(c, &fextents);
+	cairo_move_to(c, (width - extents.width)/2 - extents.x_bearing, (height - 25.5) + fextents.ascent - fextents.height);
 	cairo_show_text(c,s);
 
 	return FALSE;
@@ -736,30 +841,22 @@ static void handle_center_trace(GtkButton *b, struct output_panel *op)
 	struct snapshot *snst = op->snst;
 	if(!snst || !snst->events)
 		return;
-	uint64_t last_ev = snst->events[snst->events_wp];
-	double new_centering;
-	if(last_ev) {
-		double sweep;
-		if(snst->calibrate)
-			sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
-		else
-			sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-		new_centering = fmod(last_ev + .5*sweep , sweep);
-	} else 
-		new_centering = 0;
-	snst->trace_centering = new_centering;
+
+	const double chart_width = snst->d->beat_scale * spb(snst);
+	// Anchor point should be most recent point, or close enough to it
+	snst->d->anchor_offset = chart_width / 2;
+
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
 static void shift_trace(struct output_panel *op, double direction)
 {
 	struct snapshot *snst = op->snst;
-	double sweep;
-	if(snst->calibrate)
-		sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
-	else
-		sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-	snst->trace_centering = fmod(snst->trace_centering + sweep * (1.+.1*direction), sweep);
+
+	// Chart with in samples
+	const double chart_width = snst->d->beat_scale * spb(snst);
+	snst->d->anchor_offset += chart_width * 0.10 * direction;
+
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
@@ -773,6 +870,30 @@ static void handle_right(GtkButton *b, struct output_panel *op)
 {
 	UNUSED(b);
 	shift_trace(op,1);
+}
+
+static void handle_zoom_original(GtkScaleButton *b, struct output_panel *op)
+{
+	UNUSED(b);
+	gtk_scale_button_set_value(GTK_SCALE_BUTTON(op->zoom_button), zoom_mid);
+	gtk_widget_queue_draw(op->paperstrip_drawing_area);
+}
+
+static void handle_zoom(GtkScaleButton *b, struct output_panel *op)
+{
+	struct display *ssd = op->snst->d;
+	if (!ssd) return;  // Maybe chart hasn't been displayed even once yet?
+
+	const double scale = get_beatscale(b);
+
+	/* Attempt to position archor_offset at same point in chart in new scale */
+	if (ssd->beat_scale)
+		ssd->anchor_offset *= scale / ssd->beat_scale;
+
+	ssd->beat_scale = scale;
+
+	gtk_widget_set_visible(op->zoom_orig_button, gtk_scale_button_get_value(b) != zoom_mid);
+	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
 void op_set_snapshot(struct output_panel *op, struct snapshot *snst)
@@ -792,7 +913,195 @@ void op_destroy(struct output_panel *op)
 	free(op);
 }
 
-struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border)
+/* Wrappers around gtk_orientable_set_orientation() */
+static GtkOrientation vert_to_orient(bool vertical)
+{
+	return vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
+}
+
+static void set_orientation(GtkWidget *widget, bool vertical)
+{
+	gtk_orientable_set_orientation(GTK_ORIENTABLE(widget), vert_to_orient(vertical));
+}
+
+/* Creates the paperstrip, with buttons.  Returns top level Widget that contains
+ * them.  Vertical controls orientation of paper strip.  */
+static GtkWidget* create_paperstrip(struct output_panel *op, bool vertical)
+{
+	GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+
+	GtkWidget *overlay = gtk_overlay_new();
+	gtk_box_pack_start(GTK_BOX(vbox), overlay, TRUE, TRUE, 0);
+
+	// Paperstrip
+	op->paperstrip_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->paperstrip_drawing_area, 150, 150);
+	gtk_container_add(GTK_CONTAINER(overlay), op->paperstrip_drawing_area);
+	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
+	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
+
+	GtkWidget *box = gtk_box_new(vert_to_orient(!vertical), 0);
+	gtk_container_set_border_width(GTK_CONTAINER(box), 15);
+	gtk_widget_set_margin_bottom(box, 5);
+	gtk_widget_set_halign(box, GTK_ALIGN_START);
+	gtk_widget_set_valign(box, vertical ? GTK_ALIGN_END : GTK_ALIGN_START);
+	gtk_widget_set_opacity(box, 0.8);
+	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
+
+	op->zoom_button = gtk_scale_button_new(GTK_ICON_SIZE_BUTTON, zoom_min, zoom_max, 1,
+					       (const char *[]){"zoom-in-symbolic", NULL});
+	gtk_scale_button_set_value(GTK_SCALE_BUTTON(op->zoom_button), zoom_mid);
+	set_orientation(op->zoom_button, vertical);
+	g_signal_connect(op->zoom_button, "value-changed", G_CALLBACK(handle_zoom), op);
+	gtk_box_pack_start(GTK_BOX(box), op->zoom_button, FALSE, FALSE, 0);
+
+	op->zoom_orig_button = gtk_button_new_from_icon_name("zoom-original-symbolic", GTK_ICON_SIZE_BUTTON);
+	gtk_button_set_relief(GTK_BUTTON(op->zoom_orig_button), GTK_RELIEF_NONE);
+	g_signal_connect(op->zoom_orig_button, "clicked", G_CALLBACK(handle_zoom_original), op);
+	gtk_box_pack_start(GTK_BOX(box), op->zoom_orig_button, FALSE, FALSE, 0);
+	gtk_widget_set_no_show_all(op->zoom_orig_button, true);
+
+	// Buttons
+	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, TRUE, 0);
+
+	// < button
+	op->left_button = gtk_button_new_from_icon_name(
+		vertical ? "pan-start-symbolic" : "pan-up-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	gtk_box_pack_start(GTK_BOX(hbox), op->left_button, TRUE, TRUE, 0);
+	g_signal_connect (op->left_button, "clicked", G_CALLBACK(handle_left), op);
+
+	// CLEAR button
+	if(op->computer) {
+		op->clear_button = gtk_button_new_with_label("Clear");
+		gtk_box_pack_start(GTK_BOX(hbox), op->clear_button, TRUE, TRUE, 0);
+		g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
+		gtk_widget_set_sensitive(op->clear_button, !op->snst->calibrate);
+	}
+
+	// CENTER button
+	GtkWidget *center_button = gtk_button_new_with_label("Center");
+	gtk_box_pack_start(GTK_BOX(hbox), center_button, TRUE, TRUE, 0);
+	g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), op);
+
+	// > button
+	op->right_button = gtk_button_new_from_icon_name(
+		vertical ? "pan-end-symbolic" : "pan-down-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	gtk_box_pack_start(GTK_BOX(hbox), op->right_button, TRUE, TRUE, 0);
+	g_signal_connect (op->right_button, "clicked", G_CALLBACK(handle_right), op);
+
+	return vbox;
+}
+
+/* Create the tic, toc, and period waveforms.  Returns the GtkBox that contains
+ * them.  Vertical controls how the waves are stacked.  */
+static GtkWidget* create_waveforms(struct output_panel *op, bool vertical)
+{
+	GtkWidget *box = gtk_box_new(vert_to_orient(vertical), 10);
+
+	// Tic waveform area
+	op->tic_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->tic_drawing_area, 300, 150);
+	gtk_box_pack_start(GTK_BOX(box), op->tic_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), op);
+	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
+
+	// Toc waveform area
+	op->toc_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->toc_drawing_area, 300, 150);
+	gtk_box_pack_start(GTK_BOX(box), op->toc_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), op);
+	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
+
+	// Period waveform area
+	op->period_drawing_area = gtk_drawing_area_new();
+	gtk_widget_set_size_request(op->period_drawing_area, 300, 150);
+	gtk_box_pack_start(GTK_BOX(box), op->period_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->period_drawing_area, "draw", G_CALLBACK(period_draw_event), op);
+	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
+
+#ifdef DEBUG
+	op->debug_drawing_area = gtk_drawing_area_new();
+	gtk_box_pack_start(GTK_BOX(box), op->debug_drawing_area, TRUE, TRUE, 0);
+	g_signal_connect (op->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), op);
+	gtk_widget_set_events(op->debug_drawing_area, GDK_EXPOSURE_MASK);
+#endif
+
+	return box;
+}
+
+/* Create container and place paperstrip and waveforms in either vertical or
+ * horizontal paperstrip orientation.  Puts container in the panel and shows it. */
+static void place_displays(struct output_panel *op, GtkWidget *paperstrip, GtkWidget *waveforms, bool vertical)
+{
+	op->vertical_layout = vertical;
+
+	op->displays = gtk_paned_new(vert_to_orient(!vertical));
+	gtk_paned_set_wide_handle(GTK_PANED(op->displays), TRUE);
+
+	gtk_paned_pack1(GTK_PANED(op->displays), paperstrip, vertical ? FALSE : TRUE, FALSE);
+
+	set_orientation(waveforms, vert_to_orient(vertical));
+	gtk_paned_pack2(GTK_PANED(op->displays), waveforms, TRUE, FALSE);
+
+	/* Make paperstrip arrows buttons point correct way */
+	GtkWidget *left_arrow = gtk_button_get_image(GTK_BUTTON(op->left_button));
+	gtk_image_set_from_icon_name(GTK_IMAGE(left_arrow),
+		vertical ? "pan-start-symbolic" : "pan-up-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	GtkWidget *right_arrow = gtk_button_get_image(GTK_BUTTON(op->right_button));
+	gtk_image_set_from_icon_name(GTK_IMAGE(right_arrow),
+		vertical ? "pan-end-symbolic" : "pan-down-symbolic", GTK_ICON_SIZE_LARGE_TOOLBAR);
+	/* Orientation of zoom buttons in papestrip */
+	GtkWidget *button_box = gtk_widget_get_parent(op->zoom_button);
+	gtk_widget_set_valign(button_box, vertical ? GTK_ALIGN_END : GTK_ALIGN_START);
+	set_orientation(button_box, !vertical);
+	set_orientation(op->zoom_button, vertical);
+
+	gtk_box_pack_end(GTK_BOX(op->panel), op->displays, TRUE, TRUE, 0);
+	gtk_widget_show(op->displays);
+}
+
+/* Create the paperstrip and waveforms, a container for them, and place it into
+ * the panel.  Returns containing Widget.  Vertical controls paperstrip
+ * orientation.  */
+static GtkWidget *create_displays(struct output_panel *op, bool vertical)
+{
+	// The paperstrip and buttons
+	op->paperstrip_box = create_paperstrip(op, vertical);
+	// Tic/toc/period waveform area
+	op->waveforms_box = create_waveforms(op, vertical);
+
+	place_displays(op, op->paperstrip_box, op->waveforms_box, vertical);
+
+	return op->displays;
+}
+
+/* Change orientation of existing output panel.  Is a no-op if orientation is
+ * not changed.  */
+void set_panel_layout(struct output_panel *op, bool vertical)
+{
+	if (op->vertical_layout == vertical)
+		return;
+
+	/* Remove waveforms and paperstrip containers from displays container,
+	 * then use place_displays() to put them into a new displays container. 
+	 * The need to be refed so they are not deleted when removed from the
+	 * container.  */
+	g_object_ref(op->waveforms_box);
+	gtk_container_remove(GTK_CONTAINER(op->displays), op->waveforms_box);
+
+	g_object_ref(op->paperstrip_box);
+	gtk_container_remove(GTK_CONTAINER(op->displays), op->paperstrip_box);
+
+	gtk_widget_destroy(op->displays); op->displays = NULL;
+	place_displays(op, op->paperstrip_box, op->waveforms_box, vertical);
+
+	/* They are now refed by op->displays so we don't need our refs anymore */
+	g_object_unref(op->paperstrip_box);
+	g_object_unref(op->waveforms_box);
+}
+
+struct output_panel *init_output_panel(struct computer *comp, struct snapshot *snst, int border, bool vertical)
 {
 	struct output_panel *op = malloc(sizeof(struct output_panel));
 
@@ -809,72 +1118,7 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	g_signal_connect (op->output_drawing_area, "draw", G_CALLBACK(output_draw_event), op);
 	gtk_widget_set_events(op->output_drawing_area, GDK_EXPOSURE_MASK);
 
-	GtkWidget *hbox2 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-	gtk_box_pack_start(GTK_BOX(op->panel), hbox2, TRUE, TRUE, 0);
-
-	GtkWidget *vbox2 = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-	gtk_box_pack_start(GTK_BOX(hbox2), vbox2, FALSE, TRUE, 0);
-
-	// Paperstrip
-	op->paperstrip_drawing_area = gtk_drawing_area_new();
-	gtk_widget_set_size_request(op->paperstrip_drawing_area, 300, 0);
-	gtk_box_pack_start(GTK_BOX(vbox2), op->paperstrip_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->paperstrip_drawing_area, "draw", G_CALLBACK(paperstrip_draw_event), op);
-	gtk_widget_set_events(op->paperstrip_drawing_area, GDK_EXPOSURE_MASK);
-
-	GtkWidget *hbox3 = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, FALSE, TRUE, 0);
-
-	// < button
-	GtkWidget *left_button = gtk_button_new_with_label("<");
-	gtk_box_pack_start(GTK_BOX(hbox3), left_button, TRUE, TRUE, 0);
-	g_signal_connect (left_button, "clicked", G_CALLBACK(handle_left), op);
-
-	// CLEAR button
-	if(comp) {
-		op->clear_button = gtk_button_new_with_label("Clear");
-		gtk_box_pack_start(GTK_BOX(hbox3), op->clear_button, TRUE, TRUE, 0);
-		g_signal_connect (op->clear_button, "clicked", G_CALLBACK(handle_clear_trace), op);
-		gtk_widget_set_sensitive(op->clear_button, !snst->calibrate);
-	}
-
-	// CENTER button
-	GtkWidget *center_button = gtk_button_new_with_label("Center");
-	gtk_box_pack_start(GTK_BOX(hbox3), center_button, TRUE, TRUE, 0);
-	g_signal_connect (center_button, "clicked", G_CALLBACK(handle_center_trace), op);
-
-	// > button
-	GtkWidget *right_button = gtk_button_new_with_label(">");
-	gtk_box_pack_start(GTK_BOX(hbox3), right_button, TRUE, TRUE, 0);
-	g_signal_connect (right_button, "clicked", G_CALLBACK(handle_right), op);
-
-	GtkWidget *vbox3 = gtk_box_new(GTK_ORIENTATION_VERTICAL,10);
-	gtk_box_pack_start(GTK_BOX(hbox2), vbox3, TRUE, TRUE, 0);
-
-	// Tic waveform area
-	op->tic_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->tic_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->tic_drawing_area, "draw", G_CALLBACK(tic_draw_event), op);
-	gtk_widget_set_events(op->tic_drawing_area, GDK_EXPOSURE_MASK);
-
-	// Toc waveform area
-	op->toc_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->toc_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->toc_drawing_area, "draw", G_CALLBACK(toc_draw_event), op);
-	gtk_widget_set_events(op->toc_drawing_area, GDK_EXPOSURE_MASK);
-
-	// Period waveform area
-	op->period_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->period_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->period_drawing_area, "draw", G_CALLBACK(period_draw_event), op);
-	gtk_widget_set_events(op->period_drawing_area, GDK_EXPOSURE_MASK);
-
-#ifdef DEBUG
-	op->debug_drawing_area = gtk_drawing_area_new();
-	gtk_box_pack_start(GTK_BOX(vbox3), op->debug_drawing_area, TRUE, TRUE, 0);
-	g_signal_connect (op->debug_drawing_area, "draw", G_CALLBACK(debug_draw_event), op);
-	gtk_widget_set_events(op->debug_drawing_area, GDK_EXPOSURE_MASK);
-#endif
+	create_displays(op, vertical);
 
 	return op;
 }

@@ -48,12 +48,17 @@ struct snapshot *snapshot_clone(struct snapshot *s)
 		t->events_wp = 0;
 		t->events = NULL;
 	}
+	if(s->d) {
+		t->d = malloc(sizeof(*t->d));
+		*t->d = *s->d;
+	}
 	return t;
 }
 
 void snapshot_destroy(struct snapshot *s)
 {
 	if(s->pb) pb_destroy_clone(s->pb);
+	if(s->d) free(s->d);
 	free(s->events);
 	free(s);
 }
@@ -294,11 +299,11 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int
 	memset(s->events,0,EVENTS_COUNT * sizeof(uint64_t));
 	s->events_wp = 0;
 	s->events_from = 0;
-	s->trace_centering = 0;
 	s->bph = bph;
 	s->la = la;
 	s->cal = cal;
 	s->is_light = light;
+	s->d = NULL;
 
 	struct computer *c = malloc(sizeof(struct computer));
 	c->cdata = cd;
