@@ -444,7 +444,7 @@ static int compute_period(struct processing_buffers *b, int bph)
 	if(count > 1)
 		b->sigma = sqrt((sq_sum - count * estimate * estimate)/ (count-1));
 	else
-		b->sigma = b->period;
+		b->sigma = 0;	// No std. dev. estimate possible with just 1 sample
 	return 0;
 }
 

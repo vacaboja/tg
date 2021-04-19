@@ -76,6 +76,8 @@
 #endif
 
 #define UNUSED(X) (void)(X)
+#define BIT(n) (1u << (n))
+#define BITMASK(n) ((1u << (n)) - 1u)
 
 /* algo.c */
 struct processing_buffers {
@@ -128,13 +130,15 @@ void make_hp(struct filter *f, double freq);
 struct processing_data {
 	struct processing_buffers *buffers;
 	uint64_t last_tic;
+	int last_step;	//!< Guess of step (buffers index) to try first, based on last iteration
 	int is_light;
 };
 
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light);
 int terminate_portaudio();
 uint64_t get_timestamp(int light);
-int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
+void fill_buffers(struct processing_buffers *ps, int light);
+bool analyze_pa_data(struct processing_data *pd, int step, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 void set_audio_light(bool light, int sample_rate);
 
