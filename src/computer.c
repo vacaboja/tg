@@ -104,7 +104,7 @@ static void compute_update(struct computer *c)
 	/* Do all buffers at once so that all computation interval(s) use the
 	 * same data.  Buffers for some intervals will probably not be used, but
 	 * it's not expensive to fill them.  Processing is the slow part.  */
-	fill_buffers(ps, pd->is_light);
+	fill_buffers(ps);
 
 	debug("\nSTART OF COMPUTATION CYCLE\n\n");
 	unsigned int stepmask = BITMASK(NSTEPS); // Mask of available steps
@@ -267,7 +267,7 @@ void computer_destroy(struct computer *c)
 struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light)
 {
 	if(light) nominal_sr /= 2;
-	set_audio_light(light, nominal_sr);
+	set_audio_light(light);
 
 	struct processing_buffers *p = malloc(NSTEPS * sizeof(struct processing_buffers));
 	int first_step = light ? FIRST_STEP_LIGHT : FIRST_STEP;

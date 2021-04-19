@@ -136,11 +136,11 @@ struct processing_data {
 
 int start_portaudio(int *nominal_sample_rate, double *real_sample_rate, bool light);
 int terminate_portaudio();
-uint64_t get_timestamp(int light);
-void fill_buffers(struct processing_buffers *ps, int light);
+uint64_t get_timestamp();
+void fill_buffers(struct processing_buffers *ps);
 bool analyze_pa_data(struct processing_data *pd, int step, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
-void set_audio_light(bool light, int sample_rate);
+void set_audio_light(bool light);
 
 /* computer.c */
 struct display;

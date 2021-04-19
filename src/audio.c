@@ -58,6 +58,13 @@ static struct audio_context {
 	.device = -1,
 };
 
+/** Return effective sample rate.
+ * This takes into account the half speed decimation enabled by light mode */
+static inline double effective_sr(void)
+{
+	return actx.real_sample_rate / (actx.info.light ? 2 : 1);
+}
+
 /* Initialize audio filter */
 static void init_audio_hpf(struct biquad_filter *filter, double cutoff, double sample_rate)
 {
@@ -237,7 +244,7 @@ int set_audio_device(int device, int *nominal_sr, double *real_sr, bool light)
 		goto error;
 	actx.real_sample_rate = Pa_GetStreamInfo(actx.stream)->sampleRate;
 
-	init_audio_hpf(&actx.info.hpf, FILTER_CUTOFF, actx.real_sample_rate / (light ? 2 : 1));
+	init_audio_hpf(&actx.info.hpf, FILTER_CUTOFF, effective_sr());
 
 	/* Allocate larger buffer if needed */
 	const size_t buffer_size = actx.sample_rate << (NSTEPS + FIRST_STEP);
@@ -350,23 +357,20 @@ int terminate_portaudio()
 	return 0;
 }
 
-uint64_t get_timestamp(int light)
+uint64_t get_timestamp()
 {
 	pthread_mutex_lock(&audio_mutex);
-	uint64_t ts = light ? timestamp / 2 : timestamp;
+	uint64_t ts = actx.info.light ? timestamp / 2 : timestamp;
 	pthread_mutex_unlock(&audio_mutex);
 	return ts;
 }
 
-void fill_buffers(struct processing_buffers *ps, int light)
+void fill_buffers(struct processing_buffers *ps)
 {
 	pthread_mutex_lock(&audio_mutex);
-	uint64_t ts = timestamp;
+	uint64_t ts = timestamp / (actx.info.light ? 2 : 1);
 	int wp = write_pointer;
 	pthread_mutex_unlock(&audio_mutex);
-
-	if(light)
-		ts /= 2;
 
 	int i;
 	for(i = 0; i < NSTEPS; i++) {
@@ -397,7 +401,7 @@ bool analyze_pa_data(struct processing_data *pd, int step, int bph, double la, u
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 {
 	struct processing_buffers *p = pd->buffers;
-	fill_buffers(p, pd->is_light);
+	fill_buffers(p);
 
 	int i,j;
 	debug("\nSTART OF CALIBRATION CYCLE\n\n");
@@ -413,12 +417,12 @@ int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd)
 /** Change to light mode
  *
  * Call to enable or disable light mode.  Changing the mode will empty the audio
- * buffer.  Nothing will happen if the mode doesn't actually change.
+ * buffer.  Nothing will happen if the mode doesn't actually change.  Audio is
+ * downsampled by 2 in light mode.
  *
- * @param light True for light mode, false for normal
- * downsampling done in light mode
+ * @param light True for light mode, false for normal mode
  */
-void set_audio_light(bool light, int sample_rate)
+void set_audio_light(bool light)
 {
 	if(actx.info.light != light) {
 		Pa_StopStream(actx.stream);
@@ -431,7 +435,7 @@ void set_audio_light(bool light, int sample_rate)
 
 		pthread_mutex_unlock(&audio_mutex);
 
-		init_audio_hpf(&actx.info.hpf, FILTER_CUTOFF, sample_rate);
+		init_audio_hpf(&actx.info.hpf, FILTER_CUTOFF, effective_sr());
 		PaError err = Pa_StartStream(actx.stream);
 		if(err != paNoError)
 			error("Error re-starting audio input: %s", Pa_GetErrorText(err));
