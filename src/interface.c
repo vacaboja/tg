@@ -917,11 +917,6 @@ static void start_interface(GApplication* app, void *p)
 
 	struct main_window *w = malloc(sizeof(struct main_window));
 
-	if(start_portaudio(&w->nominal_sr, &real_sr)) {
-		g_application_quit(app);
-		return;
-	}
-
 	w->app = GTK_APPLICATION(app);
 
 	w->zombie = 0;
@@ -933,6 +928,11 @@ static void start_interface(GApplication* app, void *p)
 	w->is_light = 0;
 
 	load_config(w);
+
+	if(start_portaudio(&w->nominal_sr, &real_sr, w->is_light)) {
+		g_application_quit(app);
+		return;
+	}
 
 	if(w->la < MIN_LA || w->la > MAX_LA) w->la = DEFAULT_LA;
 	if(w->bph < MIN_BPH || w->bph > MAX_BPH) w->bph = 0;
