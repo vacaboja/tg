@@ -898,8 +898,12 @@ static void compute_cal(struct calibration_data *cd)
 void process(struct processing_buffers *p, int bph, double la, int light)
 {
 	prepare_data(p, !light);
+
 	p->ready = !compute_period(p,bph);
-	if(p->ready && p->period >= p->sample_rate / 2) {
+	/* Limit to 20% greater when period is known, or 500 ms when guessing period */
+	const int min_bph = bph ? bph : TYP_BPH;
+	const int max_period = (int)(1.2 * 3600 * 2) * p->sample_rate / min_bph;
+	if(p->ready && p->period >= max_period) {
 		debug("Detected period too long\n");
 		p->ready = 0;
 	}
@@ -907,6 +911,7 @@ void process(struct processing_buffers *p, int bph, double la, int light)
 		debug("abort after compute_period()\n");
 		return;
 	}
+
 	prepare_waveform(p);
 	p->ready = !compute_parameters(p);
 	if(!p->ready) {
