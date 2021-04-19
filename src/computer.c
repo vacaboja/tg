@@ -236,7 +236,7 @@ void computer_destroy(struct computer *c)
 struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light)
 {
 	if(light) nominal_sr /= 2;
-	set_audio_light(light);
+	set_audio_light(light, nominal_sr);
 
 	struct processing_buffers *p = malloc(NSTEPS * sizeof(struct processing_buffers));
 	int first_step = light ? FIRST_STEP_LIGHT : FIRST_STEP;
