@@ -1,0 +1,2 @@
+# Added by configure script to define package version
+%define AC_VERSION @PACKAGE_VERSION@

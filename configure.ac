@@ -22,7 +22,9 @@ CC_CHECK_LDFLAGS([-Wl,--as-needed], [AC_SUBST([AM_LDFLAGS], [-Wl,--as-needed])],
 CC_CHECK_FLAGS_APPEND([with_cflags], [CFLAGS], [-Wall -Wextra])
 AC_SUBST([WARNINGFLAGS], $with_cflags)
 
-AC_OUTPUT([Makefile icons/Makefile])
+AC_CONFIG_FILES([Makefile icons/Makefile])
+AC_CONFIG_FILES([packaging/tg-timer.spec:packaging/tg-timer.inc.in:packaging/tg-timer.in.spec])
+AC_OUTPUT
 
 AC_MSG_RESULT([
         $PACKAGE_NAME $VERSION
