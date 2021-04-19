@@ -44,6 +44,8 @@ g_key_file_save_to_file (GKeyFile     *key_file,
 
 #define g_key_file_get_int g_key_file_get_integer
 #define g_key_file_set_int g_key_file_set_integer // the devil may take glib
+#define g_key_file_get_bool g_key_file_get_boolean
+#define g_key_file_set_bool g_key_file_set_boolean
 
 void load_config(struct main_window *w)
 {

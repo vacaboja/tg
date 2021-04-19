@@ -45,6 +45,7 @@ Makefile.in
 *.log
 *.trs
 *.tar.gz
+/packaging/tg-timer.spec
 
 # build directories
 /deb

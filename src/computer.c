@@ -48,12 +48,17 @@ struct snapshot *snapshot_clone(struct snapshot *s)
 		t->events_wp = 0;
 		t->events = NULL;
 	}
+	if(s->d) {
+		t->d = malloc(sizeof(*t->d));
+		*t->d = *s->d;
+	}
 	return t;
 }
 
 void snapshot_destroy(struct snapshot *s)
 {
 	if(s->pb) pb_destroy_clone(s->pb);
+	if(s->d) free(s->d);
 	free(s->events);
 	free(s);
 }
@@ -91,19 +96,45 @@ static void compute_update_cal(struct computer *c)
 
 static void compute_update(struct computer *c)
 {
-	int signal = analyze_pa_data(c->pdata, c->actv->bph, c->actv->la, c->actv->events_from);
-	struct processing_buffers *p = c->pdata->buffers;
-	int i;
-	for(i=0; i<NSTEPS && p[i].ready; i++);
-	for(i--; i>=0 && p[i].sigma > p[i].period / 10000; i--);
-	if(i>=0) {
+	struct processing_data *pd = c->pdata;
+	struct processing_buffers *ps = pd->buffers;
+	int step = pd->last_step;
+
+	pd->last_step = 0;
+	/* Do all buffers at once so that all computation interval(s) use the
+	 * same data.  Buffers for some intervals will probably not be used, but
+	 * it's not expensive to fill them.  Processing is the slow part.  */
+	fill_buffers(ps);
+
+	debug("\nSTART OF COMPUTATION CYCLE\n\n");
+	unsigned int stepmask = BITMASK(NSTEPS); // Mask of available steps
+	do {
+		stepmask &= ~BIT(step);
+		analyze_pa_data(c->pdata, step, c->actv->bph, c->actv->la, c->actv->events_from);
+
+		if (ps[step].ready && ps[step].sigma < ps[step].period / 10000) {
+			// Try next step if it's available
+			if (stepmask & BIT(step+1)) step++;
+		} else {
+			// This step didn't pass, try a lesser step
+			step--;
+		}
+	} while(step >= 0 && stepmask & BIT(step));
+
+	if (step >= 0) {
+		debug("%f +- %f\n", ps[step].period/ps[step].sample_rate, ps[step].sigma/ps[step].sample_rate);
+		pd->last_tic = ps[step].last_tic;
+		pd->last_step = step;
+
 		if(c->actv->pb) pb_destroy_clone(c->actv->pb);
-		c->actv->pb = pb_clone(&p[i]);
+		c->actv->pb = pb_clone(&ps[step]);
 		c->actv->is_old = 0;
-		c->actv->signal = i == NSTEPS-1 && p[i].amp < 0 ? signal-1 : signal;
+		/* Signal's range is 0 to NSTEPS, while step is -1 to NSTEPS-1, i.e. signal = step+1 */
+		c->actv->signal = step+1;
 	} else {
+		debug("---\n");
 		c->actv->is_old = 1;
-		c->actv->signal = -signal;
+		c->actv->signal = 0;
 	}
 }
 
@@ -251,6 +282,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int
 	pd->buffers = p;
 	pd->last_tic = 0;
 	pd->is_light = light;
+	pd->last_step = 0;
 
 	struct calibration_data *cd = malloc(sizeof(struct calibration_data));
 	setup_cal_data(cd);
@@ -267,11 +299,11 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int
 	memset(s->events,0,EVENTS_COUNT * sizeof(uint64_t));
 	s->events_wp = 0;
 	s->events_from = 0;
-	s->trace_centering = 0;
 	s->bph = bph;
 	s->la = la;
 	s->cal = cal;
 	s->is_light = light;
+	s->d = NULL;
 
 	struct computer *c = malloc(sizeof(struct computer));
 	c->cdata = cd;

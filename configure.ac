@@ -5,6 +5,7 @@ AC_INIT([Tg], [tg_version], [vacaboja@gmail.com], [tg-timer], [https://github.co
 AM_INIT_AUTOMAKE([-Wall foreign subdir-objects])
 
 AC_PROG_CC
+AC_LANG(C)
 AC_CHECK_LIB([pthread], [pthread_mutex_init], [], [AC_MSG_ERROR([pthread not found])])
 AC_CHECK_LIB([m], [sqrt], [], [AC_MSG_ERROR([libm not found])])
 PKG_CHECK_MODULES([GTK], [gtk+-3.0 glib-2.0])
@@ -18,9 +19,12 @@ AM_CONDITIONAL([BE_WINDOWS], [test x$OS = xWindows_NT])
 AM_COND_IF([BE_WINDOWS], [AC_CONFIG_LINKS([icons/tg-timer.ico:icons/tg-timer.ico])])
 
 CC_CHECK_LDFLAGS([-Wl,--as-needed], [AC_SUBST([AM_LDFLAGS], [-Wl,--as-needed])], [])
-CC_CHECK_CFLAGS_APPEND([-Wall -Wextra], [], [])
+CC_CHECK_FLAGS_APPEND([with_cflags], [CFLAGS], [-Wall -Wextra])
+AC_SUBST([WARNINGFLAGS], $with_cflags)
 
-AC_OUTPUT([Makefile icons/Makefile])
+AC_CONFIG_FILES([Makefile icons/Makefile])
+AC_CONFIG_FILES([packaging/tg-timer.spec:packaging/tg-timer.inc.in:packaging/tg-timer.in.spec])
+AC_OUTPUT
 
 AC_MSG_RESULT([
         $PACKAGE_NAME $VERSION

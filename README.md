@@ -44,6 +44,17 @@ You can now launch tg by typing
 
 Binary .deb packages can be downloaded from https://tg.ciovil.li
 
+### Fedora, CentOS or other Redhat-based
+
+Binary RPM packages are available from https://copr.fedorainfracloud.org/coprs/tpiepho/tg-timer/
+
+This COPR repository can be added to dnf's list with:
+```sh
+dnf copr enable tpiepho/tg-timer
+```
+Then tg-timer can be installed with `dnf install tg-timer`, or with any dnf
+based GUI package installer.
+
 ## Compiling from sources
 
 The source code of tg can probably be built by any C99 compiler, however
@@ -106,4 +117,12 @@ cd tg
 ./autogen.sh
 ./configure
 make
+```
+
+To build an RPM on Fedora or another RPM based distro, install the build
+prerequisites and checkout the source as for compiling (above), then run
+`rpmbuild` to create the RPM:
+
+```sh
+rpmbuild --build-in-place -bb packaging/tg-timer.spec
 ```
