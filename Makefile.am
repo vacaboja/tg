@@ -16,8 +16,8 @@ tg_timer_SOURCES = src/algo.c \
 		   src/audio_settings.c \
 		   src/audio.h \
 		   src/gtk/gtkHelper.c \
-		   src/gtk/gtkHelper.h \
-		   
+		   src/gtk/gtkHelper.h 
+
 
 tg_timer_dbg_SOURCES = $(tg_timer_SOURCES)
 tg_timer_prf_SOURCES = $(tg_timer_SOURCES)

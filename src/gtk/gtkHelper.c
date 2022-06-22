@@ -1,9 +1,9 @@
 /*
- * gtkHelper.c
- *
- *  Created on: Oct 24, 2019
- *      Author: jlewis
- *      This program is free software; you can redistribute it and/or modify
+  gtkHelper.c
+
+	Created on: Oct 24, 2019
+	Author: jlewis
+    This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License version 2 as
     published by the Free Software Foundation.
 
@@ -18,7 +18,7 @@
  */
 
 #include <gtk/gtk.h>
-#include "gtk/gtkHelper.h"
+#include "gtkHelper.h"
 
 
 //this is stored here as it issues a compiler warning
@@ -26,13 +26,14 @@ void setWidgetColor(GtkWidget *widget, cairo_pattern_t *cairocolor){
 	double red,green,blue,alpha;
 	cairo_pattern_get_rgba (cairocolor,
 	                        &red,&green,&blue,&alpha);
-	char rgbaStr[1024];
-	sprintf(rgbaStr, "rgba(%f,%f,%f,%f)", 255*red, 255*green, 255*blue, alpha);
+	char *rgbaStr = g_strdup_printf("rgba(%f,%f,%f,%f)", 255*red, 255*green, 255*blue, alpha);
 
 	GdkRGBA gdkColor;
 
 	gdk_rgba_parse (&gdkColor, rgbaStr);
 	gtk_widget_override_color (widget, GTK_STATE_FLAG_NORMAL, &gdkColor);
+	g_free(rgbaStr);
+
 }
 
 
@@ -120,11 +121,11 @@ GtkWidget *addScale(const gchar*name, double min, double max, double* value){
 
 // spin button
 
-GtkWidget * createSpinButtonContainer(const gchar*name,
-							 double min, double max,
-							 double step, double initValue,
-							 GCallback changedCallback, gpointer callbackData
-							 ){
+GtkWidget * createSpinButtonContainer(	const gchar*name,
+										double min, double max,
+										double step, double initValue,
+										GCallback changedCallback, gpointer callbackData
+										){
 	GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
 	GtkWidget * spin_button = gtk_spin_button_new_with_range(min, max, step);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin_button), initValue);
