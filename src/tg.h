@@ -36,7 +36,6 @@
 #define _WIN32
 #endif
 
-
 #define CONFIG_FILE_NAME "tg-timer.ini"
 
 #define FILTER_CUTOFF 3000

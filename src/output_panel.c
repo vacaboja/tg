@@ -801,7 +801,7 @@ static void handle_zoom(GtkButton *b, struct output_panel *op)
 	if( strcmp(gtk_button_get_label(b) , MAG_INC)==0)
 		paperstrip_zoom_var *= MAG_SCALE;
 	else
-	    paperstrip_zoom_var /= MAG_SCALE;
+		paperstrip_zoom_var /= MAG_SCALE;
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 

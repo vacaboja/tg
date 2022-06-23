@@ -40,15 +40,6 @@ void print_debug(char *format,...)
 }
 
 
-void console(char *format,...)//this is better for eclipse development
-{
-#ifdef DEBUG
-	va_list args;
-	va_start(args,format);
-	vfprintf(stdout,format,args);
-	va_end(args);
-#endif
-}
 
 void error(char *format,...)
 {
@@ -826,14 +817,9 @@ static void init_main_window(struct main_window *w)
 	gtk_widget_set_sensitive(w->snapshot_button, FALSE);
 	g_signal_connect(w->snapshot_button, "clicked", G_CALLBACK(handle_snapshot), w);
 
-	w->snapshot_POS_button[0] = gtk_button_new_with_label("DD");
-	w->snapshot_POS_button[1] = gtk_button_new_with_label("DU");
-	w->snapshot_POS_button[2] = gtk_button_new_with_label("3U");
-	w->snapshot_POS_button[3] = gtk_button_new_with_label("6U");
-	w->snapshot_POS_button[4] = gtk_button_new_with_label("9U");
-	w->snapshot_POS_button[5] = gtk_button_new_with_label("12U");
+	static const char* const labels[] = {"DD", "DU", "3U", "6U","9U","12U"};
 	for (int i = 0; i < POSITIONS; i++) {
-			GtkWidget *button = w->snapshot_POS_button[i];
+			GtkWidget *button = w->snapshot_POS_button[i] = gtk_button_new_with_label(labels[i]);
 			if(button != NULL){
 				gtk_box_pack_start(GTK_BOX(hbox), button, FALSE, FALSE, 0);
 				gtk_widget_set_sensitive(button, FALSE);

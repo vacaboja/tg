@@ -7,8 +7,7 @@
 
 
 #include "audio.h"
-
-#include <gtk/gtkHelper.h>
+#include "gtk/gtkHelper.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -72,9 +71,11 @@ static void fillRatesComboBox(char*activeAudioInput, struct main_window *w){
 	gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(audioSampleRateCombo), DEFAULT_AUDIORATESTRING, DEFAULT_AUDIORATESTRING);
 
 	int sampleRates[] = {48000, 44100, 32768, 24000, 22050, 16384, 11025};
+	int nSamples = sizeof(sampleRates)/sizeof(sampleRates[0]);
 	int activeSampleIndex = 0;
 	int added = 0;
-	for (int n=0; n < sizeof(sampleRates)/sizeof(sampleRates[0]); n++) {
+	int n;
+	for (n=0; n < nSamples; n++) {
 		int sampleRate = sampleRates[n];
 		if( audio_devicename_supports_rate(w->audioInterfaceStr, activeAudioInput, sampleRate)>=0 ){
 			char sampleRateString[1024];
@@ -168,6 +169,7 @@ void handle_SampleRateChange(GtkComboBox *Combo, struct main_window *w){
 /* Display the Settings dialog */
 //Thanks to Rob Wahlstedt for this code ;)  https://github.com/wahlstedt/tg
 void show_preferences(GtkButton *button, struct main_window *w) {
+	UNUSED(button);
 	GtkDialogFlags flags = GTK_DIALOG_DESTROY_WITH_PARENT /* | GTK_DIALOG_MODAL*/;
 	GtkWidget *dialog = gtk_dialog_new_with_buttons("Audio Settings",
 										  GTK_WINDOW(w->window),
