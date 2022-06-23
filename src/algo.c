@@ -754,10 +754,10 @@ static void locate_events(struct processing_buffers *p)
 
 	int events[2*count];
 	int half = p->tic < p->period/2 ? 0 : round(p->period / 2);
-	int offset = p->tic - half - (p->tic_pulse - p->toc_pulse) / 2;
+	int offset = p->tic - half;
 	do_locate_events(events, p, p->waveform + half, (int)(p->last_tic + p->sample_count - p->timestamp), offset, count, TIC);
 	half = p->toc < p->period/2 ? 0 : round(p->period / 2);
-	offset = p->toc - half - (p->toc_pulse - p->tic_pulse) / 2;
+	offset = p->toc - half;
 	do_locate_events(events+count, p, p->waveform + half, (int)(p->last_toc + p->sample_count - p->timestamp), offset, count, TOC);
 	qsort(events, 2*count, sizeof(int), absint_cmp);
 
@@ -831,7 +831,6 @@ static void compute_amplitude(struct processing_buffers *p, double la)
 			p->amp = (tic_amp_abs + toc_amp_abs) / 2;
 			p->tic_pulse = tic_pulse;
 			p->toc_pulse = toc_pulse;
-			p->be = p->period/2 - fabs(p->toc - p->tic + p->tic_pulse - p->toc_pulse);
 			debug("amp: be = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 			debug("amp = %f\n", la * p->amp);
 			break;
