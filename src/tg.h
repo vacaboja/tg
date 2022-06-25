@@ -16,6 +16,9 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#ifndef SRC_TG_H_
+#define SRC_TG_H_
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +30,7 @@
 #include <stdarg.h>
 #include <gtk/gtk.h>
 #include <pthread.h>
+#include "audio.h"
 
 #ifdef __CYGWIN__
 #define _WIN32
@@ -43,7 +47,8 @@
 
 #define NSTEPS 4
 #define PA_SAMPLE_RATE 44100u
-#define PA_BUFF_SIZE (PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
+#define MAX_PA_SAMPLE_RATE 48000u
+#define PA_BUFF_SIZE (MAX_PA_SAMPLE_RATE << (NSTEPS + FIRST_STEP))
 
 #define OUTPUT_FONT 40
 #define OUTPUT_WINDOW_HEIGHT 70
@@ -75,6 +80,11 @@
 #endif
 
 #define UNUSED(X) (void)(X)
+
+#define TIC 1
+#define TOC -1
+#define BAD_EVENT_TIME -1
+#define NULL_EVENT_TIME 0
 
 /* algo.c */
 struct processing_buffers {
@@ -108,7 +118,7 @@ struct calibration_data {
 	uint64_t *events;
 };
 
-void setup_buffers(struct processing_buffers *b);
+void setup_buffers(struct processing_buffers *b, double lpfCutoff, double hpfCutoff);
 void pb_destroy(struct processing_buffers *b);
 struct processing_buffers *pb_clone(struct processing_buffers *p);
 void pb_destroy_clone(struct processing_buffers *p);
@@ -117,8 +127,12 @@ void setup_cal_data(struct calibration_data *cd);
 void cal_data_destroy(struct calibration_data *cd);
 int test_cal(struct processing_buffers *p);
 int process_cal(struct processing_buffers *p, struct calibration_data *cd);
+int absEventTime(int eventTime);
+int event_is_TIC_or_TOC(int eventTime);
+void setFilter(gboolean bLpf, double freq);
+void pb_setFilter(struct processing_buffers *b, gboolean bLpf, double freq);
 
-/* audio.c */
+/* audio.c   moved to audio.h
 struct processing_data {
 	struct processing_buffers *buffers;
 	uint64_t last_tic;
@@ -131,6 +145,8 @@ uint64_t get_timestamp(int light);
 int analyze_pa_data(struct processing_data *pd, int bph, double la, uint64_t events_from);
 int analyze_pa_data_cal(struct processing_data *pd, struct calibration_data *cd);
 void set_audio_light(bool light);
+*/
+
 
 /* computer.c */
 struct snapshot {
@@ -190,10 +206,11 @@ struct computer {
 struct snapshot *snapshot_clone(struct snapshot *s);
 void snapshot_destroy(struct snapshot *s);
 void computer_destroy(struct computer *c);
-struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light);
+struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light, double lpfCutoff, double hpfCutoff);
 void lock_computer(struct computer *c);
 void unlock_computer(struct computer *c);
 void compute_results(struct snapshot *s);
+gboolean computer_setFilter(struct computer *c, gboolean bLpf, double freq);
 
 /* output_panel.c */
 struct output_panel {
@@ -220,6 +237,9 @@ void op_set_border(struct output_panel *op, int i);
 void op_destroy(struct output_panel *op);
 
 /* interface.c */
+
+#define POSITIONS 6
+
 struct main_window {
 	GtkApplication *app;
 
@@ -228,6 +248,7 @@ struct main_window {
 	GtkWidget *la_spin_button;
 	GtkWidget *cal_spin_button;
 	GtkWidget *snapshot_button;
+	GtkWidget *snapshot_POS_button[POSITIONS];
 	GtkWidget *snapshot_name;
 	GtkWidget *snapshot_name_entry;
 	GtkWidget *cal_button;
@@ -256,6 +277,13 @@ struct main_window {
 
 	guint kick_timeout;
 	guint save_timeout;
+
+	char * audioInputStr;
+	char * audioInterfaceStr;
+
+	double lpfCutoff;
+	double hpfCutoff;
+
 };
 
 extern int preset_bph[];
@@ -266,13 +294,23 @@ extern int testing;
 
 void print_debug(char *format,...);
 void error(char *format,...);
+gboolean interface_setFilter(struct main_window *w, gboolean bLpf, double freq);
+
+//settings.c
+void show_preferences(GtkButton *button, struct main_window *w);
+#define DEFAULT_AUDIOINPUTSTRING "Default Audio Input"
+#define DEFAULT_AUDIOINTERFACESTRING "Default Audio Interface"
+#define DEFAULT_AUDIORATESTRING  "Default Sample Rate"
+#define USE_DEVICE_DEFAULT_AUDIORATE 0    //passes control of the sample rate to the device itself
 
 /* config.c */
 #define CONFIG_FIELDS(OP) \
 	OP(bph, bph, int) \
 	OP(lift_angle, la, double) \
 	OP(calibration, cal, int) \
-	OP(light_algorithm, is_light, int)
+	OP(light_algorithm, is_light, int) \
+	OP(lpfCutoff, lpfCutoff, double) \
+	OP(hpfCutoff, hpfCutoff, double)
 
 struct conf_data {
 #define DEF(NAME,PLACE,TYPE) TYPE PLACE;
@@ -287,3 +325,5 @@ void close_config(struct main_window *w);
 /* serializer.c */
 int write_file(FILE *f, struct snapshot **s, char **names, uint64_t cnt);
 int read_file(FILE *f, struct snapshot ***s, char ***names, uint64_t *cnt);
+
+#endif /* SRC_TG_H_ */

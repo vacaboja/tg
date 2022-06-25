@@ -18,7 +18,13 @@
 
 #include "tg.h"
 
-cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow;
+#define MAG_INC "Mag+"
+#define MAG_DEC "Mag-"
+#define MAG_SCALE 2.0
+float paperstrip_zoom_var = 1.0;
+
+cairo_pattern_t *black,*white,*red,*green,*blue,*blueish,*yellow, *ticColor, *tocColor;
+
 
 static void define_color(cairo_pattern_t **gc,double r,double g,double b)
 {
@@ -34,6 +40,9 @@ void initialize_palette()
 	define_color(&blue,0,0,1);
 	define_color(&blueish,0,0,.5);
 	define_color(&yellow,1,1,0);
+
+	define_color(&ticColor, 0.5, 1, 1);//cyan
+	define_color(&tocColor, 1, 0.5, 1);//magenta
 }
 
 static void draw_graph(double a, double b, cairo_t *c, struct processing_buffers *p, GtkWidget *da)
@@ -112,7 +121,7 @@ static double amplitude_to_time(double lift_angle, double amp)
 	return asin(lift_angle / (2 * amp)) / M_PI;
 }
 
-static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
+static double draw_watch_icon(cairo_t *c, int signal, int happy, int light, int sampleRate)
 {
 	happy = !!happy;
 	cairo_set_line_width(c,3);
@@ -148,6 +157,15 @@ static double draw_watch_icon(cairo_t *c, int signal, int happy, int light)
 		cairo_line_to(c, OUTPUT_WINDOW_HEIGHT * 0.5 + 0.3*l, OUTPUT_WINDOW_HEIGHT * 0.2 + l + 1);
 		cairo_stroke(c);
 	}
+
+	cairo_set_font_size(c, 12);
+	char sampleRateStr[1024];  sprintf(sampleRateStr,"%d", sampleRate );
+	cairo_text_extents_t extents;
+	cairo_text_extents(c,sampleRateStr,&extents);
+	cairo_move_to(c, (OUTPUT_WINDOW_HEIGHT - extents.width )* 0.5 , OUTPUT_WINDOW_HEIGHT * 0.7);
+
+	cairo_show_text(c,sampleRateStr);
+
 	return OUTPUT_WINDOW_HEIGHT + 3*l;
 }
 
@@ -194,7 +212,7 @@ static gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 	struct processing_buffers *p = snst->pb;
 	int old = snst->is_old;
 
-	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal, snst->is_light);
+	double x = draw_watch_icon(c,snst->signal,snst->calibrate ? snst->signal==NSTEPS : snst->signal, snst->is_light, snst->nominal_sr);
 
 	cairo_text_extents_t extents;
 
@@ -259,7 +277,7 @@ static gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 			char rates[20];
 			sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
 			sprintf(outputs[0],"%4s",rates);
-			sprintf(outputs[2]," %4.1f",be);
+			sprintf(outputs[2]," %s%.1f",be > 0 ? "+" : be < 0 ? "-" : "",fabs(be));
 			if(snst->amp > 0)
 				sprintf(outputs[4]," %3.0f",snst->amp);
 			else
@@ -312,7 +330,8 @@ static void expose_waveform(
 			GtkWidget *da,
 			cairo_t *c,
 			int (*get_offset)(struct processing_buffers*),
-			double (*get_pulse)(struct processing_buffers*))
+			double (*get_pulse)(struct processing_buffers*),
+			cairo_pattern_t *tictocColor)
 {
 	cairo_init(c);
 
@@ -406,7 +425,7 @@ static void expose_waveform(
 
 		draw_graph(a,b,c,p,da);
 
-		cairo_set_source(c,old?yellow:white);
+		cairo_set_source(c,old?yellow: tictocColor);
 		cairo_stroke_preserve(c);
 		cairo_fill(c);
 
@@ -450,14 +469,14 @@ static double get_toc_pulse(struct processing_buffers *p)
 static gboolean tic_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	UNUSED(widget);
-	expose_waveform(op, op->tic_drawing_area, c, get_tic, get_tic_pulse);
+	expose_waveform(op, op->tic_drawing_area, c, get_tic, get_tic_pulse, ticColor);
 	return FALSE;
 }
 
 static gboolean toc_draw_event(GtkWidget *widget, cairo_t *c, struct output_panel *op)
 {
 	UNUSED(widget);
-	expose_waveform(op, op->toc_drawing_area, c, get_toc, get_toc_pulse);
+	expose_waveform(op, op->toc_drawing_area, c, get_toc, get_toc_pulse, tocColor);
 	return FALSE;
 }
 
@@ -487,14 +506,14 @@ static gboolean period_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 		cairo_line_to(c, (p->tic - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (p->tic - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
-		cairo_set_source(c,blueish);
+		cairo_set_source(c,ticColor);
 		cairo_fill(c);
 
 		cairo_move_to(c, (toc - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
 		cairo_line_to(c, (toc - a - NEGATIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, height);
 		cairo_line_to(c, (toc - a + POSITIVE_SPAN*.001*snst->sample_rate) * width/p->period, 0);
-		cairo_set_source(c,blueish);
+		cairo_set_source(c,tocColor);
 		cairo_fill(c);
 	}
 
@@ -530,19 +549,20 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 {
 	int i;
 	struct snapshot *snst = op->snst;
-	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp(snst->is_light);
+	uint64_t time = snst->timestamp ? snst->timestamp : get_timestamp();
 	double sweep;
-	int zoom_factor;
+	double zoom_factor;
 	double slope = 1000; // detected rate: 1000 -> do not display
 	if(snst->calibrate) {
+		paperstrip_zoom_var = 1.0;
 		sweep = snst->nominal_sr;
 		zoom_factor = PAPERSTRIP_ZOOM_CAL;
 		slope = (double) snst->cal * zoom_factor / (10 * 3600 * 24);
 	} else {
 		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
-		zoom_factor = PAPERSTRIP_ZOOM;
-		if(snst->events_count && snst->events[snst->events_wp])
-			slope = - snst->rate * zoom_factor / (3600. * 24.);
+		zoom_factor = PAPERSTRIP_ZOOM * paperstrip_zoom_var;
+		if(snst->events_count && snst->events[snst->events_wp]!=NULL_EVENT_TIME)
+			slope = - snst->rate * PAPERSTRIP_ZOOM / (3600. * 24.);
 	}
 
 	cairo_init(c);
@@ -555,9 +575,9 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	int stopped = 0;
 	if( snst->events_count &&
-	    snst->events[snst->events_wp] &&
-	    time > 5 * snst->nominal_sr + snst->events[snst->events_wp]) {
-		time = 5 * snst->nominal_sr + snst->events[snst->events_wp];
+	    snst->events[snst->events_wp] != NULL_EVENT_TIME &&
+	    time > 5 * snst->nominal_sr + absEventTime(snst->events[snst->events_wp])) {
+		time = 5 * snst->nominal_sr + absEventTime(snst->events[snst->events_wp]);
 		stopped = 1;
 	}
 
@@ -608,7 +628,7 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 	double last_line = fmod(now/sweep, ten_s);
 	int last_tenth = floor(now/(sweep*ten_s));
 	for(i=0;;i++) {
-		double y = 0.5 + round(last_line + i*ten_s);
+		double y = 0.5 + round((last_line + i*ten_s)*paperstrip_zoom_var);
 		if(y > height) break;
 		cairo_move_to(c, .5, y);
 		cairo_line_to(c, width-.5, y);
@@ -618,24 +638,32 @@ static gboolean paperstrip_draw_event(GtkWidget *widget, cairo_t *c, struct outp
 
 	cairo_set_source(c,stopped?yellow:white);
 	for(i = snst->events_wp;;) {
-		if(!snst->events_count || !snst->events[i]) break;
-		double event = now - snst->events[i] + snst->trace_centering + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
-		int column = floor(fmod(event, (sweep / zoom_factor)) * strip_width / (sweep / zoom_factor));
-		int row = floor(event / sweep);
+		if(!snst->events_count || snst->events[i]==NULL_EVENT_TIME) break;
+		double event = now - absEventTime(snst->events[i]) + snst->trace_centering  + sweep * PAPERSTRIP_MARGIN / (2 * zoom_factor);
+		if(!stopped){
+			cairo_set_source(c, event_is_TIC_or_TOC(snst->events[i])==TIC?ticColor:tocColor);
+		}
+		double phase = fmod(event, sweep) / sweep;   // 0.0 -> 1.0
+		double cycle =  strip_width * ( 0.5 + (phase - 0.5) * zoom_factor);
+		int column = floor(fmod(cycle, strip_width));
+
+
+		int row = floor(event * paperstrip_zoom_var / sweep);
 		if(row >= height) break;
+		float tickSize = fmax(1.0, paperstrip_zoom_var);
 		cairo_move_to(c,column,row);
-		cairo_line_to(c,column+1,row);
-		cairo_line_to(c,column+1,row+1);
-		cairo_line_to(c,column,row+1);
+		cairo_line_to(c,column+tickSize,row);
+		cairo_line_to(c,column+tickSize,row+tickSize);
+		cairo_line_to(c,column,row+tickSize);
 		cairo_line_to(c,column,row);
 		cairo_fill(c);
 		if(column < width - strip_width && row > 0) {
 			column += strip_width;
 			row -= 1;
 			cairo_move_to(c,column,row);
-			cairo_line_to(c,column+1,row);
-			cairo_line_to(c,column+1,row+1);
-			cairo_line_to(c,column,row+1);
+			cairo_line_to(c,column+tickSize,row);
+			cairo_line_to(c,column+tickSize,row+tickSize);
+			cairo_line_to(c,column,row+tickSize);
 			cairo_line_to(c,column,row);
 			cairo_fill(c);
 		}
@@ -712,7 +740,7 @@ static void handle_clear_trace(GtkButton *b, struct output_panel *op)
 	if(op->computer) {
 		lock_computer(op->computer);
 		if(!op->snst->calibrate) {
-			memset(op->snst->events,0,op->snst->events_count*sizeof(uint64_t));
+			memset(op->snst->events,NULL_EVENT_TIME,op->snst->events_count*sizeof(uint64_t));
 			op->computer->clear_trace = 1;
 		}
 		unlock_computer(op->computer);
@@ -726,15 +754,15 @@ static void handle_center_trace(GtkButton *b, struct output_panel *op)
 	struct snapshot *snst = op->snst;
 	if(!snst || !snst->events)
 		return;
-	uint64_t last_ev = snst->events[snst->events_wp];
+	uint64_t last_ev =  absEventTime(snst->events[snst->events_wp]);
 	double new_centering;
 	if(last_ev) {
 		double sweep;
 		if(snst->calibrate)
-			sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
+			sweep = (double) snst->nominal_sr;
 		else
-			sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-		new_centering = fmod(last_ev + .5*sweep , sweep);
+			sweep = snst->sample_rate * 3600. / snst->guessed_bph;
+		new_centering = fmod(last_ev + .5 * sweep , sweep);
 	} else 
 		new_centering = 0;
 	snst->trace_centering = new_centering;
@@ -746,10 +774,10 @@ static void shift_trace(struct output_panel *op, double direction)
 	struct snapshot *snst = op->snst;
 	double sweep;
 	if(snst->calibrate)
-		sweep = (double) snst->nominal_sr / PAPERSTRIP_ZOOM_CAL;
+		sweep = (double) snst->nominal_sr;
 	else
-		sweep = snst->sample_rate * 3600. / (PAPERSTRIP_ZOOM * snst->guessed_bph);
-	snst->trace_centering = fmod(snst->trace_centering + sweep * (1.+.1*direction), sweep);
+		sweep = snst->sample_rate * 3600. / snst->guessed_bph;
+	snst->trace_centering = fmod(snst->trace_centering + sweep * (1.+.1*direction/(PAPERSTRIP_ZOOM * paperstrip_zoom_var)), sweep);
 	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
@@ -763,6 +791,18 @@ static void handle_right(GtkButton *b, struct output_panel *op)
 {
 	UNUSED(b);
 	shift_trace(op,1);
+}
+
+static void handle_zoom(GtkButton *b, struct output_panel *op)
+{
+
+	UNUSED(b);
+
+	if( strcmp(gtk_button_get_label(b) , MAG_INC)==0)
+		paperstrip_zoom_var *= MAG_SCALE;
+	else
+		paperstrip_zoom_var /= MAG_SCALE;
+	gtk_widget_queue_draw(op->paperstrip_drawing_area);
 }
 
 void op_set_snapshot(struct output_panel *op, struct snapshot *snst)
@@ -819,6 +859,16 @@ struct output_panel *init_output_panel(struct computer *comp, struct snapshot *s
 	GtkWidget *left_button = gtk_button_new_with_label("<");
 	gtk_box_pack_start(GTK_BOX(hbox3), left_button, TRUE, TRUE, 0);
 	g_signal_connect (left_button, "clicked", G_CALLBACK(handle_left), op);
+
+
+	GtkWidget *magInc_button = gtk_button_new_with_label(MAG_INC);
+	gtk_box_pack_start(GTK_BOX(hbox3), magInc_button, TRUE, TRUE, 0);
+	g_signal_connect (magInc_button, "clicked", G_CALLBACK(handle_zoom), op);
+	// < button
+	GtkWidget *magDec_button = gtk_button_new_with_label(MAG_DEC);
+	gtk_box_pack_start(GTK_BOX(hbox3), magDec_button, TRUE, TRUE, 0);
+	g_signal_connect (magDec_button, "clicked", G_CALLBACK(handle_zoom), op);
+
 
 	// CLEAR button
 	if(comp) {

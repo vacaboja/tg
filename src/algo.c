@@ -18,16 +18,28 @@
 
 #include "tg.h"
 
+#define PERIOD_SHIFT  15
+
 struct filter {
 	double a0,a1,a2,b1,b2;
 };
 
-static int int_cmp(const void *a, const void *b)
+/*static int int_cmp(const void *a, const void *b)
 {
 	int x = *(int*)a;
 	int y = *(int*)b;
 	return x<y ? -1 : x>y ? 1 : 0;
+}*/
+
+static int absint_cmp(const void *a, const void *b)
+{
+	int x = *(int*)a;
+	if(x<0)x=-x;
+	int y = *(int*)b;
+	if(y<0)y=-y;
+	return x<y ? -1 : x>y ? 1 : 0;
 }
+
 
 static void make_hp(struct filter *f, double freq)
 {
@@ -64,19 +76,26 @@ static void run_filter(struct filter *f, float *buff, int size)
 	}
 }
 
-void setup_buffers(struct processing_buffers *b)
+void pb_setFilter(struct processing_buffers *b, gboolean bLpf, double freq){
+	if(bLpf)
+		make_lp(b->lpf, freq/b->sample_rate);
+	else
+		make_hp(b->hpf, freq/b->sample_rate);
+}
+
+void setup_buffers(struct processing_buffers *b, double lpfCutoff, double hpfCutoff)
 {
 	b->samples = fftwf_malloc(2 * b->sample_count * sizeof(float));
-	b->samples_sc = malloc(2 * b->sample_count * sizeof(float));
-	b->waveform = malloc(2 * b->sample_rate * sizeof(float));
-	b->waveform_sc = malloc(2 * b->sample_rate * sizeof(float));
+	b->samples_sc = fftwf_malloc(2 * b->sample_count * sizeof(float));
+	b->waveform = fftwf_malloc(2 * b->sample_rate * sizeof(float));
+	b->waveform_sc = fftwf_malloc(2 * b->sample_rate * sizeof(float));
 	b->fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
 	b->sc_fft = fftwf_malloc((b->sample_count + 1) * sizeof(fftwf_complex));
 	b->tic_wf = fftwf_malloc(b->sample_rate * sizeof(float));
 	b->slice_wf = fftwf_malloc(b->sample_rate * sizeof(float));
 	b->tic_fft = fftwf_malloc((b->sample_rate/2 + 1) * sizeof(fftwf_complex));
 	b->slice_fft = fftwf_malloc((b->sample_rate/2 + 1) * sizeof(fftwf_complex));
-	b->tic_c = malloc(2 * b->sample_count * sizeof(float));
+	b->tic_c = fftwf_malloc(2 * b->sample_count * sizeof(float));
 	b->plan_a = fftwf_plan_dft_r2c_1d(2 * b->sample_count, b->samples, b->fft, FFTW_ESTIMATE);
 	b->plan_b = fftwf_plan_dft_c2r_1d(2 * b->sample_count, b->sc_fft, b->samples_sc, FFTW_ESTIMATE);
 	b->plan_c = fftwf_plan_dft_r2c_1d(2 * b->sample_rate, b->waveform, b->sc_fft, FFTW_ESTIMATE);
@@ -85,9 +104,9 @@ void setup_buffers(struct processing_buffers *b)
 	b->plan_f = fftwf_plan_dft_r2c_1d(b->sample_rate, b->slice_wf, b->slice_fft, FFTW_ESTIMATE);
 	b->plan_g = fftwf_plan_dft_c2r_1d(b->sample_rate, b->slice_fft, b->slice_wf, FFTW_ESTIMATE);
 	b->hpf = malloc(sizeof(struct filter));
-	make_hp(b->hpf,(double)FILTER_CUTOFF/b->sample_rate);
+	make_hp(b->hpf,hpfCutoff/b->sample_rate);
 	b->lpf = malloc(sizeof(struct filter));
-	make_lp(b->lpf,(double)FILTER_CUTOFF/b->sample_rate);
+	make_lp(b->lpf,lpfCutoff/b->sample_rate);
 	b->events = malloc(EVENTS_MAX * sizeof(uint64_t));
 	b->ready = 0;
 #ifdef DEBUG
@@ -99,16 +118,16 @@ void setup_buffers(struct processing_buffers *b)
 void pb_destroy(struct processing_buffers *b)
 {
 	fftwf_free(b->samples);
-	free(b->samples_sc);
-	free(b->waveform);
-	free(b->waveform_sc);
+	fftwf_free(b->samples_sc);
+	fftwf_free(b->waveform);
+	fftwf_free(b->waveform_sc);
 	fftwf_free(b->fft);
 	fftwf_free(b->sc_fft);
 	fftwf_free(b->tic_wf);
 	fftwf_free(b->slice_wf);
 	fftwf_free(b->tic_fft);
 	fftwf_free(b->slice_fft);
-	free(b->tic_c);
+	fftwf_free(b->tic_c);
 	fftwf_destroy_plan(b->plan_a);
 	fftwf_destroy_plan(b->plan_b);
 	fftwf_destroy_plan(b->plan_c);
@@ -436,10 +455,10 @@ static int compute_period(struct processing_buffers *b, int bph)
 		}
 		new_estimate /= cycle;
 		if(new_estimate < estimate - delta || new_estimate > estimate + delta) {
-			debug("cycle = %d new_estimate = %f invalid peak\n",cycle,new_estimate/b->sample_rate);
+			//debug("cycle = %d new_estimate = %f invalid peak\n",cycle,new_estimate/b->sample_rate);
 			return 1;
 		} else
-			debug("cycle = %d new_estimate = %f\n",cycle,new_estimate/b->sample_rate);
+			//debug("cycle = %d new_estimate = %f\n",cycle,new_estimate/b->sample_rate);
 		if(inf > b->sample_count / 3) {
 			sum += new_estimate;
 			sq_sum += new_estimate * new_estimate;
@@ -542,17 +561,20 @@ static float tmean(float *x, int n)
 
 static void compute_phase(struct processing_buffers *p, double period)
 {
-	int i;
+	long i;
 	double x = 0, y = 0;
+	long long periodShifted = lround(period * (1L<<PERIOD_SHIFT)); //using integer arithmetic to avoid rounding
+	long long j; long long n;
 	for(i = 0; i < period; i++) {
-		int j;
-		p->waveform[i] = 0;
+
+		float total = 0.0;
 		for(j=0;;j++) {
-			int n = round(i + j * period);
-			if(n >= p->sample_count) break;
-			p->waveform[i] += p->samples[n];
+			n = i+((j * periodShifted) >> PERIOD_SHIFT);
+			if(n >= p->sample_count)
+				break;
+			total += p->samples[n];
 		}
-		p->waveform[i] /= j;
+		p->waveform[i] = total / j;
 	}
 	for(i=0; i<period; i++) {
 		double a = i * 2 * M_PI / period;
@@ -567,12 +589,12 @@ static void compute_waveform(struct processing_buffers *p, int wf_size)
 	int i;
 	for(i=0; i<2*p->sample_rate; i++)
 		p->waveform[i] = 0;
+	float bin[(int)ceil(1 + p->sample_count / wf_size)];
 	for(i=0; i < wf_size; i++) {
-		float bin[(int)ceil(1 + p->sample_count / wf_size)];
 		int j;
-		double k = fmod(i+p->phase,wf_size);
+		int k = round(fmod(i+p->phase,wf_size)); //moving the round() here speeds up the loop below
 		for(j=0;;j++) {
-			int n = round(k+j*wf_size);
+			int n = k+j*wf_size;
 			if(n >= p->sample_count) break;
 			bin[j] = p->samples[n];
 		}
@@ -633,6 +655,12 @@ static void smooth(float *in, float *out, int window, int size)
 	}
 }
 
+void compute_beaterror(struct processing_buffers *p){
+	p->be = p->period/2 - fabs(p->toc - p->tic);
+	if(p->toc > p->tic)
+		p->be *= -1.0;
+}
+
 static int compute_parameters(struct processing_buffers *p)
 {
 	int tic_to_toc = peak_detector(p->waveform_sc,
@@ -641,9 +669,6 @@ static int compute_parameters(struct processing_buffers *p)
 	if(tic_to_toc < 0) {
 		debug("beat error = ---\n");
 		return 1;
-	} else {
-		p->be = p->period/2 - tic_to_toc;
-		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
 	int wf_size = ceil(p->period);
@@ -677,10 +702,13 @@ static int compute_parameters(struct processing_buffers *p)
 
 	p->last_tic = p->timestamp - (uint64_t)round(fmod(apparent_phase, p->period));
 
+	compute_beaterror(p);
+	debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
+
 	return 0;
 }
 
-static void do_locate_events(int *events, struct processing_buffers *p, float *waveform, int last, int offset, int count)
+static void do_locate_events(int *events, struct processing_buffers *p, float *waveform, int last, int offset, int count, int ticktock)
 {
 	int i;
 	memset(p->tic_wf, 0, p->sample_rate * sizeof(float));
@@ -706,40 +734,49 @@ static void do_locate_events(int *events, struct processing_buffers *p, float *w
 		int a = round(last - offset - i*p->period - 0.02*p->sample_rate);
 		int b = round(last - offset - i*p->period + 0.02*p->sample_rate);
 		if(a < 0 || b >= p->sample_count - p->period/2)
-			events[i] = -1;
+			events[i] = BAD_EVENT_TIME;
 		else {
 			int peak = peak_detector(p->tic_c,a,b);
-			events[i] = peak >= 0 ? offset + peak : -1;
+			events[i] = peak >= 0 ? (offset + peak)*ticktock : BAD_EVENT_TIME;
 		}
 	}
+}
+
+int absEventTime(int eventTime){
+	return (eventTime>0)? eventTime: (eventTime==BAD_EVENT_TIME)? BAD_EVENT_TIME: -eventTime;
+}
+
+int event_is_TIC_or_TOC(int eventTime){
+	return (eventTime>0)?TIC:TOC;
 }
 
 static void locate_events(struct processing_buffers *p)
 {
 	int count = 1 + ceil((p->timestamp - p->events_from) / p->period);
 	if(count <= 0 || 2*count >= EVENTS_MAX) {
-		p->events[0] = 0;
+		p->events[0] = NULL_EVENT_TIME;
 		return;
 	}
 
 	int events[2*count];
 	int half = p->tic < p->period/2 ? 0 : round(p->period / 2);
-	int offset = p->tic - half - (p->tic_pulse - p->toc_pulse) / 2;
-	do_locate_events(events, p, p->waveform + half, (int)(p->last_tic + p->sample_count - p->timestamp), offset, count);
+	int offset = p->tic - half;
+	do_locate_events(events, p, p->waveform + half, (int)(p->last_tic + p->sample_count - p->timestamp), offset, count, TIC);
 	half = p->toc < p->period/2 ? 0 : round(p->period / 2);
-	offset = p->toc - half - (p->toc_pulse - p->tic_pulse) / 2;
-	do_locate_events(events+count, p, p->waveform + half, (int)(p->last_toc + p->sample_count - p->timestamp), offset, count);
-	qsort(events, 2*count, sizeof(int), int_cmp);
+	offset = p->toc - half;
+	do_locate_events(events+count, p, p->waveform + half, (int)(p->last_toc + p->sample_count - p->timestamp), offset, count, TOC);
+	qsort(events, 2*count, sizeof(int), absint_cmp);
 
 	int i,j;
 	for(i=0, j=0; i < 2*count; i++) {
-		if(events[i] < 0 ||
-				events[i] + p->timestamp < p->sample_count ||
-				events[i] + p->timestamp - p->sample_count < p->events_from)
+		int aEventTime =  absEventTime(events[i]);
+		if( aEventTime == BAD_EVENT_TIME ||
+				aEventTime + p->timestamp < p->sample_count ||
+				aEventTime + p->timestamp - p->sample_count < p->events_from)
 			continue;
-		p->events[j++] = events[i] + p->timestamp - p->sample_count;
+		p->events[j++] = (aEventTime + p->timestamp - p->sample_count) * event_is_TIC_or_TOC(events[i]);
 	}
-	p->events[j] = 0;
+	p->events[j] = NULL_EVENT_TIME;
 }
 
 static void compute_amplitude(struct processing_buffers *p, double la)
@@ -800,7 +837,6 @@ static void compute_amplitude(struct processing_buffers *p, double la)
 			p->amp = (tic_amp_abs + toc_amp_abs) / 2;
 			p->tic_pulse = tic_pulse;
 			p->toc_pulse = toc_pulse;
-			p->be = p->period/2 - fabs(p->toc - p->tic + p->tic_pulse - p->toc_pulse);
 			debug("amp: be = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 			debug("amp = %f\n", la * p->amp);
 			break;

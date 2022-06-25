@@ -17,12 +17,13 @@
 */
 
 #include "tg.h"
+#include "audio.h"
 
 static int count_events(struct snapshot *s)
 {
 	int i, cnt = 0;
 	if(!s->events_count) return 0;
-	for(i = s->events_wp; s->events[i];) {
+	for(i = s->events_wp; s->events[i]!=NULL_EVENT_TIME;) {
 		cnt++;
 		if(--i < 0) i = s->events_count - 1;
 		if(i == s->events_wp) break;
@@ -113,16 +114,16 @@ static void compute_events_cal(struct computer *c)
 	struct snapshot *s = c->actv;
 	int i;
 	for(i=d->wp-1; i >= 0 &&
-		d->events[i] > s->events[s->events_wp];
+	    absEventTime(d->events[i]) > absEventTime(s->events[s->events_wp]);
 		i--);
 	for(i++; i<d->wp; i++) {
-		if(d->events[i] / s->nominal_sr <= s->events[s->events_wp] / s->nominal_sr)
+		if( absEventTime(d->events[i]) / s->nominal_sr <=  absEventTime(s->events[s->events_wp]) / s->nominal_sr)
 			continue;
 		if(++s->events_wp == s->events_count) s->events_wp = 0;
 		s->events[s->events_wp] = d->events[i];
 		debug("event at %llu\n",s->events[s->events_wp]);
 	}
-	s->events_from = get_timestamp(s->is_light);
+	s->events_from = get_timestamp();
 }
 
 static void compute_events(struct computer *c)
@@ -130,17 +131,17 @@ static void compute_events(struct computer *c)
 	struct snapshot *s = c->actv;
 	struct processing_buffers *p = c->actv->pb;
 	if(p && !s->is_old) {
-		uint64_t last = s->events[s->events_wp];
+		uint64_t last = absEventTime(s->events[s->events_wp]);
 		int i;
-		for(i=0; i<EVENTS_MAX && p->events[i]; i++)
-			if(p->events[i] > last + floor(p->period / 4)) {
+		for(i=0; i<EVENTS_MAX && p->events[i]!=NULL_EVENT_TIME; i++)
+			if( absEventTime(p->events[i]) > last + floor(p->period / 4)) {
 				if(++s->events_wp == s->events_count) s->events_wp = 0;
 				s->events[s->events_wp] = p->events[i];
 				debug("event at %llu\n",s->events[s->events_wp]);
 			}
 		s->events_from = p->timestamp - ceil(p->period);
 	} else {
-		s->events_from = get_timestamp(s->is_light);
+		s->events_from = get_timestamp();
 	}
 }
 
@@ -150,7 +151,7 @@ void compute_results(struct snapshot *s)
 	if(s->pb) {
 		s->guessed_bph = s->bph ? s->bph : guess_bph(s->pb->period / s->sample_rate);
 		s->rate = (7200/(s->guessed_bph * s->pb->period / s->sample_rate) - 1)*24*3600;
-		s->be = fabs(s->pb->be) * 1000 / s->sample_rate;
+		s->be = s->pb->be * 1000 / s->sample_rate;
 		s->amp = s->la * s->pb->amp; // 0 = not available
 		if(s->amp < 135 || s->amp > 360)
 			s->amp = 0;
@@ -185,7 +186,7 @@ static void *computing_thread(void *void_computer)
 			c->actv->cal_percent = 0;
 		}
 		if(calibrate != c->actv->calibrate)
-			memset(c->actv->events,0,c->actv->events_count*sizeof(uint64_t));
+			memset(c->actv->events,NULL_EVENT_TIME,c->actv->events_count*sizeof(uint64_t));
 		c->actv->calibrate = calibrate;
 
 		if(c->actv->calibrate) {
@@ -201,7 +202,7 @@ static void *computing_thread(void *void_computer)
 				snapshot_destroy(c->curr);
 			if(c->clear_trace) {
 				if(!calibrate)
-					memset(c->actv->events,0,c->actv->events_count*sizeof(uint64_t));
+					memset(c->actv->events,NULL_EVENT_TIME,c->actv->events_count*sizeof(uint64_t));
 				c->clear_trace = 0;
 			}
 			c->curr = snapshot_clone(c->actv);
@@ -233,10 +234,19 @@ void computer_destroy(struct computer *c)
 	free(c);
 }
 
-struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light)
+gboolean computer_setFilter(struct computer *c, gboolean bLpf, double freq){
+	if(c->pdata && c->pdata->buffers){
+		struct processing_buffers *p = c->pdata->buffers;
+		for(int i=0; i<NSTEPS; i++)
+			pb_setFilter(&p[i],bLpf, freq);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int light, double lpfCutoff, double hpfCutoff)
 {
-	if(light) nominal_sr /= 2;
-	set_audio_light(light);
+
 
 	struct processing_buffers *p = malloc(NSTEPS * sizeof(struct processing_buffers));
 	int first_step = light ? FIRST_STEP_LIGHT : FIRST_STEP;
@@ -244,7 +254,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int
 	for(i=0; i<NSTEPS; i++) {
 		p[i].sample_rate = nominal_sr;
 		p[i].sample_count = nominal_sr * (1<<(i+first_step));
-		setup_buffers(&p[i]);
+		setup_buffers(&p[i], lpfCutoff, hpfCutoff);
 	}
 
 	struct processing_data *pd = malloc(sizeof(struct processing_data));
@@ -264,7 +274,7 @@ struct computer *start_computer(int nominal_sr, int bph, double la, int cal, int
 	s->signal = 0;
 	s->events_count = EVENTS_COUNT;
 	s->events = malloc(EVENTS_COUNT * sizeof(uint64_t));
-	memset(s->events,0,EVENTS_COUNT * sizeof(uint64_t));
+	memset(s->events,NULL_EVENT_TIME,EVENTS_COUNT * sizeof(uint64_t));
 	s->events_wp = 0;
 	s->events_from = 0;
 	s->trace_centering = 0;
