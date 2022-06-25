@@ -277,7 +277,7 @@ static gboolean output_draw_event(GtkWidget *widget, cairo_t *c, struct output_p
 			char rates[20];
 			sprintf(rates,"%s%d",rate > 0 ? "+" : rate < 0 ? "-" : "",abs(rate));
 			sprintf(outputs[0],"%4s",rates);
-			sprintf(outputs[2]," %4.1f",be);
+			sprintf(outputs[2]," %s%.1f",be > 0 ? "+" : be < 0 ? "-" : "",fabs(be));
 			if(snst->amp > 0)
 				sprintf(outputs[4]," %3.0f",snst->amp);
 			else

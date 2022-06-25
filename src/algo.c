@@ -655,6 +655,12 @@ static void smooth(float *in, float *out, int window, int size)
 	}
 }
 
+void compute_beaterror(struct processing_buffers *p){
+	p->be = p->period/2 - fabs(p->toc - p->tic);
+	if(p->toc > p->tic)
+		p->be *= -1.0;
+}
+
 static int compute_parameters(struct processing_buffers *p)
 {
 	int tic_to_toc = peak_detector(p->waveform_sc,
@@ -663,9 +669,6 @@ static int compute_parameters(struct processing_buffers *p)
 	if(tic_to_toc < 0) {
 		debug("beat error = ---\n");
 		return 1;
-	} else {
-		p->be = p->period/2 - tic_to_toc;
-		debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 	}
 
 	int wf_size = ceil(p->period);
@@ -698,6 +701,9 @@ static int compute_parameters(struct processing_buffers *p)
 		p->last_toc = p->timestamp - (uint64_t)round(fmod(p->sample_count - (p->phase + p->toc), p->period));
 
 	p->last_tic = p->timestamp - (uint64_t)round(fmod(apparent_phase, p->period));
+
+	compute_beaterror(p);
+	debug("beat error = %.1f\n",fabs(p->be)*1000/p->sample_rate);
 
 	return 0;
 }

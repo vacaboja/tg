@@ -151,7 +151,7 @@ void compute_results(struct snapshot *s)
 	if(s->pb) {
 		s->guessed_bph = s->bph ? s->bph : guess_bph(s->pb->period / s->sample_rate);
 		s->rate = (7200/(s->guessed_bph * s->pb->period / s->sample_rate) - 1)*24*3600;
-		s->be = fabs(s->pb->be) * 1000 / s->sample_rate;
+		s->be = s->pb->be * 1000 / s->sample_rate;
 		s->amp = s->la * s->pb->amp; // 0 = not available
 		if(s->amp < 135 || s->amp > 360)
 			s->amp = 0;
