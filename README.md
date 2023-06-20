@@ -5,11 +5,11 @@ source code of tg is available at
 [https://github.com/vacaboja/tg](https://github.com/vacaboja/tg) and its
 copyright belongs to the respective contributors.
 
-Tg is in development, and there is still no manual. Some info can be found
-in this
-[thread at WUS](http://forums.watchuseek.com/f6/open-source-timing-software-2542874.html),
-in particular the calibration procedure is described at
-[this post](http://forums.watchuseek.com/f6/open-source-timing-software-2542874-post29970370.html).
+## Manual and Support
+Tg is still in development and a user manual for version 0.5.0 can be found in the <b>tg/docs</b> folder. 
+
+More help can be found in this [thread at WUS](http://forums.watchuseek.com/f6/open-source-timing-software-2542874.html),
+and the calibration procedure is described in [this post](http://forums.watchuseek.com/f6/open-source-timing-software-2542874-post29970370.html).
 
 ## Install instructions
 
